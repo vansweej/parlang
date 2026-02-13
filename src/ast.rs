@@ -29,6 +29,13 @@ pub enum Expr {
     
     /// Function application: f e
     App(Box<Expr>, Box<Expr>),
+    
+    /// Load expression: load "filepath" in e
+    Load(String, Box<Expr>),
+    
+    /// Sequential let bindings: let x = e1; let y = e2; expr
+    /// Vector of (name, value) pairs, followed by a body expression
+    Seq(Vec<(String, Expr)>, Box<Expr>),
 }
 
 /// Binary operators
@@ -61,6 +68,17 @@ impl fmt::Display for Expr {
             }
             Expr::Fun(param, body) => write!(f, "(fun {} -> {})", param, body),
             Expr::App(func, arg) => write!(f, "({} {})", func, arg),
+            Expr::Load(filepath, body) => write!(f, "(load \"{}\" in {})", filepath, body),
+            Expr::Seq(bindings, body) => {
+                write!(f, "(")?;
+                for (i, (name, value)) in bindings.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "let {} = {}", name, value)?;
+                }
+                write!(f, "; {})", body)
+            }
         }
     }
 }
@@ -184,6 +202,34 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_expr_load() {
+        let expr = Expr::Load(
+            "lib.par".to_string(),
+            Box::new(Expr::Var("x".to_string())),
+        );
+        assert_eq!(
+            expr,
+            Expr::Load(
+                "lib.par".to_string(),
+                Box::new(Expr::Var("x".to_string())),
+            )
+        );
+    }
+
+    #[test]
+    fn test_expr_seq() {
+        let bindings = vec![
+            ("x".to_string(), Expr::Int(42)),
+            ("y".to_string(), Expr::Int(10)),
+        ];
+        let expr = Expr::Seq(bindings.clone(), Box::new(Expr::Var("x".to_string())));
+        assert_eq!(
+            expr,
+            Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())))
+        );
+    }
+
     // Test Clone trait
     #[test]
     fn test_expr_clone() {
@@ -275,6 +321,25 @@ mod tests {
             Box::new(Expr::Int(42)),
         );
         assert_eq!(format!("{}", expr), "(f 42)");
+    }
+
+    #[test]
+    fn test_display_load() {
+        let expr = Expr::Load(
+            "lib.par".to_string(),
+            Box::new(Expr::Var("x".to_string())),
+        );
+        assert_eq!(format!("{}", expr), "(load \"lib.par\" in x)");
+    }
+
+    #[test]
+    fn test_display_seq() {
+        let bindings = vec![
+            ("x".to_string(), Expr::Int(42)),
+            ("y".to_string(), Expr::Int(10)),
+        ];
+        let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
+        assert_eq!(format!("{}", expr), "(let x = 42; let y = 10; x)");
     }
 
     // Test Display implementation for BinOp

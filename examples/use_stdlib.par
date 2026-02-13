@@ -1,0 +1,3 @@
+load "examples/stdlib.par"
+in let result = compose double triple 5
+in result

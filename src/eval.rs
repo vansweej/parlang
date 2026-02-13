@@ -4,6 +4,8 @@
 use crate::ast::{BinOp, Expr};
 use std::collections::HashMap;
 use std::fmt;
+use std::fs;
+use std::path::Path;
 
 /// Runtime values in the language
 #[derive(Debug, Clone, PartialEq)]
@@ -49,6 +51,14 @@ impl Environment {
         new_env.bind(name, value);
         new_env
     }
+
+    pub fn merge(&self, other: &Environment) -> Self {
+        let mut new_env = self.clone();
+        for (name, value) in &other.bindings {
+            new_env.bind(name.clone(), value.clone());
+        }
+        new_env
+    }
 }
 
 impl Default for Environment {
@@ -63,6 +73,7 @@ pub enum EvalError {
     UnboundVariable(String),
     TypeError(String),
     DivisionByZero,
+    LoadError(String),
 }
 
 impl fmt::Display for EvalError {
@@ -71,11 +82,55 @@ impl fmt::Display for EvalError {
             EvalError::UnboundVariable(name) => write!(f, "Unbound variable: {}", name),
             EvalError::TypeError(msg) => write!(f, "Type error: {}", msg),
             EvalError::DivisionByZero => write!(f, "Division by zero"),
+            EvalError::LoadError(msg) => write!(f, "Load error: {}", msg),
         }
     }
 }
 
 impl std::error::Error for EvalError {}
+
+/// Extract bindings from nested let expressions
+/// This walks through the AST and extracts all top-level let bindings
+fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, EvalError> {
+    match expr {
+        Expr::Let(name, value, body) => {
+            // Evaluate the value in the current environment
+            let val = eval(value, env)?;
+            // Extend the environment with this binding
+            let new_env = env.extend(name.clone(), val);
+            // Continue extracting from the body
+            extract_bindings(body, &new_env)
+        }
+        Expr::Load(filepath, body) => {
+            // Handle nested load expressions
+            // Read and parse the file
+            let content = fs::read_to_string(Path::new(filepath))
+                .map_err(|e| EvalError::LoadError(format!("Failed to read file '{}': {}", filepath, e)))?;
+            let lib_expr = crate::parser::parse(&content)
+                .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{}': {}", filepath, e)))?;
+            
+            // Extract bindings from the loaded library
+            let lib_env = extract_bindings(&lib_expr, &Environment::new())?;
+            // Merge with current environment
+            let new_env = env.merge(&lib_env);
+            // Continue extracting from the body
+            extract_bindings(body, &new_env)
+        }
+        Expr::Seq(bindings, body) => {
+            // Process each binding in the sequence
+            let mut current_env = env.clone();
+            for (name, value) in bindings {
+                let val = eval(value, &current_env)?;
+                current_env = current_env.extend(name.clone(), val);
+            }
+            // Continue extracting from the body
+            extract_bindings(body, &current_env)
+        }
+        // If we reach anything other than a Let, Load, or Seq, we're done extracting
+        // Return the accumulated environment
+        _ => Ok(env.clone()),
+    }
+}
 
 /// Evaluate an expression in an environment
 pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
@@ -130,6 +185,36 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     "Application requires a function".to_string(),
                 )),
             }
+        }
+        
+        Expr::Load(filepath, body) => {
+            // Read the file contents
+            let content = fs::read_to_string(Path::new(filepath))
+                .map_err(|e| EvalError::LoadError(format!("Failed to read file '{}': {}", filepath, e)))?;
+            
+            // Parse the file contents
+            let lib_expr = crate::parser::parse(&content)
+                .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{}': {}", filepath, e)))?;
+            
+            // Extract bindings from the library file
+            let lib_env = extract_bindings(&lib_expr, &Environment::new())?;
+            
+            // Merge library bindings into current environment
+            let extended_env = env.merge(&lib_env);
+            
+            // Evaluate the body in the extended environment
+            eval(body, &extended_env)
+        }
+        
+        Expr::Seq(bindings, body) => {
+            // Process each binding in sequence, extending the environment
+            let mut current_env = env.clone();
+            for (name, value) in bindings {
+                let val = eval(value, &current_env)?;
+                current_env = current_env.extend(name.clone(), val);
+            }
+            // Evaluate the body in the extended environment
+            eval(body, &current_env)
         }
     }
 }
@@ -851,5 +936,366 @@ mod tests {
             Box::new(Expr::Int(3)),
         );
         assert_eq!(eval(&expr, &env), Ok(Value::Int(2)));
+    }
+
+    // Test load expression
+    #[test]
+    fn test_load_simple_library() {
+        use std::fs;
+        use std::io::Write;
+        
+        // Create a temporary library file
+        let lib_content = "let double = fun x -> x * 2 in 0";
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_load_simple.par");
+        fs::write(&temp_file, lib_content).unwrap();
+        
+        let env = Environment::new();
+        let expr = Expr::Load(
+            temp_file.to_str().unwrap().to_string(),
+            Box::new(Expr::App(
+                Box::new(Expr::Var("double".to_string())),
+                Box::new(Expr::Int(21)),
+            )),
+        );
+        
+        let result = eval(&expr, &env);
+        assert_eq!(result, Ok(Value::Int(42)));
+        
+        // Cleanup
+        fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_multiple_functions() {
+        use std::fs;
+        
+        // Create a library with multiple functions
+        let lib_content = "let double = fun x -> x * 2 in let triple = fun x -> x * 3 in 0";
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_load_multiple.par");
+        fs::write(&temp_file, lib_content).unwrap();
+        
+        let env = Environment::new();
+        // Use both double and triple
+        let expr = Expr::Load(
+            temp_file.to_str().unwrap().to_string(),
+            Box::new(Expr::BinOp(
+                BinOp::Add,
+                Box::new(Expr::App(
+                    Box::new(Expr::Var("double".to_string())),
+                    Box::new(Expr::Int(10)),
+                )),
+                Box::new(Expr::App(
+                    Box::new(Expr::Var("triple".to_string())),
+                    Box::new(Expr::Int(7)),
+                )),
+            )),
+        );
+        
+        let result = eval(&expr, &env);
+        assert_eq!(result, Ok(Value::Int(41))); // 10*2 + 7*3 = 20 + 21 = 41
+        
+        // Cleanup
+        fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_with_nested_lets() {
+        use std::fs;
+        
+        // Library with nested lets creating multiple bindings
+        let lib_content = "let square = fun x -> x * x in let cube = fun x -> x * x * x in 0";
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_load_nested_lets.par");
+        fs::write(&temp_file, lib_content).unwrap();
+        
+        let env = Environment::new();
+        let expr = Expr::Load(
+            temp_file.to_str().unwrap().to_string(),
+            Box::new(Expr::App(
+                Box::new(Expr::Var("cube".to_string())),
+                Box::new(Expr::Int(3)),
+            )),
+        );
+        
+        let result = eval(&expr, &env);
+        assert_eq!(result, Ok(Value::Int(27))); // 3^3 = 27
+        
+        // Cleanup
+        fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_file_not_found() {
+        let env = Environment::new();
+        let expr = Expr::Load(
+            "/nonexistent/file.par".to_string(),
+            Box::new(Expr::Int(42)),
+        );
+        
+        let result = eval(&expr, &env);
+        assert!(matches!(result, Err(EvalError::LoadError(_))));
+        if let Err(EvalError::LoadError(msg)) = result {
+            assert!(msg.contains("Failed to read file"));
+        }
+    }
+
+    #[test]
+    fn test_load_parse_error() {
+        use std::fs;
+        
+        // Create a file with invalid syntax
+        let lib_content = "let x = ";
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_load_parse_error.par");
+        fs::write(&temp_file, lib_content).unwrap();
+        
+        let env = Environment::new();
+        let expr = Expr::Load(
+            temp_file.to_str().unwrap().to_string(),
+            Box::new(Expr::Int(42)),
+        );
+        
+        let result = eval(&expr, &env);
+        assert!(matches!(result, Err(EvalError::LoadError(_))));
+        if let Err(EvalError::LoadError(msg)) = result {
+            assert!(msg.contains("Failed to parse file"));
+        }
+        
+        // Cleanup
+        fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_nested_load() {
+        use std::fs;
+        
+        // Create first library
+        let lib1_content = "let helper = fun x -> x + 1 in 0";
+        let temp_dir = std::env::temp_dir();
+        let temp_file1 = temp_dir.join("test_load_lib1.par");
+        fs::write(&temp_file1, lib1_content).unwrap();
+        
+        // Create second library that loads the first
+        let lib2_content = format!("load \"{}\" in let double_helper = fun x -> helper (helper x) in 0", temp_file1.to_str().unwrap());
+        let temp_file2 = temp_dir.join("test_load_lib2.par");
+        fs::write(&temp_file2, &lib2_content).unwrap();
+        
+        let env = Environment::new();
+        let expr = Expr::Load(
+            temp_file2.to_str().unwrap().to_string(),
+            Box::new(Expr::App(
+                Box::new(Expr::Var("double_helper".to_string())),
+                Box::new(Expr::Int(10)),
+            )),
+        );
+        
+        let result = eval(&expr, &env);
+        assert_eq!(result, Ok(Value::Int(12))); // 10 + 1 + 1 = 12
+        
+        // Cleanup
+        fs::remove_file(&temp_file1).ok();
+        fs::remove_file(&temp_file2).ok();
+    }
+
+    #[test]
+    fn test_load_preserves_outer_bindings() {
+        use std::fs;
+        
+        // Create a library
+        let lib_content = "let double = fun x -> x * 2 in 0";
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_load_preserve.par");
+        fs::write(&temp_file, lib_content).unwrap();
+        
+        // Create an environment with existing bindings
+        let mut env = Environment::new();
+        env.bind("y".to_string(), Value::Int(10));
+        
+        // Load library and use both outer and library bindings
+        let expr = Expr::Load(
+            temp_file.to_str().unwrap().to_string(),
+            Box::new(Expr::BinOp(
+                BinOp::Add,
+                Box::new(Expr::Var("y".to_string())),
+                Box::new(Expr::App(
+                    Box::new(Expr::Var("double".to_string())),
+                    Box::new(Expr::Int(5)),
+                )),
+            )),
+        );
+        
+        let result = eval(&expr, &env);
+        assert_eq!(result, Ok(Value::Int(20))); // 10 + (5*2) = 20
+        
+        // Cleanup
+        fs::remove_file(&temp_file).ok();
+    }
+
+    // Test environment merge
+    #[test]
+    fn test_environment_merge() {
+        let mut env1 = Environment::new();
+        env1.bind("x".to_string(), Value::Int(1));
+        
+        let mut env2 = Environment::new();
+        env2.bind("y".to_string(), Value::Int(2));
+        
+        let merged = env1.merge(&env2);
+        assert_eq!(merged.lookup("x"), Some(&Value::Int(1)));
+        assert_eq!(merged.lookup("y"), Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn test_environment_merge_shadowing() {
+        let mut env1 = Environment::new();
+        env1.bind("x".to_string(), Value::Int(1));
+        
+        let mut env2 = Environment::new();
+        env2.bind("x".to_string(), Value::Int(2));
+        
+        let merged = env1.merge(&env2);
+        // Later binding should shadow
+        assert_eq!(merged.lookup("x"), Some(&Value::Int(2)));
+    }
+
+    // Test extract_bindings helper
+    #[test]
+    fn test_extract_bindings_single() {
+        let expr = Expr::Let(
+            "x".to_string(),
+            Box::new(Expr::Int(42)),
+            Box::new(Expr::Int(0)),
+        );
+        let env = Environment::new();
+        let result_env = extract_bindings(&expr, &env).unwrap();
+        assert_eq!(result_env.lookup("x"), Some(&Value::Int(42)));
+    }
+
+    #[test]
+    fn test_extract_bindings_nested() {
+        let expr = Expr::Let(
+            "x".to_string(),
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::Let(
+                "y".to_string(),
+                Box::new(Expr::Int(2)),
+                Box::new(Expr::Int(0)),
+            )),
+        );
+        let env = Environment::new();
+        let result_env = extract_bindings(&expr, &env).unwrap();
+        assert_eq!(result_env.lookup("x"), Some(&Value::Int(1)));
+        assert_eq!(result_env.lookup("y"), Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn test_extract_bindings_with_functions() {
+        let expr = Expr::Let(
+            "double".to_string(),
+            Box::new(Expr::Fun(
+                "x".to_string(),
+                Box::new(Expr::BinOp(
+                    BinOp::Mul,
+                    Box::new(Expr::Var("x".to_string())),
+                    Box::new(Expr::Int(2)),
+                )),
+            )),
+            Box::new(Expr::Int(0)),
+        );
+        let env = Environment::new();
+        let result_env = extract_bindings(&expr, &env).unwrap();
+        assert!(matches!(result_env.lookup("double"), Some(Value::Closure(_, _, _))));
+    }
+
+    // Test EvalError Display for LoadError
+    #[test]
+    fn test_eval_error_display_load_error() {
+        let err = EvalError::LoadError("test load error".to_string());
+        assert_eq!(format!("{}", err), "Load error: test load error");
+    }
+
+    // Test Seq evaluation
+    #[test]
+    fn test_eval_seq_single() {
+        let env = Environment::new();
+        let bindings = vec![("x".to_string(), Expr::Int(42))];
+        let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_seq_multiple() {
+        let env = Environment::new();
+        let bindings = vec![
+            ("x".to_string(), Expr::Int(10)),
+            ("y".to_string(), Expr::Int(32)),
+        ];
+        let expr = Expr::Seq(
+            bindings,
+            Box::new(Expr::BinOp(
+                BinOp::Add,
+                Box::new(Expr::Var("x".to_string())),
+                Box::new(Expr::Var("y".to_string())),
+            )),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_seq_with_functions() {
+        let env = Environment::new();
+        let bindings = vec![(
+            "double".to_string(),
+            Expr::Fun(
+                "x".to_string(),
+                Box::new(Expr::BinOp(
+                    BinOp::Mul,
+                    Box::new(Expr::Var("x".to_string())),
+                    Box::new(Expr::Int(2)),
+                )),
+            ),
+        )];
+        let expr = Expr::Seq(
+            bindings,
+            Box::new(Expr::App(
+                Box::new(Expr::Var("double".to_string())),
+                Box::new(Expr::Int(21)),
+            )),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_seq_scoping() {
+        let env = Environment::new();
+        // let x = 10; let y = x + 5; y
+        let bindings = vec![
+            ("x".to_string(), Expr::Int(10)),
+            (
+                "y".to_string(),
+                Expr::BinOp(
+                    BinOp::Add,
+                    Box::new(Expr::Var("x".to_string())),
+                    Box::new(Expr::Int(5)),
+                ),
+            ),
+        ];
+        let expr = Expr::Seq(bindings, Box::new(Expr::Var("y".to_string())));
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(15)));
+    }
+
+    #[test]
+    fn test_extract_bindings_seq() {
+        let bindings = vec![
+            ("x".to_string(), Expr::Int(1)),
+            ("y".to_string(), Expr::Int(2)),
+        ];
+        let expr = Expr::Seq(bindings, Box::new(Expr::Int(0)));
+        let env = Environment::new();
+        let result_env = extract_bindings(&expr, &env).unwrap();
+        assert_eq!(result_env.lookup("x"), Some(&Value::Int(1)));
+        assert_eq!(result_env.lookup("y"), Some(&Value::Int(2)));
     }
 }

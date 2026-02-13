@@ -38,6 +38,19 @@ where
     ))
 }
 
+/// Parse a string literal
+fn string_literal<Input>() -> impl Parser<Input, Output = String>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    between(
+        token('"'),
+        token('"'),
+        many(combine::satisfy(|c: char| c != '"')),
+    )
+}
+
 /// Parse a raw identifier string (including keywords)
 fn raw_identifier<Input>() -> impl Parser<Input, Output = String>
 where
@@ -62,7 +75,7 @@ where
         // Reject keywords by returning a failing parser
         if matches!(
             name.as_str(),
-            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false"
+            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load"
         ) {
             // Use a parser that will never succeed to reject keywords
             combine::unexpected("keyword").map(move |_: ()| name.clone()).right()
@@ -153,11 +166,28 @@ parser! {
 }
 
 parser! {
+    fn load_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        (
+            string("load").skip(spaces()),
+            string_literal().skip(spaces()),
+            string("in").skip(spaces()),
+            expr(),
+        )
+            .map(|(_, filepath, _, body)| {
+                Expr::Load(filepath, Box::new(body))
+            })
+    }
+}
+
+parser! {
     fn primary[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
         choice((
             attempt(let_expr()),
+            attempt(load_expr()),
             attempt(if_expr()),
             attempt(fun_expr()),
             attempt(atom()),
@@ -257,7 +287,29 @@ parser! {
     pub fn program[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
-        spaces().with(expr()).skip(spaces())
+        (
+            spaces(),
+            many(attempt((
+                string("let").skip(spaces()),
+                identifier().skip(spaces()),
+                token('=').skip(spaces()),
+                expr().skip(spaces()),
+                token(';').skip(spaces()),
+            ))).map(|bindings: Vec<(_, String, _, Expr, _)>| {
+                bindings
+                    .into_iter()
+                    .map(|(_, name, _, value, _)| (name, value))
+                    .collect::<Vec<(String, Expr)>>()
+            }),
+            expr().skip(spaces())
+        )
+            .map(|(_, bindings, body): (_, Vec<(String, Expr)>, Expr)| {
+                if bindings.is_empty() {
+                    body
+                } else {
+                    Expr::Seq(bindings, Box::new(body))
+                }
+            })
     }
 }
 
@@ -623,6 +675,90 @@ mod tests {
     fn test_keyword_fun_rejected() {
         let result = parse("fun");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_keyword_load_rejected() {
+        let result = parse("load");
+        assert!(result.is_err());
+    }
+
+    // Test load expressions
+    #[test]
+    fn test_parse_load_simple() {
+        let expected = Expr::Load(
+            "lib.par".to_string(),
+            Box::new(Expr::Var("x".to_string())),
+        );
+        assert_eq!(parse("load \"lib.par\" in x"), Ok(expected));
+    }
+
+    #[test]
+    fn test_parse_load_with_expression() {
+        let result = parse("load \"stdlib.par\" in double 21");
+        assert!(result.is_ok());
+        if let Ok(Expr::Load(filepath, body)) = result {
+            assert_eq!(filepath, "stdlib.par");
+            assert!(matches!(*body, Expr::App(_, _)));
+        }
+    }
+
+    #[test]
+    fn test_parse_load_nested() {
+        let result = parse("load \"a.par\" in load \"b.par\" in x");
+        assert!(result.is_ok());
+        if let Ok(Expr::Load(_, body)) = result {
+            assert!(matches!(*body, Expr::Load(_, _)));
+        }
+    }
+
+    #[test]
+    fn test_parse_load_with_let() {
+        let result = parse("load \"lib.par\" in let x = double 5 in x");
+        assert!(result.is_ok());
+    }
+
+    // Test sequential let bindings
+    #[test]
+    fn test_parse_seq_single() {
+        let result = parse("let x = 42; x");
+        assert!(result.is_ok());
+        if let Ok(Expr::Seq(bindings, body)) = result {
+            assert_eq!(bindings.len(), 1);
+            assert_eq!(bindings[0].0, "x");
+            assert_eq!(bindings[0].1, Expr::Int(42));
+            assert_eq!(*body, Expr::Var("x".to_string()));
+        } else {
+            panic!("Expected Seq expression");
+        }
+    }
+
+    #[test]
+    fn test_parse_seq_multiple() {
+        let result = parse("let x = 42; let y = 10; x + y");
+        assert!(result.is_ok());
+        if let Ok(Expr::Seq(bindings, body)) = result {
+            assert_eq!(bindings.len(), 2);
+            assert_eq!(bindings[0].0, "x");
+            assert_eq!(bindings[1].0, "y");
+            assert!(matches!(*body, Expr::BinOp(_, _, _)));
+        } else {
+            panic!("Expected Seq expression");
+        }
+    }
+
+    #[test]
+    fn test_parse_seq_with_functions() {
+        let result = parse("let double = fun x -> x * 2; double 21");
+        assert!(result.is_ok());
+        if let Ok(Expr::Seq(bindings, body)) = result {
+            assert_eq!(bindings.len(), 1);
+            assert_eq!(bindings[0].0, "double");
+            assert!(matches!(bindings[0].1, Expr::Fun(_, _)));
+            assert!(matches!(*body, Expr::App(_, _)));
+        } else {
+            panic!("Expected Seq expression");
+        }
     }
 
     // Test variable names with underscores

@@ -64,12 +64,12 @@ The lexical structure consists of the following token categories:
 Keywords are reserved identifiers with special syntactic meaning:
 
 ```
-let     in      if      then    else    fun     true    false
+let     in      if      then    else    fun     true    false   load
 ```
 
 **Formal Definition:**
 ```
-keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false"
+keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load"
 ```
 
 #### 2.2.2 Identifiers
@@ -169,6 +169,8 @@ boolean ::= "true" | "false"
 (    Left parenthesis
 )    Right parenthesis
 =    Assignment (in let bindings)
+;    Semicolon (separates sequential let bindings)
+"    String delimiter (for file paths in load expressions)
 ```
 
 #### 2.2.7 Whitespace
@@ -193,7 +195,10 @@ Whitespace is **not** significant for expression structure, except to separate k
 
 ```ebnf
 (* Programs *)
-program ::= expression
+program ::= (let_binding)* expression
+
+(* Let bindings (top-level) *)
+let_binding ::= "let" identifier '=' expression ';'
 
 (* Expressions *)
 expression ::= comparison_expr
@@ -208,6 +213,7 @@ application_expr ::= primary_expr+
 
 primary_expr ::= atom
               | let_expr
+              | load_expr
               | if_expr
               | fun_expr
 
@@ -220,6 +226,8 @@ atom ::= integer
 (* Compound expressions *)
 let_expr ::= "let" identifier '=' expression "in" expression
 
+load_expr ::= "load" string_literal "in" expression
+
 if_expr ::= "if" expression "then" expression "else" expression
 
 fun_expr ::= "fun" identifier "->" expression
@@ -230,6 +238,7 @@ comparison_op ::= "==" | "!=" | "<=" | ">=" | '<' | '>'
 (* Literals *)
 integer ::= '-'? digit+
 boolean ::= "true" | "false"
+string_literal ::= '"' [^"]* '"'
 identifier ::= letter (letter | digit | '_')*
 
 (* Character classes *)
@@ -468,6 +477,36 @@ If `x ∉ Γ`, evaluation raises `UnboundVariable(x)`.
 ∅ ⊢ let x = 5 in let x = 10 in x ⇓ Int(10)  (shadowing)
 ```
 
+#### 5.2.5b Sequential Let Bindings
+
+```
+Γ ⊢ e₁ ⇓ v₁    Γ[x₁ ↦ v₁] ⊢ e₂ ⇓ v₂    ...    Γ[x₁ ↦ v₁, ..., xₙ ↦ vₙ] ⊢ e ⇓ v
+──────────────────────────────────────────────────────────────────────────────  [E-SEQ]
+Γ ⊢ let x₁ = e₁; ...; let xₙ = eₙ; e ⇓ v
+```
+
+**Semantics:**
+1. Evaluate each binding expression in sequence
+2. Extend the environment with each binding before evaluating the next
+3. Each binding can reference previous bindings
+4. Evaluate the final expression in the fully extended environment
+
+**Syntax:**
+```parlang
+let x = 10;
+let y = x + 5;
+x * y
+```
+
+**Example:**
+```
+∅ ⊢ let x = 10; let y = x + 5; y ⇓ Int(15)
+
+∅ ⊢ let double = fun x -> x * 2; double 21 ⇓ Int(42)
+```
+
+**Note:** This is syntactic sugar for nested let-in expressions but with cleaner syntax when defining multiple bindings at the program level.
+
 #### 5.2.6 Function Definition
 
 ```
@@ -514,6 +553,58 @@ If `x ∉ Γ`, evaluation raises `UnboundVariable(x)`.
 
 ∅ ⊢ (fun x -> fun y -> x + y) 3 4 ⇓ Int(7)  (currying)
 ```
+
+#### 5.2.8 Load Expression
+
+```
+file_contents(filepath) = source
+parse(source) = lib_expr
+∅ ⊢ lib_expr ⇓ _
+extract_bindings(lib_expr) = Γ_lib
+Γ ∪ Γ_lib ⊢ e ⇓ v
+──────────────────────────────────────  [E-LOAD]
+Γ ⊢ load filepath in e ⇓ v
+```
+
+**Semantics:**
+1. Read the file contents from `filepath`
+2. Parse the contents as a ParLang expression
+3. Extract bindings from the library by walking nested `let` and `load` expressions
+4. Merge the library bindings with the current environment
+5. Evaluate the body expression `e` in the extended environment
+6. Return the result
+
+**Library File Structure:**
+Library files should be structured as nested `let` expressions to export multiple bindings:
+```parlang
+let func1 = fun x -> x * 2
+in let func2 = fun x -> x + 1
+in 0
+```
+
+**Binding Extraction:**
+The `extract_bindings` function recursively walks the AST:
+- For `Let(name, value, body)`: Evaluate `value`, bind to `name`, continue with `body`
+- For `Load(path, body)`: Load and extract bindings from file, continue with `body`
+- For any other expression: Stop extraction and return accumulated bindings
+
+**Properties:**
+- **Referential transparency**: Same file always produces same bindings
+- **Nested loads**: Libraries can load other libraries
+- **Environment extension**: Library bindings extend (not replace) the current environment
+- **File paths**: Relative paths resolved from current working directory
+
+**Example:**
+```
+# File: lib.par
+# let double = fun x -> x * 2 in 0
+
+∅ ⊢ load "lib.par" in double 21 ⇓ Int(42)
+```
+
+**Error Cases:**
+- File not found: `LoadError("Failed to read file...")`
+- Parse error: `LoadError("Failed to parse file...")`
 
 ### 5.3 Semantic Examples
 

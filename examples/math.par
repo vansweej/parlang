@@ -1,0 +1,4 @@
+let square = fun x -> x * x;
+let cube = fun x -> x * x * x;
+let avg = fun a -> fun b -> (a + b) / 2;
+0
