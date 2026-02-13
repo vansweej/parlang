@@ -776,7 +776,6 @@ in double_inc 10
 let square = fun x -> x * x
 in let cube = fun x -> x * x * x
 in let avg = fun a -> fun b -> (a + b) / 2
-in let pow2 = fun x -> x * x
 in 0
 ```
 
@@ -1415,7 +1414,6 @@ Mathematical utility functions:
 let square = fun x -> x * x
 in let cube = fun x -> x * x * x
 in let avg = fun a -> fun b -> (a + b) / 2
-in let pow2 = fun x -> x * x
 in 0
 ```
 
