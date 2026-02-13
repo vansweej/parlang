@@ -33,9 +33,24 @@ ParLang is a simple functional programming language with ML-alike syntax. All pr
 
 To try these examples:
 
-**REPL Mode:**
+**REPL Mode (Interactive):**
 ```bash
 cargo run
+```
+
+The REPL supports both single-line and multiline input:
+- Type expressions and press Enter for single-line input
+- For multiline expressions, continue typing on new lines (you'll see `... ` prompt)
+- Press Enter on an empty line to evaluate the complete expression
+
+**Example REPL session:**
+```
+> 42
+42
+> let x = 10
+... in x * 2
+
+20
 ```
 
 **File Mode:**

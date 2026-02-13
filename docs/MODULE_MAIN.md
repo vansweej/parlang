@@ -5,7 +5,7 @@
 The `main.rs` module implements the command-line interface and Read-Eval-Print Loop (REPL) for ParLang. It provides two execution modes: interactive REPL mode for exploring the language and file execution mode for running ParLang programs from `.par` files.
 
 **Location**: `src/main.rs`  
-**Lines of Code**: ~86  
+**Lines of Code**: ~116  
 **Key Functions**: `main()`, `repl()`, `execute()`  
 **External Dependencies**: Standard library only (`std::env`, `std::fs`, `std::io`)
 
@@ -120,9 +120,10 @@ flowchart TD
 
 **Behavior**:
 - Displays welcome banner with version information
-- Presents a `>` prompt for user input
-- Reads expressions line-by-line
-- Parses and evaluates each expression immediately
+- Presents a `>` prompt for the first line of input
+- Presents a `... ` continuation prompt for subsequent lines
+- Supports multiline input: press Enter to continue, submit with blank line
+- Parses and evaluates each expression after submission
 - Displays results or errors
 - Maintains a persistent environment (note: current implementation creates fresh env)
 - Exits on EOF (Ctrl+D) or Ctrl+C
@@ -233,7 +234,7 @@ assert!(error.is_err());
 
 ### `repl()`
 
-Implements the Read-Eval-Print Loop for interactive ParLang evaluation.
+Implements the Read-Eval-Print Loop for interactive ParLang evaluation with multiline input support.
 
 ```rust
 fn repl()
@@ -242,35 +243,49 @@ fn repl()
 **Behavior**:
 - Creates a fresh `Environment` for the REPL session
 - Enters an infinite loop reading and evaluating expressions
-- Each iteration:
-  1. Prints the `> ` prompt
-  2. Flushes stdout to ensure prompt is displayed
-  3. Reads a line of input
-  4. Trims whitespace
-  5. Skips empty lines
-  6. Parses the input
-  7. Evaluates the expression
-  8. Prints the result or error
+- **Multiline Input**: Accumulates input across multiple lines
+  - First line shows `> ` prompt
+  - Continuation lines show `... ` prompt
+  - Empty line (just Enter) signals end of input and triggers evaluation
+- Each submission cycle:
+  1. Accumulates lines until blank line is entered
+  2. Joins all accumulated lines
+  3. Trims whitespace
+  4. Parses the complete input
+  5. Evaluates the expression
+  6. Prints the result or error
+  7. Returns to initial `> ` prompt
 - Exits on EOF (Ctrl+D on Unix, Ctrl+Z on Windows)
 - Prints "Goodbye!" message on exit
 
-**REPL Loop Flow**:
+**Multiline Input Flow**:
 
 ```mermaid
 flowchart TD
-    START[Create Environment] --> LOOP{Loop}
+    START[Create Environment] --> INIT[is_first_line = true]
+    INIT --> LOOP{Main Loop}
     
-    LOOP --> PROMPT[Print '> ' prompt]
-    PROMPT --> FLUSH[Flush stdout]
+    LOOP --> PROMPT{Check<br/>first line?}
+    PROMPT -->|Yes| PROMPT_GT[Print '> ']
+    PROMPT -->|No| PROMPT_DOT[Print '... ']
+    
+    PROMPT_GT --> FLUSH[Flush stdout]
+    PROMPT_DOT --> FLUSH
+    
     FLUSH --> READ{Read line}
     
     READ -->|EOF| GOODBYE[Print 'Goodbye!']
-    READ -->|Error| ERROR[Print error<br/>Break loop]
-    READ -->|Success| TRIM[Trim whitespace]
+    READ -->|Error| ERROR[Print error<br/>Exit]
+    READ -->|Success| TRIM[Trim line]
     
     TRIM --> EMPTY{Empty?}
-    EMPTY -->|Yes| LOOP
-    EMPTY -->|No| PARSE{Parse input}
+    EMPTY -->|Yes, first line| LOOP
+    EMPTY -->|Yes, not first| PARSE_ALL[Join all lines]
+    EMPTY -->|No| ACCUMULATE[Add to lines<br/>is_first_line = false]
+    
+    ACCUMULATE --> LOOP
+    
+    PARSE_ALL --> PARSE{Parse input}
     
     PARSE -->|Ok expr| EVAL{Evaluate expr}
     PARSE -->|Err| PARSE_ERR[Print parse error]
@@ -278,9 +293,9 @@ flowchart TD
     EVAL -->|Ok value| PRINT_VAL[Print value]
     EVAL -->|Err| EVAL_ERR[Print eval error]
     
-    PRINT_VAL --> LOOP
-    PARSE_ERR --> LOOP
-    EVAL_ERR --> LOOP
+    PRINT_VAL --> INIT
+    PARSE_ERR --> INIT
+    EVAL_ERR --> INIT
     
     GOODBYE --> END[Exit]
     ERROR --> END
@@ -290,7 +305,9 @@ flowchart TD
 
 ### Interactive Prompt
 
-The REPL uses `> ` as its prompt character, signaling readiness for input:
+The REPL uses two types of prompts:
+- `> ` - Initial prompt for starting a new expression
+- `... ` - Continuation prompt for multiline input
 
 ```
 ParLang v0.1.0 - A small ML-alike functional language
@@ -299,9 +316,36 @@ Type expressions to evaluate them. Press Ctrl+C to exit.
 > 
 ```
 
+### Multiline Input Support
+
+The REPL supports multiline expressions. Continue typing on multiple lines and submit with a blank line:
+
+**Single-line expression**:
+```
+> 42
+42
+```
+
+**Multiline expression**:
+```
+> let double = fun x -> x + x
+... in double 5
+
+10
+```
+
+**Complex multiline example**:
+```
+> let add = fun x -> fun y -> x + y
+... in let add5 = add 5
+... in add5 10
+
+15
+```
+
 ### Expression Evaluation
 
-Each line is treated as a complete expression and evaluated immediately:
+Each complete expression (after blank line submission) is evaluated immediately:
 
 ```
 > 42
@@ -332,13 +376,22 @@ Evaluation error: Division by zero
 
 ### Empty Line Handling
 
-Empty lines (or lines with only whitespace) are silently skipped:
+**Single-line mode**: Empty lines on the initial prompt are silently skipped:
 
 ```
 > 
 
 > 42
 42
+```
+
+**Multiline mode**: Empty line after starting multiline input signals end of expression and triggers evaluation:
+
+```
+> let x = 10
+... in x + 5
+
+15
 ```
 
 ### Environment Persistence
@@ -652,10 +705,17 @@ false
 
 #### Functions
 
+Single-line:
 ```
 > let double = fun x -> x * 2 in double 21
 42
-> let add = fun x -> fun y -> x + y in add 10 5
+```
+
+Multiline:
+```
+> let add = fun x -> fun y -> x + y
+... in add 10 5
+
 15
 ```
 
@@ -1070,13 +1130,10 @@ main 5
    > :quit
    ```
 
-3. **Multiline Input**:
-   ```
-   > let compose = fun f -> fun g -> fun x ->
-   ... f (g x)
-   > compose
-   <function>
-   ```
+3. **Enhanced Multiline Input**:
+   - Syntax highlighting for multiline input
+   - Bracket/parenthesis matching
+   - Automatic indentation
 
 4. **History and Editing**:
    - Arrow keys for history navigation
