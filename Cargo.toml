@@ -1,0 +1,20 @@
+[package]
+name = "parlang"
+version = "0.1.0"
+edition = "2021"
+authors = ["parlang contributors"]
+description = "A small ML-alike functional language written in Rust"
+license = "MIT"
+
+[dependencies]
+combine = "4.6"
+
+[dev-dependencies]
+
+[[bin]]
+name = "parlang"
+path = "src/main.rs"
+
+[lib]
+name = "parlang"
+path = "src/lib.rs"
