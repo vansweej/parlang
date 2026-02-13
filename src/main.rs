@@ -74,7 +74,6 @@ fn repl() {
                 }
                 Ok(_) => {
                     let trimmed = line.trim();
-                    let ends_with_semicolon = trimmed.ends_with(';');
                     
                     // Empty line signals end of input (if we have at least one line)
                     if trimmed.is_empty() {
@@ -85,6 +84,9 @@ fn repl() {
                         // First line is empty, just continue to next prompt
                         continue;
                     }
+                    
+                    // Check before moving line if it ends with semicolon
+                    let ends_with_semicolon = trimmed.ends_with(';');
 
                     // Add the line to our accumulator
                     lines.push(line);
