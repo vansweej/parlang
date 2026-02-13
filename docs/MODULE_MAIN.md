@@ -407,8 +407,13 @@ fn repl() {
         Ok(value) => {
             println!("{}", value);
             // Extract bindings from the expression and merge into environment
-            if let Ok(new_env) = extract_repl_bindings(&expr, &env) {
-                env = new_env;
+            match extract_bindings(&expr, &env) {
+                Ok(new_env) => {
+                    env = new_env;
+                }
+                Err(e) => {
+                    eprintln!("Warning: Failed to persist bindings: {}", e);
+                }
             }
         }
         // ...
