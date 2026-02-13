@@ -90,8 +90,9 @@ impl fmt::Display for EvalError {
 impl std::error::Error for EvalError {}
 
 /// Extract bindings from nested let expressions
-/// This walks through the AST and extracts all top-level let bindings
-fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, EvalError> {
+/// This walks through the AST and extracts all top-level let bindings.
+/// Used by the REPL to persist function definitions and library loads across evaluations.
+pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, EvalError> {
     match expr {
         Expr::Let(name, value, body) => {
             // Evaluate the value in the current environment

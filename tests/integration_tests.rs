@@ -1,7 +1,7 @@
 /// Integration tests combining parser and evaluator
 /// These tests verify the full pipeline from source code to evaluation
 
-use parlang::{parse, eval, Environment, Value, Expr};
+use parlang::{parse, eval, extract_bindings, Environment, Value};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
     let expr = parse(input)?;
@@ -16,43 +16,9 @@ fn parse_eval_and_extract(input: &str, env: &Environment) -> Result<(Value, Envi
     let value = eval(&expr, env).map_err(|e| e.to_string())?;
     
     // Extract bindings from the expression to persist them
-    let new_env = extract_repl_bindings(&expr, env).map_err(|e| e.to_string())?;
+    let new_env = extract_bindings(&expr, env).map_err(|e| e.to_string())?;
     
     Ok((value, new_env))
-}
-
-/// Extract bindings from expressions for REPL persistence
-/// This is the same function used in main.rs for the REPL
-fn extract_repl_bindings(expr: &Expr, env: &Environment) -> Result<Environment, parlang::EvalError> {
-    match expr {
-        Expr::Let(name, value, body) => {
-            let val = eval(value, env)?;
-            let new_env = env.extend(name.clone(), val);
-            extract_repl_bindings(body, &new_env)
-        }
-        Expr::Load(filepath, body) => {
-            use std::fs;
-            use std::path::Path;
-            
-            let content = fs::read_to_string(Path::new(filepath))
-                .map_err(|e| parlang::EvalError::LoadError(format!("Failed to read file '{}': {}", filepath, e)))?;
-            let lib_expr = parse(&content)
-                .map_err(|e| parlang::EvalError::LoadError(format!("Failed to parse file '{}': {}", filepath, e)))?;
-            
-            let lib_env = extract_repl_bindings(&lib_expr, &Environment::new())?;
-            let new_env = env.merge(&lib_env);
-            extract_repl_bindings(body, &new_env)
-        }
-        Expr::Seq(bindings, body) => {
-            let mut current_env = env.clone();
-            for (name, value) in bindings {
-                let val = eval(value, &current_env)?;
-                current_env = current_env.extend(name.clone(), val);
-            }
-            extract_repl_bindings(body, &current_env)
-        }
-        _ => Ok(env.clone()),
-    }
 }
 
 

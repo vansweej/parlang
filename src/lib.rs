@@ -24,4 +24,4 @@ pub mod eval;
 // Re-export commonly used types and functions
 pub use ast::{Expr, BinOp};
 pub use parser::parse;
-pub use eval::{eval, Value, Environment, EvalError};
+pub use eval::{eval, extract_bindings, Value, Environment, EvalError};
