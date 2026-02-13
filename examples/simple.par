@@ -1,0 +1,3 @@
+let double = fun x -> x + x
+in let quadruple = fun x -> double (double x)
+in quadruple 5
