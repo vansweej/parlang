@@ -74,6 +74,7 @@ fn repl() {
                 }
                 Ok(_) => {
                     let trimmed = line.trim();
+                    let ends_with_semicolon = trimmed.ends_with(';');
                     
                     // Empty line signals end of input (if we have at least one line)
                     if trimmed.is_empty() {
@@ -88,6 +89,19 @@ fn repl() {
                     // Add the line to our accumulator
                     lines.push(line);
                     is_first_line = false;
+                    
+                    // Check if input ends with semicolon and is a complete parseable program
+                    // If so, auto-submit without requiring an extra Enter
+                    if ends_with_semicolon {
+                        let accumulated = lines.concat();
+                        let accumulated_trimmed = accumulated.trim();
+                        
+                        // Try to parse the accumulated input
+                        if parse(accumulated_trimmed).is_ok() {
+                            // Input is complete and parseable, submit it
+                            break;
+                        }
+                    }
                 }
                 Err(e) => {
                     eprintln!("Error reading input: {}", e);
