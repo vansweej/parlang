@@ -59,13 +59,13 @@ where
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     raw_identifier().then(|name: String| {
-        // Reject keywords
+        // Reject keywords by returning a failing parser
         if matches!(
             name.as_str(),
             "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false"
         ) {
-            // Return a parser that fails for keywords 
-            attempt(string("NEVER_MATCHES_ANYTHING_XYZ")).map(move |_| name.clone()).right()
+            // Use a parser that will never succeed to reject keywords
+            combine::unexpected("keyword").map(move |_: ()| name.clone()).right()
         } else {
             combine::value(name).left()
         }
