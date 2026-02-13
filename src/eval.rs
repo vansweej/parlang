@@ -240,4 +240,616 @@ mod tests {
         let expr = Expr::Var("x".to_string());
         assert!(matches!(eval(&expr, &env), Err(EvalError::UnboundVariable(_))));
     }
+
+    // Test all arithmetic operations
+    #[test]
+    fn test_eval_add() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Add,
+            Box::new(Expr::Int(10)),
+            Box::new(Expr::Int(32)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_sub() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Sub,
+            Box::new(Expr::Int(50)),
+            Box::new(Expr::Int(8)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_mul() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Mul,
+            Box::new(Expr::Int(6)),
+            Box::new(Expr::Int(7)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_div() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Div,
+            Box::new(Expr::Int(84)),
+            Box::new(Expr::Int(2)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_div_by_zero() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Div,
+            Box::new(Expr::Int(42)),
+            Box::new(Expr::Int(0)),
+        );
+        assert_eq!(eval(&expr, &env), Err(EvalError::DivisionByZero));
+    }
+
+    // Test all comparison operations
+    #[test]
+    fn test_eval_eq_true() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Eq,
+            Box::new(Expr::Int(42)),
+            Box::new(Expr::Int(42)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_eval_eq_false() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Eq,
+            Box::new(Expr::Int(42)),
+            Box::new(Expr::Int(43)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_eval_neq_true() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Neq,
+            Box::new(Expr::Int(42)),
+            Box::new(Expr::Int(43)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_eval_neq_false() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Neq,
+            Box::new(Expr::Int(42)),
+            Box::new(Expr::Int(42)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_eval_lt_true() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Lt,
+            Box::new(Expr::Int(3)),
+            Box::new(Expr::Int(5)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_eval_lt_false() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Lt,
+            Box::new(Expr::Int(5)),
+            Box::new(Expr::Int(3)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_eval_le_true() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Le,
+            Box::new(Expr::Int(3)),
+            Box::new(Expr::Int(5)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_eval_le_equal() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Le,
+            Box::new(Expr::Int(5)),
+            Box::new(Expr::Int(5)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_eval_gt_true() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Gt,
+            Box::new(Expr::Int(5)),
+            Box::new(Expr::Int(3)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_eval_gt_false() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Gt,
+            Box::new(Expr::Int(3)),
+            Box::new(Expr::Int(5)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_eval_ge_true() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Ge,
+            Box::new(Expr::Int(5)),
+            Box::new(Expr::Int(3)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_eval_ge_equal() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Ge,
+            Box::new(Expr::Int(5)),
+            Box::new(Expr::Int(5)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
+    }
+
+    // Test boolean comparisons
+    #[test]
+    fn test_eval_bool_eq() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Eq,
+            Box::new(Expr::Bool(true)),
+            Box::new(Expr::Bool(true)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_eval_bool_neq() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Neq,
+            Box::new(Expr::Bool(true)),
+            Box::new(Expr::Bool(false)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
+    }
+
+    // Test if-then-else
+    #[test]
+    fn test_eval_if_true_branch() {
+        let env = Environment::new();
+        let expr = Expr::If(
+            Box::new(Expr::Bool(true)),
+            Box::new(Expr::Int(42)),
+            Box::new(Expr::Int(0)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_if_false_branch() {
+        let env = Environment::new();
+        let expr = Expr::If(
+            Box::new(Expr::Bool(false)),
+            Box::new(Expr::Int(0)),
+            Box::new(Expr::Int(42)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_if_with_comparison() {
+        let env = Environment::new();
+        // if 5 > 3 then 100 else 0
+        let expr = Expr::If(
+            Box::new(Expr::BinOp(
+                BinOp::Gt,
+                Box::new(Expr::Int(5)),
+                Box::new(Expr::Int(3)),
+            )),
+            Box::new(Expr::Int(100)),
+            Box::new(Expr::Int(0)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(100)));
+    }
+
+    #[test]
+    fn test_eval_if_non_bool_condition() {
+        let env = Environment::new();
+        let expr = Expr::If(
+            Box::new(Expr::Int(42)),
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::Int(2)),
+        );
+        assert!(matches!(eval(&expr, &env), Err(EvalError::TypeError(_))));
+    }
+
+    // Test let bindings
+    #[test]
+    fn test_eval_let_simple() {
+        let env = Environment::new();
+        let expr = Expr::Let(
+            "x".to_string(),
+            Box::new(Expr::Int(42)),
+            Box::new(Expr::Var("x".to_string())),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_let_with_expression() {
+        let env = Environment::new();
+        // let x = 10 in x + 32
+        let expr = Expr::Let(
+            "x".to_string(),
+            Box::new(Expr::Int(10)),
+            Box::new(Expr::BinOp(
+                BinOp::Add,
+                Box::new(Expr::Var("x".to_string())),
+                Box::new(Expr::Int(32)),
+            )),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_nested_let() {
+        let env = Environment::new();
+        // let x = 1 in let y = 2 in x + y
+        let expr = Expr::Let(
+            "x".to_string(),
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::Let(
+                "y".to_string(),
+                Box::new(Expr::Int(2)),
+                Box::new(Expr::BinOp(
+                    BinOp::Add,
+                    Box::new(Expr::Var("x".to_string())),
+                    Box::new(Expr::Var("y".to_string())),
+                )),
+            )),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(3)));
+    }
+
+    #[test]
+    fn test_eval_let_shadowing() {
+        let env = Environment::new();
+        // let x = 1 in let x = 2 in x
+        let expr = Expr::Let(
+            "x".to_string(),
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::Let(
+                "x".to_string(),
+                Box::new(Expr::Int(2)),
+                Box::new(Expr::Var("x".to_string())),
+            )),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(2)));
+    }
+
+    // Test functions and closures
+    #[test]
+    fn test_eval_fun_creates_closure() {
+        let env = Environment::new();
+        let expr = Expr::Fun("x".to_string(), Box::new(Expr::Var("x".to_string())));
+        let result = eval(&expr, &env);
+        assert!(matches!(result, Ok(Value::Closure(_, _, _))));
+    }
+
+    #[test]
+    fn test_eval_simple_app() {
+        let env = Environment::new();
+        // (fun x -> x) 42
+        let expr = Expr::App(
+            Box::new(Expr::Fun(
+                "x".to_string(),
+                Box::new(Expr::Var("x".to_string())),
+            )),
+            Box::new(Expr::Int(42)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_app_with_operation() {
+        let env = Environment::new();
+        // (fun x -> x + 1) 41
+        let expr = Expr::App(
+            Box::new(Expr::Fun(
+                "x".to_string(),
+                Box::new(Expr::BinOp(
+                    BinOp::Add,
+                    Box::new(Expr::Var("x".to_string())),
+                    Box::new(Expr::Int(1)),
+                )),
+            )),
+            Box::new(Expr::Int(41)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_curried_function() {
+        let env = Environment::new();
+        // (fun x -> fun y -> x + y) 40 2
+        let expr = Expr::App(
+            Box::new(Expr::App(
+                Box::new(Expr::Fun(
+                    "x".to_string(),
+                    Box::new(Expr::Fun(
+                        "y".to_string(),
+                        Box::new(Expr::BinOp(
+                            BinOp::Add,
+                            Box::new(Expr::Var("x".to_string())),
+                            Box::new(Expr::Var("y".to_string())),
+                        )),
+                    )),
+                )),
+                Box::new(Expr::Int(40)),
+            )),
+            Box::new(Expr::Int(2)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_closure_captures_environment() {
+        let env = Environment::new();
+        // let x = 10 in (fun y -> x + y) 32
+        let expr = Expr::Let(
+            "x".to_string(),
+            Box::new(Expr::Int(10)),
+            Box::new(Expr::App(
+                Box::new(Expr::Fun(
+                    "y".to_string(),
+                    Box::new(Expr::BinOp(
+                        BinOp::Add,
+                        Box::new(Expr::Var("x".to_string())),
+                        Box::new(Expr::Var("y".to_string())),
+                    )),
+                )),
+                Box::new(Expr::Int(32)),
+            )),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_app_non_function() {
+        let env = Environment::new();
+        let expr = Expr::App(Box::new(Expr::Int(42)), Box::new(Expr::Int(1)));
+        assert!(matches!(eval(&expr, &env), Err(EvalError::TypeError(_))));
+    }
+
+    // Test type errors
+    #[test]
+    fn test_eval_type_error_add_bool() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Add,
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::Bool(true)),
+        );
+        assert!(matches!(eval(&expr, &env), Err(EvalError::TypeError(_))));
+    }
+
+    #[test]
+    fn test_eval_type_error_compare_different_types() {
+        let env = Environment::new();
+        let expr = Expr::BinOp(
+            BinOp::Lt,
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::Bool(true)),
+        );
+        assert!(matches!(eval(&expr, &env), Err(EvalError::TypeError(_))));
+    }
+
+    // Test Environment methods
+    #[test]
+    fn test_environment_new() {
+        let env = Environment::new();
+        assert_eq!(env.lookup("x"), None);
+    }
+
+    #[test]
+    fn test_environment_bind() {
+        let mut env = Environment::new();
+        env.bind("x".to_string(), Value::Int(42));
+        assert_eq!(env.lookup("x"), Some(&Value::Int(42)));
+    }
+
+    #[test]
+    fn test_environment_lookup_none() {
+        let env = Environment::new();
+        assert_eq!(env.lookup("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_environment_extend() {
+        let env = Environment::new();
+        let new_env = env.extend("x".to_string(), Value::Int(42));
+        assert_eq!(new_env.lookup("x"), Some(&Value::Int(42)));
+        assert_eq!(env.lookup("x"), None); // Original unchanged
+    }
+
+    #[test]
+    fn test_environment_extend_shadowing() {
+        let mut env = Environment::new();
+        env.bind("x".to_string(), Value::Int(1));
+        let new_env = env.extend("x".to_string(), Value::Int(2));
+        assert_eq!(new_env.lookup("x"), Some(&Value::Int(2)));
+        assert_eq!(env.lookup("x"), Some(&Value::Int(1)));
+    }
+
+    #[test]
+    fn test_environment_default() {
+        let env: Environment = Default::default();
+        assert_eq!(env.lookup("x"), None);
+    }
+
+    // Test Value Display implementation
+    #[test]
+    fn test_value_display_int() {
+        assert_eq!(format!("{}", Value::Int(42)), "42");
+        assert_eq!(format!("{}", Value::Int(-10)), "-10");
+    }
+
+    #[test]
+    fn test_value_display_bool() {
+        assert_eq!(format!("{}", Value::Bool(true)), "true");
+        assert_eq!(format!("{}", Value::Bool(false)), "false");
+    }
+
+    #[test]
+    fn test_value_display_closure() {
+        let env = Environment::new();
+        let closure = Value::Closure("x".to_string(), Expr::Var("x".to_string()), env);
+        assert_eq!(format!("{}", closure), "<function x>");
+    }
+
+    // Test EvalError Display implementation
+    #[test]
+    fn test_eval_error_display_unbound_var() {
+        let err = EvalError::UnboundVariable("x".to_string());
+        assert_eq!(format!("{}", err), "Unbound variable: x");
+    }
+
+    #[test]
+    fn test_eval_error_display_type_error() {
+        let err = EvalError::TypeError("test error".to_string());
+        assert_eq!(format!("{}", err), "Type error: test error");
+    }
+
+    #[test]
+    fn test_eval_error_display_division_by_zero() {
+        let err = EvalError::DivisionByZero;
+        assert_eq!(format!("{}", err), "Division by zero");
+    }
+
+    // Test Value Clone and PartialEq
+    #[test]
+    fn test_value_clone() {
+        let val = Value::Int(42);
+        let cloned = val.clone();
+        assert_eq!(val, cloned);
+    }
+
+    #[test]
+    fn test_value_equality() {
+        assert_eq!(Value::Int(42), Value::Int(42));
+        assert_ne!(Value::Int(42), Value::Int(43));
+        assert_eq!(Value::Bool(true), Value::Bool(true));
+        assert_ne!(Value::Bool(true), Value::Bool(false));
+    }
+
+    // Test complex scenarios
+    #[test]
+    fn test_eval_complex_nested() {
+        let env = Environment::new();
+        // let double = fun x -> x + x in double 21
+        let expr = Expr::Let(
+            "double".to_string(),
+            Box::new(Expr::Fun(
+                "x".to_string(),
+                Box::new(Expr::BinOp(
+                    BinOp::Add,
+                    Box::new(Expr::Var("x".to_string())),
+                    Box::new(Expr::Var("x".to_string())),
+                )),
+            )),
+            Box::new(Expr::App(
+                Box::new(Expr::Var("double".to_string())),
+                Box::new(Expr::Int(21)),
+            )),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_partial_application() {
+        let env = Environment::new();
+        // let add = fun x -> fun y -> x + y in let add5 = add 5 in add5 10
+        let expr = Expr::Let(
+            "add".to_string(),
+            Box::new(Expr::Fun(
+                "x".to_string(),
+                Box::new(Expr::Fun(
+                    "y".to_string(),
+                    Box::new(Expr::BinOp(
+                        BinOp::Add,
+                        Box::new(Expr::Var("x".to_string())),
+                        Box::new(Expr::Var("y".to_string())),
+                    )),
+                )),
+            )),
+            Box::new(Expr::Let(
+                "add5".to_string(),
+                Box::new(Expr::App(
+                    Box::new(Expr::Var("add".to_string())),
+                    Box::new(Expr::Int(5)),
+                )),
+                Box::new(Expr::App(
+                    Box::new(Expr::Var("add5".to_string())),
+                    Box::new(Expr::Int(10)),
+                )),
+            )),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(15)));
+    }
+
+    #[test]
+    fn test_eval_nested_if() {
+        let env = Environment::new();
+        // if true then (if false then 1 else 2) else 3
+        let expr = Expr::If(
+            Box::new(Expr::Bool(true)),
+            Box::new(Expr::If(
+                Box::new(Expr::Bool(false)),
+                Box::new(Expr::Int(1)),
+                Box::new(Expr::Int(2)),
+            )),
+            Box::new(Expr::Int(3)),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(2)));
+    }
 }
