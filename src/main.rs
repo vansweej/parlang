@@ -4,10 +4,11 @@
 /// - REPL mode for interactive evaluation
 /// - File execution mode for running .par files
 
-use parlang::{parse, eval, Environment, Value};
+use parlang::{parse, eval, Environment, Value, Expr, EvalError};
 use std::env;
 use std::fs;
 use std::io::{self, Write};
+use std::path::Path;
 
 #[cfg(not(tarpaulin_include))]
 fn main() {
@@ -46,8 +47,51 @@ fn execute(source: &str) -> Result<Value, String> {
     eval(&expr, &env).map_err(|e| e.to_string())
 }
 
+/// Extract bindings from expressions for REPL persistence
+/// This function extracts let bindings, load statements, and sequence bindings
+/// from the evaluated expression to persist them in the REPL environment
+fn extract_repl_bindings(expr: &Expr, env: &Environment) -> Result<Environment, EvalError> {
+    match expr {
+        Expr::Let(name, value, body) => {
+            // Evaluate the value in the current environment
+            let val = eval(value, env)?;
+            // Extend the environment with this binding
+            let new_env = env.extend(name.clone(), val);
+            // Continue extracting from the body
+            extract_repl_bindings(body, &new_env)
+        }
+        Expr::Load(filepath, body) => {
+            // Read and parse the file
+            let content = fs::read_to_string(Path::new(filepath))
+                .map_err(|e| EvalError::LoadError(format!("Failed to read file '{}': {}", filepath, e)))?;
+            let lib_expr = parse(&content)
+                .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{}': {}", filepath, e)))?;
+            
+            // Extract bindings from the loaded library
+            let lib_env = extract_repl_bindings(&lib_expr, &Environment::new())?;
+            // Merge with current environment
+            let new_env = env.merge(&lib_env);
+            // Continue extracting from the body
+            extract_repl_bindings(body, &new_env)
+        }
+        Expr::Seq(bindings, body) => {
+            // Process each binding in the sequence
+            let mut current_env = env.clone();
+            for (name, value) in bindings {
+                let val = eval(value, &current_env)?;
+                current_env = current_env.extend(name.clone(), val);
+            }
+            // Continue extracting from the body
+            extract_repl_bindings(body, &current_env)
+        }
+        // If we reach anything other than a Let, Load, or Seq, we're done extracting
+        // Return the accumulated environment
+        _ => Ok(env.clone()),
+    }
+}
+
 fn repl() {
-    let env = Environment::new();
+    let mut env = Environment::new();
     let stdin = io::stdin();
     let mut stdout = io::stdout();
 
@@ -102,12 +146,17 @@ fn repl() {
             let input = input.trim();
 
             match parse(input) {
-                Ok(expr) => match eval(&expr, &env) {
-                    Ok(value) => {
-                        println!("{}", value);
-                        // In a real REPL, we might want to bind the result to a special variable
+                Ok(expr) => {
+                    match eval(&expr, &env) {
+                        Ok(value) => {
+                            println!("{}", value);
+                            // Extract bindings from the expression and merge into environment
+                            if let Ok(new_env) = extract_repl_bindings(&expr, &env) {
+                                env = new_env;
+                            }
+                        }
+                        Err(e) => eprintln!("Evaluation error: {}", e),
                     }
-                    Err(e) => eprintln!("Evaluation error: {}", e),
                 },
                 Err(e) => eprintln!("Parse error: {}", e),
             }
