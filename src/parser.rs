@@ -348,4 +348,372 @@ mod tests {
         let result = parse("let double = fun x -> x + x in double 21");
         assert!(result.is_ok());
     }
+
+    // Test all arithmetic operators
+    #[test]
+    fn test_parse_subtraction() {
+        let expected = Expr::BinOp(
+            BinOp::Sub,
+            Box::new(Expr::Int(10)),
+            Box::new(Expr::Int(3)),
+        );
+        assert_eq!(parse("10 - 3"), Ok(expected));
+    }
+
+    #[test]
+    fn test_parse_multiplication() {
+        let expected = Expr::BinOp(
+            BinOp::Mul,
+            Box::new(Expr::Int(4)),
+            Box::new(Expr::Int(5)),
+        );
+        assert_eq!(parse("4 * 5"), Ok(expected));
+    }
+
+    #[test]
+    fn test_parse_division() {
+        let expected = Expr::BinOp(
+            BinOp::Div,
+            Box::new(Expr::Int(10)),
+            Box::new(Expr::Int(2)),
+        );
+        assert_eq!(parse("10 / 2"), Ok(expected));
+    }
+
+    // Test all comparison operators
+    #[test]
+    fn test_parse_equality() {
+        let expected = Expr::BinOp(
+            BinOp::Eq,
+            Box::new(Expr::Int(5)),
+            Box::new(Expr::Int(5)),
+        );
+        assert_eq!(parse("5 == 5"), Ok(expected));
+    }
+
+    #[test]
+    fn test_parse_inequality() {
+        let expected = Expr::BinOp(
+            BinOp::Neq,
+            Box::new(Expr::Int(5)),
+            Box::new(Expr::Int(3)),
+        );
+        assert_eq!(parse("5 != 3"), Ok(expected));
+    }
+
+    #[test]
+    fn test_parse_less_than() {
+        let expected = Expr::BinOp(
+            BinOp::Lt,
+            Box::new(Expr::Int(3)),
+            Box::new(Expr::Int(5)),
+        );
+        assert_eq!(parse("3 < 5"), Ok(expected));
+    }
+
+    #[test]
+    fn test_parse_less_equal() {
+        let expected = Expr::BinOp(
+            BinOp::Le,
+            Box::new(Expr::Int(3)),
+            Box::new(Expr::Int(5)),
+        );
+        assert_eq!(parse("3 <= 5"), Ok(expected));
+    }
+
+    #[test]
+    fn test_parse_greater_than() {
+        let expected = Expr::BinOp(
+            BinOp::Gt,
+            Box::new(Expr::Int(5)),
+            Box::new(Expr::Int(3)),
+        );
+        assert_eq!(parse("5 > 3"), Ok(expected));
+    }
+
+    #[test]
+    fn test_parse_greater_equal() {
+        let expected = Expr::BinOp(
+            BinOp::Ge,
+            Box::new(Expr::Int(5)),
+            Box::new(Expr::Int(3)),
+        );
+        assert_eq!(parse("5 >= 3"), Ok(expected));
+    }
+
+    // Test operator precedence
+    #[test]
+    fn test_precedence_mul_before_add() {
+        // 1 + 2 * 3 should parse as 1 + (2 * 3)
+        let expected = Expr::BinOp(
+            BinOp::Add,
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::BinOp(
+                BinOp::Mul,
+                Box::new(Expr::Int(2)),
+                Box::new(Expr::Int(3)),
+            )),
+        );
+        assert_eq!(parse("1 + 2 * 3"), Ok(expected));
+    }
+
+    #[test]
+    fn test_precedence_div_before_sub() {
+        // 10 - 6 / 2 should parse as 10 - (6 / 2)
+        let expected = Expr::BinOp(
+            BinOp::Sub,
+            Box::new(Expr::Int(10)),
+            Box::new(Expr::BinOp(
+                BinOp::Div,
+                Box::new(Expr::Int(6)),
+                Box::new(Expr::Int(2)),
+            )),
+        );
+        assert_eq!(parse("10 - 6 / 2"), Ok(expected));
+    }
+
+    #[test]
+    fn test_precedence_with_comparison() {
+        // 1 + 2 == 3 should parse as (1 + 2) == 3
+        let expected = Expr::BinOp(
+            BinOp::Eq,
+            Box::new(Expr::BinOp(
+                BinOp::Add,
+                Box::new(Expr::Int(1)),
+                Box::new(Expr::Int(2)),
+            )),
+            Box::new(Expr::Int(3)),
+        );
+        assert_eq!(parse("1 + 2 == 3"), Ok(expected));
+    }
+
+    // Test parentheses for grouping
+    #[test]
+    fn test_parentheses_override_precedence() {
+        // (1 + 2) * 3
+        let expected = Expr::BinOp(
+            BinOp::Mul,
+            Box::new(Expr::BinOp(
+                BinOp::Add,
+                Box::new(Expr::Int(1)),
+                Box::new(Expr::Int(2)),
+            )),
+            Box::new(Expr::Int(3)),
+        );
+        assert_eq!(parse("(1 + 2) * 3"), Ok(expected));
+    }
+
+    #[test]
+    fn test_nested_parentheses() {
+        // ((1 + 2) * 3)
+        let result = parse("((1 + 2) * 3)");
+        assert!(result.is_ok());
+    }
+
+    // Test negative numbers
+    #[test]
+    fn test_negative_number() {
+        assert_eq!(parse("-42"), Ok(Expr::Int(-42)));
+    }
+
+    #[test]
+    fn test_negative_in_expr() {
+        let expected = Expr::BinOp(
+            BinOp::Add,
+            Box::new(Expr::Int(-5)),
+            Box::new(Expr::Int(10)),
+        );
+        assert_eq!(parse("-5 + 10"), Ok(expected));
+    }
+
+    // Test whitespace handling
+    #[test]
+    fn test_whitespace_around_operators() {
+        assert_eq!(parse("1+2"), parse("1 + 2"));
+        assert_eq!(parse("  1  +  2  "), parse("1 + 2"));
+    }
+
+    #[test]
+    fn test_whitespace_in_let() {
+        let result1 = parse("let x = 42 in x");
+        let result2 = parse("let  x  =  42  in  x");
+        assert_eq!(result1, result2);
+    }
+
+    #[test]
+    fn test_whitespace_in_if() {
+        let result1 = parse("if true then 1 else 2");
+        let result2 = parse("if  true  then  1  else  2");
+        assert_eq!(result1, result2);
+    }
+
+    // Test function application
+    #[test]
+    fn test_multiple_app() {
+        // f x y should parse as (f x) y
+        let expected = Expr::App(
+            Box::new(Expr::App(
+                Box::new(Expr::Var("f".to_string())),
+                Box::new(Expr::Var("x".to_string())),
+            )),
+            Box::new(Expr::Var("y".to_string())),
+        );
+        assert_eq!(parse("f x y"), Ok(expected));
+    }
+
+    #[test]
+    fn test_app_with_int() {
+        let expected = Expr::App(
+            Box::new(Expr::Var("inc".to_string())),
+            Box::new(Expr::Int(42)),
+        );
+        assert_eq!(parse("inc 42"), Ok(expected));
+    }
+
+    // Test nested functions
+    #[test]
+    fn test_curried_function() {
+        // fun x -> fun y -> x + y
+        let result = parse("fun x -> fun y -> x + y");
+        assert!(result.is_ok());
+        if let Ok(Expr::Fun(_, body)) = result {
+            assert!(matches!(*body, Expr::Fun(_, _)));
+        }
+    }
+
+    #[test]
+    fn test_nested_let() {
+        // let x = 1 in let y = 2 in x + y
+        let result = parse("let x = 1 in let y = 2 in x + y");
+        assert!(result.is_ok());
+    }
+
+    // Test keyword rejection
+    #[test]
+    fn test_keyword_let_rejected() {
+        let result = parse("let");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_keyword_in_rejected() {
+        let result = parse("in");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_keyword_if_rejected() {
+        let result = parse("if");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_keyword_then_rejected() {
+        let result = parse("then");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_keyword_else_rejected() {
+        let result = parse("else");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_keyword_fun_rejected() {
+        let result = parse("fun");
+        assert!(result.is_err());
+    }
+
+    // Test variable names with underscores
+    #[test]
+    fn test_var_with_underscore() {
+        assert_eq!(parse("foo_bar"), Ok(Expr::Var("foo_bar".to_string())));
+        // Note: identifiers starting with underscore are not supported by the parser
+        // as the identifier parser starts with letter(), not letter().or(token('_'))
+    }
+
+    #[test]
+    fn test_var_with_numbers() {
+        assert_eq!(parse("x1"), Ok(Expr::Var("x1".to_string())));
+        assert_eq!(parse("test123"), Ok(Expr::Var("test123".to_string())));
+    }
+
+    // Test error cases
+    #[test]
+    fn test_parse_error_incomplete_let() {
+        let result = parse("let x = 42");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_error_incomplete_if() {
+        let result = parse("if true then 1");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_error_incomplete_fun() {
+        let result = parse("fun x");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_error_missing_arrow() {
+        let result = parse("fun x x");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_error_unexpected_input() {
+        // Parser will interpret "42 extra" as application: "(42 extra)"
+        // which is semantically wrong but syntactically valid
+        // So let's test with something that's truly unexpected after a complete expression
+        let result = parse("42 +");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_error_unmatched_paren() {
+        let result = parse("(1 + 2");
+        assert!(result.is_err());
+    }
+
+    // Test complex realistic expressions
+    #[test]
+    fn test_factorial_like() {
+        let result = parse("let f = fun n -> if n == 0 then 1 else n * f (n - 1) in f 5");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_currying_example() {
+        let result = parse("let add = fun x -> fun y -> x + y in let add5 = add 5 in add5 10");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_comparison_in_if() {
+        let result = parse("if 5 > 3 then 100 else 0");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_nested_if() {
+        let result = parse("if true then if false then 1 else 2 else 3");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_boolean_comparison() {
+        let result = parse("true == false");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_multiple_operations() {
+        // 1 + 2 - 3 * 4 / 5
+        let result = parse("1 + 2 - 3 * 4 / 5");
+        assert!(result.is_ok());
+    }
 }
