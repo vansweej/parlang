@@ -112,7 +112,7 @@ Run the interpreter without arguments to start an interactive REPL:
 cargo run
 ```
 
-The REPL supports both single-line and multiline input. For multiline expressions, press Enter after each line and submit with a blank line:
+The REPL supports both single-line and multiline input. For most expressions, press Enter to submit. For multiline expressions that don't end with a semicolon, press Enter after each line and submit with a blank line:
 
 ```
 ParLang v0.1.0 - A small ML-alike functional language
@@ -125,14 +125,17 @@ Type expressions to evaluate them. Press Ctrl+C to exit.
 > (fun x -> x + 1) 41
 42
 > let double = fun x -> x + x;
-... let triple = fun x -> x + x + x;
-... triple 5
-
+0
+> let triple = fun x -> x + x + x;
+0
+> triple 5
 15
 >
 ```
 
-**Note:** In the REPL and file mode, you can use semicolon-separated let bindings to define multiple functions without nesting `in` keywords. The trailing expression is optional - if omitted, it defaults to `0`.
+**Note:** When a line ends with a semicolon (after a `let` assignment), the REPL automatically submits it - no need for an extra Enter! For multiline expressions without semicolons (like traditional `let...in` syntax), continue typing on multiple lines and submit with a blank line.
+
+In the REPL and file mode, you can use semicolon-separated let bindings to define multiple functions without nesting `in` keywords. The trailing expression is optional - if omitted, it defaults to `0`.
 
 #### Persistent Environment
 
@@ -140,27 +143,21 @@ Type expressions to evaluate them. Press Ctrl+C to exit.
 
 ```
 > let double = fun x -> x + x;
-
 0
 > double 21
-
 42
 > let triple = fun x -> x + x + x;
-
 0
 > triple 14
-
 42
 > load "examples/stdlib.par"
-
 0
 > max 10 20
-
 20
 >
 ```
 
-**Note:** You no longer need to type a trailing `0` or `in 0` - the parser makes these optional for convenience!
+**Note:** You no longer need to type a trailing `0` or `in 0` - the parser makes these optional for convenience! Additionally, when your input ends with a semicolon (after a `let` assignment), the REPL automatically submits it without requiring an extra blank line.
 
 This makes the REPL much more convenient for interactive development, as you don't need to redefine functions after each evaluation.
 
