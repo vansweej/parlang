@@ -84,6 +84,8 @@ Run the interpreter without arguments to start an interactive REPL:
 cargo run
 ```
 
+The REPL supports both single-line and multiline input. For multiline expressions, press Enter after each line and submit with a blank line:
+
 ```
 ParLang v0.1.0 - A small ML-alike functional language
 Type expressions to evaluate them. Press Ctrl+C to exit.
@@ -94,6 +96,10 @@ Type expressions to evaluate them. Press Ctrl+C to exit.
 20
 > (fun x -> x + 1) 41
 42
+> let double = fun x -> x + x
+... in double 5
+
+10
 >
 ```
 
