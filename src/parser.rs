@@ -718,6 +718,49 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    // Test sequential let bindings
+    #[test]
+    fn test_parse_seq_single() {
+        let result = parse("let x = 42; x");
+        assert!(result.is_ok());
+        if let Ok(Expr::Seq(bindings, body)) = result {
+            assert_eq!(bindings.len(), 1);
+            assert_eq!(bindings[0].0, "x");
+            assert_eq!(bindings[0].1, Expr::Int(42));
+            assert_eq!(*body, Expr::Var("x".to_string()));
+        } else {
+            panic!("Expected Seq expression");
+        }
+    }
+
+    #[test]
+    fn test_parse_seq_multiple() {
+        let result = parse("let x = 42; let y = 10; x + y");
+        assert!(result.is_ok());
+        if let Ok(Expr::Seq(bindings, body)) = result {
+            assert_eq!(bindings.len(), 2);
+            assert_eq!(bindings[0].0, "x");
+            assert_eq!(bindings[1].0, "y");
+            assert!(matches!(*body, Expr::BinOp(_, _, _)));
+        } else {
+            panic!("Expected Seq expression");
+        }
+    }
+
+    #[test]
+    fn test_parse_seq_with_functions() {
+        let result = parse("let double = fun x -> x * 2; double 21");
+        assert!(result.is_ok());
+        if let Ok(Expr::Seq(bindings, body)) = result {
+            assert_eq!(bindings.len(), 1);
+            assert_eq!(bindings[0].0, "double");
+            assert!(matches!(bindings[0].1, Expr::Fun(_, _)));
+            assert!(matches!(*body, Expr::App(_, _)));
+        } else {
+            panic!("Expected Seq expression");
+        }
+    }
+
     // Test variable names with underscores
     #[test]
     fn test_var_with_underscore() {

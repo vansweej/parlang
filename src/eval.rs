@@ -1215,4 +1215,87 @@ mod tests {
         let err = EvalError::LoadError("test load error".to_string());
         assert_eq!(format!("{}", err), "Load error: test load error");
     }
+
+    // Test Seq evaluation
+    #[test]
+    fn test_eval_seq_single() {
+        let env = Environment::new();
+        let bindings = vec![("x".to_string(), Expr::Int(42))];
+        let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_seq_multiple() {
+        let env = Environment::new();
+        let bindings = vec![
+            ("x".to_string(), Expr::Int(10)),
+            ("y".to_string(), Expr::Int(32)),
+        ];
+        let expr = Expr::Seq(
+            bindings,
+            Box::new(Expr::BinOp(
+                BinOp::Add,
+                Box::new(Expr::Var("x".to_string())),
+                Box::new(Expr::Var("y".to_string())),
+            )),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_seq_with_functions() {
+        let env = Environment::new();
+        let bindings = vec![(
+            "double".to_string(),
+            Expr::Fun(
+                "x".to_string(),
+                Box::new(Expr::BinOp(
+                    BinOp::Mul,
+                    Box::new(Expr::Var("x".to_string())),
+                    Box::new(Expr::Int(2)),
+                )),
+            ),
+        )];
+        let expr = Expr::Seq(
+            bindings,
+            Box::new(Expr::App(
+                Box::new(Expr::Var("double".to_string())),
+                Box::new(Expr::Int(21)),
+            )),
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+    }
+
+    #[test]
+    fn test_eval_seq_scoping() {
+        let env = Environment::new();
+        // let x = 10; let y = x + 5; y
+        let bindings = vec![
+            ("x".to_string(), Expr::Int(10)),
+            (
+                "y".to_string(),
+                Expr::BinOp(
+                    BinOp::Add,
+                    Box::new(Expr::Var("x".to_string())),
+                    Box::new(Expr::Int(5)),
+                ),
+            ),
+        ];
+        let expr = Expr::Seq(bindings, Box::new(Expr::Var("y".to_string())));
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(15)));
+    }
+
+    #[test]
+    fn test_extract_bindings_seq() {
+        let bindings = vec![
+            ("x".to_string(), Expr::Int(1)),
+            ("y".to_string(), Expr::Int(2)),
+        ];
+        let expr = Expr::Seq(bindings, Box::new(Expr::Int(0)));
+        let env = Environment::new();
+        let result_env = extract_bindings(&expr, &env).unwrap();
+        assert_eq!(result_env.lookup("x"), Some(&Value::Int(1)));
+        assert_eq!(result_env.lookup("y"), Some(&Value::Int(2)));
+    }
 }

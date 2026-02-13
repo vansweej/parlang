@@ -291,7 +291,7 @@ true == true
 
 Variables in ParLang are immutable and created using `let` bindings.
 
-### Basic Let Binding
+### Basic Let Binding (Expression Form)
 
 ```parlang
 let x = 42 in x
@@ -302,6 +302,33 @@ let x = 42 in x
 1. Bind the value `42` to the name `x`
 2. Evaluate the body expression `x`
 3. Result is `42`
+
+### Sequential Let Bindings (Program Form)
+
+ParLang supports two syntaxes for let bindings:
+
+1. **Traditional let-in syntax** - used within expressions
+2. **Sequential let syntax with semicolons** - used for programs and top-level definitions
+
+**Sequential syntax (recommended for multiple definitions):**
+
+```parlang
+let x = 10;
+let y = 32;
+x + y
+```
+**Output:** `42`
+
+**Explanation:**
+1. Bind `10` to `x`
+2. Bind `32` to `y` (can reference `x`)
+3. Evaluate `x + y`
+4. Result is `42`
+
+**Benefits of sequential syntax:**
+- No nested `in` keywords required
+- Cleaner, more readable code
+- Better for defining multiple functions in libraries
 
 ### Let with Expressions
 
@@ -315,7 +342,7 @@ let x = 10 in x + 32
 2. Evaluate `x + 32` which becomes `10 + 32`
 3. Result is `42`
 
-### Nested Let Bindings
+### Nested Let Bindings (Traditional Syntax)
 
 ```parlang
 let x = 1 in let y = 2 in x + y
@@ -327,6 +354,15 @@ let x = 1 in let y = 2 in x + y
 2. In that scope, bind `2` to `y`
 3. Evaluate `x + y` = `1 + 2`
 4. Result is `3`
+
+**Same with sequential syntax:**
+
+```parlang
+let x = 1;
+let y = 2;
+x + y
+```
+**Output:** `3`
 
 ### Variable Shadowing
 
@@ -346,10 +382,29 @@ let x = 10 in let x = x + 1 in x
 
 **Explanation:** The inner `x` is bound to the value of the outer `x` plus 1.
 
+**With sequential syntax:**
+
+```parlang
+let x = 10;
+let x = x + 1;
+x
+```
+**Output:** `11`
+
 ### Complex Let Expressions
 
 ```parlang
 let a = 5 in let b = 10 in let c = a + b in c * 2
+```
+**Output:** `30`
+
+**With sequential syntax:**
+
+```parlang
+let a = 5;
+let b = 10;
+let c = a + b;
+c * 2
 ```
 **Output:** `30`
 
@@ -695,9 +750,17 @@ load "mylib.par" in double 21
 
 ### How Libraries Work
 
-Library files should be structured as nested `let` expressions that define functions. The final expression (often `0`) is ignored - only the bindings are extracted.
+Library files can be structured using semicolon-separated let bindings. The final expression (often `0`) is ignored - only the bindings are extracted.
 
-**Library structure:**
+**Modern library structure (recommended):**
+```parlang
+let func1 = fun x -> ...;
+let func2 = fun y -> ...;
+let func3 = fun z -> ...;
+0
+```
+
+**Traditional library structure (also supported):**
 ```parlang
 let func1 = fun x -> ...
 in let func2 = fun y -> ...
@@ -711,15 +774,15 @@ ParLang includes a standard library with common functions:
 
 **examples/stdlib.par:**
 ```parlang
-let double = fun x -> x * 2
-in let triple = fun x -> x * 3
-in let quadruple = fun x -> double (double x)
-in let abs = fun x -> if x < 0 then 0 - x else x
-in let max = fun a -> fun b -> if a > b then a else b
-in let min = fun a -> fun b -> if a < b then a else b
-in let compose = fun f -> fun g -> fun x -> f (g x)
-in let id = fun x -> x
-in 0
+let double = fun x -> x * 2;
+let triple = fun x -> x * 3;
+let quadruple = fun x -> double (double x);
+let abs = fun x -> if x < 0 then 0 - x else x;
+let max = fun a -> fun b -> if a > b then a else b;
+let min = fun a -> fun b -> if a < b then a else b;
+let compose = fun f -> fun g -> fun x -> f (g x);
+let id = fun x -> x;
+0
 ```
 
 **Using stdlib:**

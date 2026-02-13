@@ -217,6 +217,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_expr_seq() {
+        let bindings = vec![
+            ("x".to_string(), Expr::Int(42)),
+            ("y".to_string(), Expr::Int(10)),
+        ];
+        let expr = Expr::Seq(bindings.clone(), Box::new(Expr::Var("x".to_string())));
+        assert_eq!(
+            expr,
+            Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())))
+        );
+    }
+
     // Test Clone trait
     #[test]
     fn test_expr_clone() {
@@ -317,6 +330,16 @@ mod tests {
             Box::new(Expr::Var("x".to_string())),
         );
         assert_eq!(format!("{}", expr), "(load \"lib.par\" in x)");
+    }
+
+    #[test]
+    fn test_display_seq() {
+        let bindings = vec![
+            ("x".to_string(), Expr::Int(42)),
+            ("y".to_string(), Expr::Int(10)),
+        ];
+        let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
+        assert_eq!(format!("{}", expr), "(let x = 42; let y = 10; x)");
     }
 
     // Test Display implementation for BinOp

@@ -169,6 +169,7 @@ boolean ::= "true" | "false"
 (    Left parenthesis
 )    Right parenthesis
 =    Assignment (in let bindings)
+;    Semicolon (separates sequential let bindings)
 "    String delimiter (for file paths in load expressions)
 ```
 
@@ -194,7 +195,10 @@ Whitespace is **not** significant for expression structure, except to separate k
 
 ```ebnf
 (* Programs *)
-program ::= expression
+program ::= (let_binding)* expression
+
+(* Let bindings (top-level) *)
+let_binding ::= "let" identifier '=' expression ';'
 
 (* Expressions *)
 expression ::= comparison_expr
@@ -472,6 +476,36 @@ If `x ∉ Γ`, evaluation raises `UnboundVariable(x)`.
 
 ∅ ⊢ let x = 5 in let x = 10 in x ⇓ Int(10)  (shadowing)
 ```
+
+#### 5.2.5b Sequential Let Bindings
+
+```
+Γ ⊢ e₁ ⇓ v₁    Γ[x₁ ↦ v₁] ⊢ e₂ ⇓ v₂    ...    Γ[x₁ ↦ v₁, ..., xₙ ↦ vₙ] ⊢ e ⇓ v
+──────────────────────────────────────────────────────────────────────────────  [E-SEQ]
+Γ ⊢ let x₁ = e₁; ...; let xₙ = eₙ; e ⇓ v
+```
+
+**Semantics:**
+1. Evaluate each binding expression in sequence
+2. Extend the environment with each binding before evaluating the next
+3. Each binding can reference previous bindings
+4. Evaluate the final expression in the fully extended environment
+
+**Syntax:**
+```parlang
+let x = 10;
+let y = x + 5;
+x * y
+```
+
+**Example:**
+```
+∅ ⊢ let x = 10; let y = x + 5; y ⇓ Int(15)
+
+∅ ⊢ let double = fun x -> x * 2; double 21 ⇓ Int(42)
+```
+
+**Note:** This is syntactic sugar for nested let-in expressions but with cleaner syntax when defining multiple bindings at the program level.
 
 #### 5.2.6 Function Definition
 

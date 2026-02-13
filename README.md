@@ -26,10 +26,21 @@ false       # Boolean
 ```
 
 ### Variables and Let Bindings
+
+**Traditional let-in syntax (for expressions):**
 ```
 let x = 42 in x + 1                    # Result: 43
 let double = fun x -> x + x in double 5 # Result: 10
 ```
+
+**Sequential let bindings (for programs and REPL):**
+```
+let x = 42;
+let y = 10;
+x + y                                   # Result: 52
+```
+
+You can define multiple bindings without nesting `in` keywords by using semicolons.
 
 ### Functions
 ```
@@ -70,11 +81,11 @@ in let result = square 5
 in result                                   # Result: 25
 ```
 
-Library files can define multiple functions using nested let expressions:
+Library files can define multiple functions using semicolon-separated let bindings:
 ```parlang
-let double = fun x -> x * 2
-in let triple = fun x -> x * 3
-in 0
+let double = fun x -> x * 2;
+let triple = fun x -> x * 3;
+0
 ```
 
 ## Installation
@@ -113,12 +124,15 @@ Type expressions to evaluate them. Press Ctrl+C to exit.
 20
 > (fun x -> x + 1) 41
 42
-> let double = fun x -> x + x
-... in double 5
+> let double = fun x -> x + x;
+... let triple = fun x -> x + x + x;
+... triple 5
 
-10
+15
 >
 ```
+
+**Note:** In the REPL and file mode, you can use semicolon-separated let bindings to define multiple functions without nesting `in` keywords.
 
 ### File Execution Mode
 
