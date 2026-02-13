@@ -16,12 +16,13 @@ A comprehensive guide to programming in ParLang, from basic concepts to advanced
 8. [Function Application](#function-application)
 9. [Closures](#closures)
 10. [Currying and Partial Application](#currying-and-partial-application)
-11. [Advanced Patterns](#advanced-patterns)
-12. [Common Patterns and Idioms](#common-patterns-and-idioms)
-13. [Real-World Use Cases](#real-world-use-cases)
-14. [Best Practices](#best-practices)
-15. [Common Mistakes to Avoid](#common-mistakes-to-avoid)
-16. [Example Files](#example-files)
+11. [Loading Libraries](#loading-libraries)
+12. [Advanced Patterns](#advanced-patterns)
+13. [Common Patterns and Idioms](#common-patterns-and-idioms)
+14. [Real-World Use Cases](#real-world-use-cases)
+15. [Best Practices](#best-practices)
+16. [Common Mistakes to Avoid](#common-mistakes-to-avoid)
+17. [Example Files](#example-files)
 
 ---
 
@@ -665,6 +666,164 @@ in add1and2 3
 
 ---
 
+## Loading Libraries
+
+ParLang supports loading functions from library files using the `load` expression. This enables code reuse and modular programming.
+
+### Basic Library Loading
+
+**Syntax:**
+```parlang
+load "path/to/library.par" in expression
+```
+
+**Example:**
+
+Create a library file `mylib.par`:
+```parlang
+let double = fun x -> x * 2
+in let triple = fun x -> x * 3
+in 0
+```
+
+Use it in your program:
+```parlang
+load "mylib.par" in double 21
+```
+
+**Output:** `42`
+
+### How Libraries Work
+
+Library files should be structured as nested `let` expressions that define functions. The final expression (often `0`) is ignored - only the bindings are extracted.
+
+**Library structure:**
+```parlang
+let func1 = fun x -> ...
+in let func2 = fun y -> ...
+in let func3 = fun z -> ...
+in 0
+```
+
+### Standard Library Example
+
+ParLang includes a standard library with common functions:
+
+**examples/stdlib.par:**
+```parlang
+let double = fun x -> x * 2
+in let triple = fun x -> x * 3
+in let quadruple = fun x -> double (double x)
+in let abs = fun x -> if x < 0 then 0 - x else x
+in let max = fun a -> fun b -> if a > b then a else b
+in let min = fun a -> fun b -> if a < b then a else b
+in let compose = fun f -> fun g -> fun x -> f (g x)
+in let id = fun x -> x
+in 0
+```
+
+**Using stdlib:**
+```parlang
+load "examples/stdlib.par"
+in let result = compose double triple 5
+in result
+```
+
+**Output:** `30` (triple(5) = 15, then double(15) = 30)
+
+### Multiple Functions from Library
+
+You can use multiple functions from a loaded library:
+
+```parlang
+load "examples/stdlib.par"
+in let a = double 10
+in let b = triple 7
+in a + b
+```
+
+**Output:** `41` (20 + 21)
+
+### Nested Library Loading
+
+Libraries can load other libraries:
+
+**helpers.par:**
+```parlang
+let inc = fun x -> x + 1
+in 0
+```
+
+**math.par:**
+```parlang
+load "helpers.par"
+in let double_inc = fun x -> inc (inc x)
+in 0
+```
+
+**main program:**
+```parlang
+load "math.par"
+in double_inc 10
+```
+
+**Output:** `12`
+
+### Math Library Example
+
+**examples/math.par:**
+```parlang
+let square = fun x -> x * x
+in let cube = fun x -> x * x * x
+in let avg = fun a -> fun b -> (a + b) / 2
+in let pow2 = fun x -> x * x
+in 0
+```
+
+**Using math library:**
+```parlang
+load "examples/math.par"
+in let result = avg (square 4) (square 6)
+in result
+```
+
+**Output:** `26` (average of 16 and 36)
+
+### Best Practices for Libraries
+
+1. **Structure as nested lets:** Always use nested `let` expressions
+2. **End with dummy value:** Typically use `0` as the final expression
+3. **Document your functions:** Use clear names and organize logically
+4. **Relative paths:** Load paths are relative to the current working directory
+5. **No circular dependencies:** Avoid libraries that load each other
+
+### Common Use Cases
+
+**Utility functions library:**
+```parlang
+let identity = fun x -> x
+in let constant = fun x -> fun y -> x
+in let flip = fun f -> fun x -> fun y -> f y x
+in 0
+```
+
+**Mathematical operations:**
+```parlang
+let factorial = fun n -> if n == 0 then 1 else n * factorial (n - 1)
+in let power = fun base -> fun exp -> if exp == 0 then 1 else base * power base (exp - 1)
+in 0
+```
+
+**Higher-order function utilities:**
+```parlang
+let compose = fun f -> fun g -> fun x -> f (g x)
+in let pipe = fun f -> fun g -> fun x -> g (f x)
+in let apply = fun f -> fun x -> f x
+in 0
+```
+
+---
+
 ## Advanced Patterns
 
 ### Composition Pattern
@@ -1219,6 +1378,77 @@ in add5 10
 **To run:**
 ```bash
 cargo run -- examples/currying.par
+```
+
+### stdlib.par
+
+A standard library with commonly used functions:
+
+```parlang
+let double = fun x -> x * 2
+in let triple = fun x -> x * 3
+in let quadruple = fun x -> double (double x)
+in let abs = fun x -> if x < 0 then 0 - x else x
+in let max = fun a -> fun b -> if a > b then a else b
+in let min = fun a -> fun b -> if a < b then a else b
+in let compose = fun f -> fun g -> fun x -> f (g x)
+in let id = fun x -> x
+in 0
+```
+
+**Concepts demonstrated:**
+- Library file structure
+- Multiple function definitions
+- Higher-order functions (compose)
+- Utility functions
+
+**Usage:**
+```parlang
+load "examples/stdlib.par" in double 21
+```
+
+### math.par
+
+Mathematical utility functions:
+
+```parlang
+let square = fun x -> x * x
+in let cube = fun x -> x * x * x
+in let avg = fun a -> fun b -> (a + b) / 2
+in let pow2 = fun x -> x * x
+in 0
+```
+
+**Concepts demonstrated:**
+- Mathematical operations
+- Library organization
+- Reusable mathematical functions
+
+**Usage:**
+```parlang
+load "examples/math.par" in square 7
+```
+
+### use_stdlib.par
+
+Demonstrates loading and using library functions:
+
+```parlang
+load "examples/stdlib.par"
+in let result = compose double triple 5
+in result
+```
+
+**Output:** `30`
+
+**Concepts demonstrated:**
+- Loading external libraries
+- Using library functions
+- Function composition from libraries
+
+**To run:**
+```bash
+cargo run -- examples/use_stdlib.par
 ```
 
 ---

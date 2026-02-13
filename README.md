@@ -13,6 +13,7 @@ ParLang is a simple functional programming language with:
 - **Binary Operations**: Arithmetic (`+`, `-`, `*`, `/`) and comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`)
 - **Function Application**: Call functions with arguments
 - **Currying**: Functions naturally support partial application
+- **Library/Module System**: Load and reuse functions from library files
 
 ## Syntax
 
@@ -58,6 +59,22 @@ if 5 > 3 then 100 else 0               # Result: 100
 let add = fun x -> fun y -> x + y
 in let add5 = add 5
 in add5 10   # Result: 15
+```
+
+### Loading Libraries
+```
+load "examples/stdlib.par" in double 21    # Result: 42
+
+load "examples/math.par"
+in let result = square 5
+in result                                   # Result: 25
+```
+
+Library files can define multiple functions using nested let expressions:
+```parlang
+let double = fun x -> x * 2
+in let triple = fun x -> x * 3
+in 0
 ```
 
 ## Installation
@@ -118,6 +135,9 @@ See the `examples/` directory for sample programs:
 - `simple.par` - Basic let bindings and function application
 - `conditional.par` - Conditional expressions
 - `currying.par` - Currying and partial application
+- `stdlib.par` - Standard library with common functions
+- `math.par` - Mathematical utility functions
+- `use_stdlib.par` - Example of loading and using library functions
 
 ## Documentation
 

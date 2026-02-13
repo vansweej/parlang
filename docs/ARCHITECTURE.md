@@ -85,6 +85,7 @@ graph TB
   - Handle closures
   - Perform type checking at runtime
   - Execute binary operations
+  - Load and integrate external library files
 
 #### Main Module
 - **Purpose**: Provide user interface for the interpreter
@@ -148,6 +149,7 @@ flowchart TD
     EXPR_TYPE -->|Let| EVAL_LET[Evaluate Value & Bind]
     EXPR_TYPE -->|Fun| CREATE_CLOSURE[Create Closure]
     EXPR_TYPE -->|App| EVAL_APP[Evaluate Function & Arg]
+    EXPR_TYPE -->|Load| LOAD_LIB[Load Library File]
     
     LOOKUP --> CHECK_BOUND{Variable<br/>Bound?}
     CHECK_BOUND -->|Yes| RETURN_VALUE[Return Value]
@@ -347,9 +349,40 @@ The architecture supports several potential extensions:
 2. **Optimization**: Add AST optimization passes before evaluation
 3. **More Data Types**: Lists, records, variants
 4. **Pattern Matching**: Enhanced `match` expressions
-5. **Module System**: Import/export functionality
-6. **Standard Library**: Built-in functions and utilities
+5. **~~Module System~~**: **✓ Implemented** - Load expression for importing libraries
+6. **Standard Library**: **✓ Implemented** - Example libraries in `examples/` directory
 7. **Garbage Collection**: Explicit memory management (currently uses Rust's ownership)
+
+### Load Expression Implementation
+
+The load expression feature provides a simple module system:
+
+**Key Components:**
+- **AST Extension**: `Load(String, Box<Expr>)` variant in `Expr` enum
+- **Parser Support**: Parses `load "filepath" in expression` syntax
+- **Evaluator Logic**: 
+  1. Read and parse library file
+  2. Extract bindings from nested `let` expressions
+  3. Merge library bindings with current environment
+  4. Evaluate body in extended environment
+
+**Design Properties:**
+- **Referential Transparency**: Same file always produces same bindings
+- **Pure Functional**: No side effects, file I/O happens during evaluation
+- **Composable**: Libraries can load other libraries
+- **Environment Extension**: Library bindings extend (not replace) current scope
+
+**Example:**
+```parlang
+load "stdlib.par" in double 21  # => 42
+```
+
+**Library File Structure:**
+```parlang
+let func1 = fun x -> ...
+in let func2 = fun y -> ...
+in 0
+```
 
 ## Testing Strategy
 

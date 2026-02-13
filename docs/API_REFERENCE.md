@@ -149,6 +149,7 @@ pub enum Expr {
     Let(String, Box<Expr>, Box<Expr>),
     Fun(String, Box<Expr>),
     App(Box<Expr>, Box<Expr>),
+    Load(String, Box<Expr>),
 }
 ```
 
@@ -278,6 +279,44 @@ let expr = Expr::App(
 );
 assert_eq!(format!("{}", expr), "(f 42)");
 ```
+
+#### `Expr::Load(String, Box<Expr>)`
+
+Load expression for importing library files.
+
+**Parameters:**
+- `String`: File path to the library file (relative to current working directory)
+- `Box<Expr>`: Body expression to evaluate with library bindings
+
+**Semantics:**
+1. Reads and parses the library file
+2. Extracts bindings from nested `let` expressions in the library
+3. Extends current environment with library bindings
+4. Evaluates body expression in extended environment
+
+**Library File Structure:**
+Library files should use nested `let` expressions:
+```parlang
+let func1 = fun x -> x * 2
+in let func2 = fun y -> y + 1
+in 0
+```
+
+**Example:**
+```rust
+let expr = Expr::Load(
+    "examples/stdlib.par".to_string(),
+    Box::new(Expr::App(
+        Box::new(Expr::Var("double".to_string())),
+        Box::new(Expr::Int(21)),
+    )),
+);
+assert_eq!(format!("{}", expr), "(load \"examples/stdlib.par\" in (double 21))");
+```
+
+**Error Handling:**
+- File not found: `EvalError::LoadError`
+- Parse error: `EvalError::LoadError`
 
 ### BinOp Enum
 
@@ -720,6 +759,7 @@ pub enum EvalError {
     UnboundVariable(String),
     TypeError(String),
     DivisionByZero,
+    LoadError(String),
 }
 ```
 
@@ -759,6 +799,25 @@ let expr = parse("10 / 0").unwrap();
 let result = eval(&expr, &env);
 
 assert_eq!(result, Err(EvalError::DivisionByZero));
+```
+
+**`EvalError::LoadError(String)`**
+
+Error loading or parsing library file.
+
+Occurs when:
+- File does not exist or cannot be read
+- File contains invalid ParLang syntax
+
+```rust
+use parlang::{parse, eval, Environment, EvalError};
+
+// File not found
+let expr = parse("load \"nonexistent.par\" in 42").unwrap();
+let env = Environment::new();
+let result = eval(&expr, &env);
+
+assert!(matches!(result, Err(EvalError::LoadError(_))));
 ```
 
 ### Display Trait
