@@ -51,35 +51,65 @@ fn repl() {
     let mut stdout = io::stdout();
 
     loop {
-        print!("> ");
-        stdout.flush().unwrap();
+        // Accumulate multiline input
+        let mut lines = Vec::new();
+        let mut is_first_line = true;
 
-        let mut input = String::new();
-        match stdin.read_line(&mut input) {
-            Ok(0) => break, // EOF
-            Ok(_) => {
-                let input = input.trim();
-                if input.is_empty() {
-                    continue;
+        loop {
+            // Print appropriate prompt
+            if is_first_line {
+                print!("> ");
+            } else {
+                print!("... ");
+            }
+            stdout.flush().unwrap();
+
+            let mut line = String::new();
+            match stdin.read_line(&mut line) {
+                Ok(0) => {
+                    // EOF - exit the REPL
+                    println!("\nGoodbye!");
+                    return;
                 }
-
-                match parse(input) {
-                    Ok(expr) => match eval(&expr, &env) {
-                        Ok(value) => {
-                            println!("{}", value);
-                            // In a real REPL, we might want to bind the result to a special variable
+                Ok(_) => {
+                    let trimmed = line.trim();
+                    
+                    // Empty line signals end of input (if we have at least one line)
+                    if trimmed.is_empty() {
+                        if !is_first_line {
+                            // We have accumulated lines, try to parse and evaluate
+                            break;
                         }
-                        Err(e) => eprintln!("Evaluation error: {}", e),
-                    },
-                    Err(e) => eprintln!("Parse error: {}", e),
+                        // First line is empty, just continue to next prompt
+                        continue;
+                    }
+
+                    // Add the line to our accumulator
+                    lines.push(line);
+                    is_first_line = false;
+                }
+                Err(e) => {
+                    eprintln!("Error reading input: {}", e);
+                    return;
                 }
             }
-            Err(e) => {
-                eprintln!("Error reading input: {}", e);
-                break;
+        }
+
+        // Join all lines and try to parse/evaluate
+        if !lines.is_empty() {
+            let input = lines.join("");
+            let input = input.trim();
+
+            match parse(input) {
+                Ok(expr) => match eval(&expr, &env) {
+                    Ok(value) => {
+                        println!("{}", value);
+                        // In a real REPL, we might want to bind the result to a special variable
+                    }
+                    Err(e) => eprintln!("Evaluation error: {}", e),
+                },
+                Err(e) => eprintln!("Parse error: {}", e),
             }
         }
     }
-
-    println!("\nGoodbye!");
 }
