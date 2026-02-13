@@ -32,6 +32,10 @@ pub enum Expr {
     
     /// Load expression: load "filepath" in e
     Load(String, Box<Expr>),
+    
+    /// Sequential let bindings: let x = e1; let y = e2; expr
+    /// Vector of (name, value) pairs, followed by a body expression
+    Seq(Vec<(String, Expr)>, Box<Expr>),
 }
 
 /// Binary operators
@@ -65,6 +69,16 @@ impl fmt::Display for Expr {
             Expr::Fun(param, body) => write!(f, "(fun {} -> {})", param, body),
             Expr::App(func, arg) => write!(f, "({} {})", func, arg),
             Expr::Load(filepath, body) => write!(f, "(load \"{}\" in {})", filepath, body),
+            Expr::Seq(bindings, body) => {
+                write!(f, "(")?;
+                for (i, (name, value)) in bindings.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "let {} = {}", name, value)?;
+                }
+                write!(f, "; {})", body)
+            }
         }
     }
 }

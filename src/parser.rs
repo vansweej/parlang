@@ -287,7 +287,29 @@ parser! {
     pub fn program[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
-        spaces().with(expr()).skip(spaces())
+        (
+            spaces(),
+            many(attempt((
+                string("let").skip(spaces()),
+                identifier().skip(spaces()),
+                token('=').skip(spaces()),
+                expr().skip(spaces()),
+                token(';').skip(spaces()),
+            ))).map(|bindings: Vec<(_, String, _, Expr, _)>| {
+                bindings
+                    .into_iter()
+                    .map(|(_, name, _, value, _)| (name, value))
+                    .collect::<Vec<(String, Expr)>>()
+            }),
+            expr().skip(spaces())
+        )
+            .map(|(_, bindings, body): (_, Vec<(String, Expr)>, Expr)| {
+                if bindings.is_empty() {
+                    body
+                } else {
+                    Expr::Seq(bindings, Box::new(body))
+                }
+            })
     }
 }
 

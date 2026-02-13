@@ -116,7 +116,17 @@ fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, EvalE
             // Continue extracting from the body
             extract_bindings(body, &new_env)
         }
-        // If we reach anything other than a Let or Load, we're done extracting
+        Expr::Seq(bindings, body) => {
+            // Process each binding in the sequence
+            let mut current_env = env.clone();
+            for (name, value) in bindings {
+                let val = eval(value, &current_env)?;
+                current_env = current_env.extend(name.clone(), val);
+            }
+            // Continue extracting from the body
+            extract_bindings(body, &current_env)
+        }
+        // If we reach anything other than a Let, Load, or Seq, we're done extracting
         // Return the accumulated environment
         _ => Ok(env.clone()),
     }
@@ -194,6 +204,17 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             
             // Evaluate the body in the extended environment
             eval(body, &extended_env)
+        }
+        
+        Expr::Seq(bindings, body) => {
+            // Process each binding in sequence, extending the environment
+            let mut current_env = env.clone();
+            for (name, value) in bindings {
+                let val = eval(value, &current_env)?;
+                current_env = current_env.extend(name.clone(), val);
+            }
+            // Evaluate the body in the extended environment
+            eval(body, &current_env)
         }
     }
 }

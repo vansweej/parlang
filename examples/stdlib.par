@@ -1,9 +1,9 @@
-let double = fun x -> x * 2
-in let triple = fun x -> x * 3
-in let quadruple = fun x -> double (double x)
-in let abs = fun x -> if x < 0 then 0 - x else x
-in let max = fun a -> fun b -> if a > b then a else b
-in let min = fun a -> fun b -> if a < b then a else b
-in let compose = fun f -> fun g -> fun x -> f (g x)
-in let id = fun x -> x
-in 0
+let double = fun x -> x * 2;
+let triple = fun x -> x * 3;
+let quadruple = fun x -> double (double x);
+let abs = fun x -> if x < 0 then 0 - x else x;
+let max = fun a -> fun b -> if a > b then a else b;
+let min = fun a -> fun b -> if a < b then a else b;
+let compose = fun f -> fun g -> fun x -> f (g x);
+let id = fun x -> x;
+0
