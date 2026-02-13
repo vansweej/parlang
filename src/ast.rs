@@ -29,6 +29,9 @@ pub enum Expr {
     
     /// Function application: f e
     App(Box<Expr>, Box<Expr>),
+    
+    /// Load expression: load "filepath" in e
+    Load(String, Box<Expr>),
 }
 
 /// Binary operators
@@ -61,6 +64,7 @@ impl fmt::Display for Expr {
             }
             Expr::Fun(param, body) => write!(f, "(fun {} -> {})", param, body),
             Expr::App(func, arg) => write!(f, "({} {})", func, arg),
+            Expr::Load(filepath, body) => write!(f, "(load \"{}\" in {})", filepath, body),
         }
     }
 }
@@ -184,6 +188,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_expr_load() {
+        let expr = Expr::Load(
+            "lib.par".to_string(),
+            Box::new(Expr::Var("x".to_string())),
+        );
+        assert_eq!(
+            expr,
+            Expr::Load(
+                "lib.par".to_string(),
+                Box::new(Expr::Var("x".to_string())),
+            )
+        );
+    }
+
     // Test Clone trait
     #[test]
     fn test_expr_clone() {
@@ -275,6 +294,15 @@ mod tests {
             Box::new(Expr::Int(42)),
         );
         assert_eq!(format!("{}", expr), "(f 42)");
+    }
+
+    #[test]
+    fn test_display_load() {
+        let expr = Expr::Load(
+            "lib.par".to_string(),
+            Box::new(Expr::Var("x".to_string())),
+        );
+        assert_eq!(format!("{}", expr), "(load \"lib.par\" in x)");
     }
 
     // Test Display implementation for BinOp
