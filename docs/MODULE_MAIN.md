@@ -1130,7 +1130,7 @@ main 5
    > :quit
    ```
 
-3. **Enhanced Multiline Input**:
+3. **Enhanced Multiline Input** (building on basic multiline support):
    - Syntax highlighting for multiline input
    - Bracket/parenthesis matching
    - Automatic indentation

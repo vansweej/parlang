@@ -97,7 +97,7 @@ fn repl() {
 
         // Join all lines and try to parse/evaluate
         if !lines.is_empty() {
-            let input = lines.join("");
+            let input = lines.concat();  // Preserves newlines from read_line()
             let input = input.trim();
 
             match parse(input) {
