@@ -1,12 +1,26 @@
 /// Integration tests combining parser and evaluator
 /// These tests verify the full pipeline from source code to evaluation
 
-use parlang::{parse, eval, Environment, Value};
+use parlang::{parse, eval, extract_bindings, Environment, Value};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
     let expr = parse(input)?;
     eval(&expr, &Environment::new()).map_err(|e| e.to_string())
 }
+
+/// Simulate REPL-style execution with persistent environment
+/// This helper function parses and evaluates an expression while
+/// extracting bindings to persist in the environment
+fn parse_eval_and_extract(input: &str, env: &Environment) -> Result<(Value, Environment), String> {
+    let expr = parse(input)?;
+    let value = eval(&expr, env).map_err(|e| e.to_string())?;
+    
+    // Extract bindings from the expression to persist them
+    let new_env = extract_bindings(&expr, env).map_err(|e| e.to_string())?;
+    
+    Ok((value, new_env))
+}
+
 
 #[test]
 fn test_int_literal() {
@@ -258,4 +272,204 @@ fn test_realistic_example_3() {
 #[test]
 fn test_all_operators_together() {
     assert_eq!(parse_and_eval("if 10 + 5 * 2 == 20 then 1 else 0"), Ok(Value::Int(1)));
+}
+
+// ========================================
+// REPL Persistence Tests
+// ========================================
+// These tests verify that bindings persist across evaluations in the REPL
+
+#[test]
+fn test_repl_persistence_simple_binding() {
+    // Define a variable with semicolon syntax
+    let env = Environment::new();
+    let (value1, env) = parse_eval_and_extract("let x = 42; 0", &env).unwrap();
+    assert_eq!(value1, Value::Int(0));
+    
+    // Use the variable in the next evaluation
+    let (value2, _) = parse_eval_and_extract("x", &env).unwrap();
+    assert_eq!(value2, Value::Int(42));
+}
+
+#[test]
+fn test_repl_persistence_function_definition() {
+    // Define a function
+    let env = Environment::new();
+    let (value1, env) = parse_eval_and_extract("let double = fun x -> x + x; 0", &env).unwrap();
+    assert_eq!(value1, Value::Int(0));
+    
+    // Use the function in the next evaluation
+    let (value2, _) = parse_eval_and_extract("double 21", &env).unwrap();
+    assert_eq!(value2, Value::Int(42));
+}
+
+#[test]
+fn test_repl_persistence_multiple_functions() {
+    // Define multiple functions across different evaluations
+    let env = Environment::new();
+    
+    let (_, env) = parse_eval_and_extract("let double = fun x -> x + x; 0", &env).unwrap();
+    let (_, env) = parse_eval_and_extract("let triple = fun x -> x + x + x; 0", &env).unwrap();
+    
+    // Use both functions
+    let (value1, env) = parse_eval_and_extract("double 5", &env).unwrap();
+    assert_eq!(value1, Value::Int(10));
+    
+    let (value2, _) = parse_eval_and_extract("triple 10", &env).unwrap();
+    assert_eq!(value2, Value::Int(30));
+}
+
+#[test]
+fn test_repl_persistence_chained_definitions() {
+    // Define a function, then use it in another function
+    let env = Environment::new();
+    
+    let (_, env) = parse_eval_and_extract("let double = fun x -> x + x; 0", &env).unwrap();
+    let (_, env) = parse_eval_and_extract("let quadruple = fun x -> double (double x); 0", &env).unwrap();
+    
+    // Use the second function
+    let (value, _) = parse_eval_and_extract("quadruple 5", &env).unwrap();
+    assert_eq!(value, Value::Int(20));
+}
+
+#[test]
+fn test_repl_persistence_load_library() {
+    // Load a library and verify functions persist
+    let env = Environment::new();
+    
+    let (_, env) = parse_eval_and_extract("load \"examples/stdlib.par\" in 0", &env).unwrap();
+    
+    // Use functions from the loaded library
+    let (value1, env) = parse_eval_and_extract("double 21", &env).unwrap();
+    assert_eq!(value1, Value::Int(42));
+    
+    let (value2, env) = parse_eval_and_extract("triple 14", &env).unwrap();
+    assert_eq!(value2, Value::Int(42));
+    
+    // Use max function with currying
+    let (value3, _) = parse_eval_and_extract("max 10 20", &env).unwrap();
+    assert_eq!(value3, Value::Int(20));
+}
+
+#[test]
+fn test_repl_persistence_shadowing() {
+    // Define a variable, then shadow it
+    let env = Environment::new();
+    
+    let (_, env) = parse_eval_and_extract("let x = 10; 0", &env).unwrap();
+    let (value1, env) = parse_eval_and_extract("x", &env).unwrap();
+    assert_eq!(value1, Value::Int(10));
+    
+    // Shadow the variable
+    let (_, env) = parse_eval_and_extract("let x = 20; 0", &env).unwrap();
+    let (value2, _) = parse_eval_and_extract("x", &env).unwrap();
+    assert_eq!(value2, Value::Int(20));
+}
+
+#[test]
+fn test_repl_persistence_seq_multiple_bindings() {
+    // Define multiple bindings in a single expression
+    let env = Environment::new();
+    
+    let (_, env) = parse_eval_and_extract("let x = 1; let y = 2; let z = 3; 0", &env).unwrap();
+    
+    // Use all three variables
+    let (value, _) = parse_eval_and_extract("x + y + z", &env).unwrap();
+    assert_eq!(value, Value::Int(6));
+}
+
+#[test]
+fn test_repl_persistence_function_using_persistent_var() {
+    // Define a variable, then a function that uses it
+    let env = Environment::new();
+    
+    let (_, env) = parse_eval_and_extract("let base = 10; 0", &env).unwrap();
+    let (_, env) = parse_eval_and_extract("let add_base = fun x -> x + base; 0", &env).unwrap();
+    
+    // Use the function
+    let (value, _) = parse_eval_and_extract("add_base 5", &env).unwrap();
+    assert_eq!(value, Value::Int(15));
+}
+
+// ========================================
+// Tests for Optional Body Expression
+// ========================================
+
+#[test]
+fn test_optional_body_simple_binding() {
+    // Define a binding without trailing 0
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("let x = 42;", &env).unwrap();
+    assert_eq!(value, Value::Int(0)); // Should default to 0
+    
+    // Use the variable
+    let (value, _) = parse_eval_and_extract("x", &env).unwrap();
+    assert_eq!(value, Value::Int(42));
+}
+
+#[test]
+fn test_optional_body_function_definition() {
+    // Define a function without trailing 0
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("let double = fun x -> x + x;", &env).unwrap();
+    assert_eq!(value, Value::Int(0)); // Should default to 0
+    
+    // Use the function
+    let (value, _) = parse_eval_and_extract("double 21", &env).unwrap();
+    assert_eq!(value, Value::Int(42));
+}
+
+#[test]
+fn test_optional_body_multiple_bindings() {
+    // Define multiple bindings without trailing expression
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("let x = 1; let y = 2; let z = 3;", &env).unwrap();
+    assert_eq!(value, Value::Int(0)); // Should default to 0
+    
+    // Use the variables
+    let (value, _) = parse_eval_and_extract("x + y + z", &env).unwrap();
+    assert_eq!(value, Value::Int(6));
+}
+
+#[test]
+fn test_optional_body_load_library() {
+    // Load a library without "in 0"
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("load \"examples/stdlib.par\"", &env).unwrap();
+    assert_eq!(value, Value::Int(0)); // Should default to 0
+    
+    // Use functions from the loaded library
+    let (value, _) = parse_eval_and_extract("double 21", &env).unwrap();
+    assert_eq!(value, Value::Int(42));
+}
+
+#[test]
+fn test_optional_body_backwards_compatible() {
+    // Verify old syntax with explicit body still works
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("let x = 10; 0", &env).unwrap();
+    assert_eq!(value, Value::Int(0));
+    
+    let (value, env) = parse_eval_and_extract("let y = 20; x + 5", &env).unwrap();
+    assert_eq!(value, Value::Int(15)); // x is 10, so 10 + 5 = 15
+    
+    let (value, _) = parse_eval_and_extract("y", &env).unwrap();
+    assert_eq!(value, Value::Int(20));
+}
+
+#[test]
+fn test_optional_body_load_with_in() {
+    // Verify old load syntax with "in" still works
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("load \"examples/stdlib.par\" in 0", &env).unwrap();
+    assert_eq!(value, Value::Int(0));
+    
+    let (value, _) = parse_eval_and_extract("triple 14", &env).unwrap();
+    assert_eq!(value, Value::Int(42));
 }

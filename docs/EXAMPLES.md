@@ -43,6 +43,8 @@ The REPL supports both single-line and multiline input:
 - Type expressions and press Enter for single-line input
 - For multiline expressions, continue typing on new lines (you'll see `... ` prompt)
 - Press Enter on an empty line to evaluate the complete expression
+- **Persistent Environment**: Function definitions and library loads using semicolon syntax persist across evaluations
+- **Optional Trailing Expression**: You can omit the trailing `0` or `in 0` for convenience
 
 **Example REPL session:**
 ```
@@ -50,6 +52,18 @@ The REPL supports both single-line and multiline input:
 42
 > let x = 10
 ... in x * 2
+
+20
+> let double = fun x -> x + x;
+
+0
+> double 21
+
+42
+> load "examples/stdlib.par"
+
+0
+> max 10 20
 
 20
 ```

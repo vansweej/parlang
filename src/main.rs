@@ -4,7 +4,7 @@
 /// - REPL mode for interactive evaluation
 /// - File execution mode for running .par files
 
-use parlang::{parse, eval, Environment, Value};
+use parlang::{parse, eval, extract_bindings, Environment, Value};
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -47,7 +47,7 @@ fn execute(source: &str) -> Result<Value, String> {
 }
 
 fn repl() {
-    let env = Environment::new();
+    let mut env = Environment::new();
     let stdin = io::stdin();
     let mut stdout = io::stdout();
 
@@ -102,12 +102,23 @@ fn repl() {
             let input = input.trim();
 
             match parse(input) {
-                Ok(expr) => match eval(&expr, &env) {
-                    Ok(value) => {
-                        println!("{}", value);
-                        // In a real REPL, we might want to bind the result to a special variable
+                Ok(expr) => {
+                    match eval(&expr, &env) {
+                        Ok(value) => {
+                            println!("{}", value);
+                            // Extract bindings from the expression and merge into environment
+                            match extract_bindings(&expr, &env) {
+                                Ok(new_env) => {
+                                    env = new_env;
+                                }
+                                Err(e) => {
+                                    // If binding extraction fails, report it but continue with the old environment
+                                    eprintln!("Warning: Failed to persist bindings: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => eprintln!("Evaluation error: {}", e),
                     }
-                    Err(e) => eprintln!("Evaluation error: {}", e),
                 },
                 Err(e) => eprintln!("Parse error: {}", e),
             }

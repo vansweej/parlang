@@ -172,10 +172,12 @@ parser! {
         (
             string("load").skip(spaces()),
             string_literal().skip(spaces()),
-            string("in").skip(spaces()),
-            expr(),
+            optional((string("in").skip(spaces()), expr())),
         )
-            .map(|(_, filepath, _, body)| {
+            .map(|(_, filepath, body_opt)| {
+                let body = body_opt
+                    .map(|(_, b)| b)
+                    .unwrap_or(Expr::Int(0));
                 Expr::Load(filepath, Box::new(body))
             })
     }
@@ -301,13 +303,14 @@ parser! {
                     .map(|(_, name, _, value, _)| (name, value))
                     .collect::<Vec<(String, Expr)>>()
             }),
-            expr().skip(spaces())
+            optional(expr()).skip(spaces())
         )
-            .map(|(_, bindings, body): (_, Vec<(String, Expr)>, Expr)| {
+            .map(|(_, bindings, body): (_, Vec<(String, Expr)>, Option<Expr>)| {
+                let body_expr = body.unwrap_or(Expr::Int(0));
                 if bindings.is_empty() {
-                    body
+                    body_expr
                 } else {
-                    Expr::Seq(bindings, Box::new(body))
+                    Expr::Seq(bindings, Box::new(body_expr))
                 }
             })
     }
