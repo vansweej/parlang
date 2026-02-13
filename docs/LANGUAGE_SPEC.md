@@ -1,7 +1,7 @@
 # ParLang Language Specification
 
 **Version:** 1.0  
-**Last Updated:** 2024  
+**Last Updated:** 2026-02-13  
 **Author:** ParLang Project
 
 ---
