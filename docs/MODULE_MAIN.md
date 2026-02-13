@@ -705,19 +705,6 @@ $ parlang example.par
 
 #### Let Binding File
 
-**File**: `greet.par`
-```
-let name = fun x => x in name 42
-```
-
-**Execution**:
-```bash
-$ parlang greet.par
-<function>
-```
-
-Wait, that's not right. Let me fix the example:
-
 **File**: `compute.par`
 ```
 let x = 10 in
