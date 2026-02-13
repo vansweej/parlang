@@ -390,3 +390,86 @@ fn test_repl_persistence_function_using_persistent_var() {
     let (value, _) = parse_eval_and_extract("add_base 5", &env).unwrap();
     assert_eq!(value, Value::Int(15));
 }
+
+// ========================================
+// Tests for Optional Body Expression
+// ========================================
+
+#[test]
+fn test_optional_body_simple_binding() {
+    // Define a binding without trailing 0
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("let x = 42;", &env).unwrap();
+    assert_eq!(value, Value::Int(0)); // Should default to 0
+    
+    // Use the variable
+    let (value, _) = parse_eval_and_extract("x", &env).unwrap();
+    assert_eq!(value, Value::Int(42));
+}
+
+#[test]
+fn test_optional_body_function_definition() {
+    // Define a function without trailing 0
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("let double = fun x -> x + x;", &env).unwrap();
+    assert_eq!(value, Value::Int(0)); // Should default to 0
+    
+    // Use the function
+    let (value, _) = parse_eval_and_extract("double 21", &env).unwrap();
+    assert_eq!(value, Value::Int(42));
+}
+
+#[test]
+fn test_optional_body_multiple_bindings() {
+    // Define multiple bindings without trailing expression
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("let x = 1; let y = 2; let z = 3;", &env).unwrap();
+    assert_eq!(value, Value::Int(0)); // Should default to 0
+    
+    // Use the variables
+    let (value, _) = parse_eval_and_extract("x + y + z", &env).unwrap();
+    assert_eq!(value, Value::Int(6));
+}
+
+#[test]
+fn test_optional_body_load_library() {
+    // Load a library without "in 0"
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("load \"examples/stdlib.par\"", &env).unwrap();
+    assert_eq!(value, Value::Int(0)); // Should default to 0
+    
+    // Use functions from the loaded library
+    let (value, _) = parse_eval_and_extract("double 21", &env).unwrap();
+    assert_eq!(value, Value::Int(42));
+}
+
+#[test]
+fn test_optional_body_backwards_compatible() {
+    // Verify old syntax with explicit body still works
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("let x = 10; 0", &env).unwrap();
+    assert_eq!(value, Value::Int(0));
+    
+    let (value, env) = parse_eval_and_extract("let y = 20; x + 5", &env).unwrap();
+    assert_eq!(value, Value::Int(15)); // x is 10, so 10 + 5 = 15
+    
+    let (value, _) = parse_eval_and_extract("y", &env).unwrap();
+    assert_eq!(value, Value::Int(20));
+}
+
+#[test]
+fn test_optional_body_load_with_in() {
+    // Verify old load syntax with "in" still works
+    let env = Environment::new();
+    
+    let (value, env) = parse_eval_and_extract("load \"examples/stdlib.par\" in 0", &env).unwrap();
+    assert_eq!(value, Value::Int(0));
+    
+    let (value, _) = parse_eval_and_extract("triple 14", &env).unwrap();
+    assert_eq!(value, Value::Int(42));
+}
