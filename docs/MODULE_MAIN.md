@@ -424,13 +424,14 @@ fn repl() {
 **Example with semicolon syntax (persists)**:
 ```
 > let double = fun x -> x + x;
-... 0
 
 0
 > double 21
 
 42
 ```
+
+**Note:** The trailing expression after semicolons is now optional. Both `let x = 42;` and `let x = 42; 0` work identically, defaulting to `0` when omitted.
 
 **Example with traditional let-in syntax (does not persist)**:
 ```
@@ -442,7 +443,7 @@ Evaluation error: Unbound variable: x
 
 **Load statements persist**:
 ```
-> load "examples/stdlib.par" in 0
+> load "examples/stdlib.par"
 
 0
 > double 21
@@ -453,9 +454,11 @@ Evaluation error: Unbound variable: x
 42
 ```
 
+**Note:** The `in 0` part of load statements is now optional. Both `load "file"` and `load "file" in 0` work identically.
+
 **Multiple bindings persist**:
 ```
-> let x = 1; let y = 2; let z = 3; 0
+> let x = 1; let y = 2; let z = 3;
 
 0
 > x + y + z
@@ -463,7 +466,7 @@ Evaluation error: Unbound variable: x
 6
 ```
 
-This makes the REPL much more convenient for interactive development, as you don't need to redefine functions after each evaluation.
+This makes the REPL much more convenient for interactive development, as you don't need to redefine functions after each evaluation, and you don't need to type unnecessary trailing expressions.
 
 ### Exit Behavior
 
