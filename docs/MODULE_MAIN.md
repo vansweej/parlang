@@ -466,13 +466,13 @@ The result value is printed using the `Display` implementation of `Value`:
 
 ```
 $ cat example.par
-let factorial = fun n =>
-  if n <= 1 then 1
-  else n * factorial (n - 1)
-in factorial 5
+let compose = fun f -> fun g -> fun x -> f (g x)
+in let inc = fun x -> x + 1
+in let double = fun x -> x + x
+in compose inc double 5
 
 $ parlang example.par
-120
+11
 ```
 
 ## Error Handling
