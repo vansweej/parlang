@@ -43,6 +43,7 @@ The REPL supports both single-line and multiline input:
 - Type expressions and press Enter for single-line input
 - For multiline expressions, continue typing on new lines (you'll see `... ` prompt)
 - Press Enter on an empty line to evaluate the complete expression
+- **Persistent Environment**: Function definitions and library loads using semicolon syntax persist across evaluations
 
 **Example REPL session:**
 ```
@@ -52,6 +53,13 @@ The REPL supports both single-line and multiline input:
 ... in x * 2
 
 20
+> let double = fun x -> x + x;
+... 0
+
+0
+> double 21
+
+42
 ```
 
 **File Mode:**

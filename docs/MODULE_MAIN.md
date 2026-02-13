@@ -396,21 +396,69 @@ Evaluation error: Division by zero
 
 ### Environment Persistence
 
-**Current Implementation**: The environment is created once at REPL start but the current implementation doesn't support variable bindings persisting across evaluations.
+**Persistent Environment**: The REPL now maintains a persistent environment across evaluations. When you define functions or load libraries using semicolon syntax (Seq expressions), they remain available for subsequent evaluations.
 
-**Note in Code**:
+**How it works**:
 ```rust
-// In a real REPL, we might want to bind the result to a special variable
+fn repl() {
+    let mut env = Environment::new();  // Mutable environment
+    // ... in evaluation loop:
+    match eval(&expr, &env) {
+        Ok(value) => {
+            println!("{}", value);
+            // Extract bindings from the expression and merge into environment
+            if let Ok(new_env) = extract_repl_bindings(&expr, &env) {
+                env = new_env;
+            }
+        }
+        // ...
+    }
+}
 ```
 
-This means each expression is evaluated independently:
+**Example with semicolon syntax (persists)**:
+```
+> let double = fun x -> x + x;
+... 0
 
+0
+> double 21
+
+42
+```
+
+**Example with traditional let-in syntax (does not persist)**:
 ```
 > let x = 10 in x + 5
 15
 > x
-Evaluation error: Undefined variable: x
+Evaluation error: Unbound variable: x
 ```
+
+**Load statements persist**:
+```
+> load "examples/stdlib.par" in 0
+
+0
+> double 21
+
+42
+> triple 14
+
+42
+```
+
+**Multiple bindings persist**:
+```
+> let x = 1; let y = 2; let z = 3; 0
+
+0
+> x + y + z
+
+6
+```
+
+This makes the REPL much more convenient for interactive development, as you don't need to redefine functions after each evaluation.
 
 ### Exit Behavior
 

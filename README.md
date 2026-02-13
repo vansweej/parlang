@@ -134,6 +134,36 @@ Type expressions to evaluate them. Press Ctrl+C to exit.
 
 **Note:** In the REPL and file mode, you can use semicolon-separated let bindings to define multiple functions without nesting `in` keywords.
 
+#### Persistent Environment
+
+**New in this version:** The REPL now maintains a persistent environment across evaluations. When you define functions or load libraries using semicolon syntax, they remain available for subsequent evaluations:
+
+```
+> let double = fun x -> x + x;
+... 0
+
+0
+> double 21
+
+42
+> let triple = fun x -> x + x + x;
+... 0
+
+0
+> triple 14
+
+42
+> load "examples/stdlib.par" in 0
+
+0
+> max 10 20
+
+20
+>
+```
+
+This makes the REPL much more convenient for interactive development, as you don't need to redefine functions after each evaluation.
+
 ### File Execution Mode
 
 Run a `.par` file:
