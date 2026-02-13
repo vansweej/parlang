@@ -81,7 +81,6 @@ where
     identifier().map(Expr::Var)
 }
 
-/// Parse an atomic expression (int, bool, var, or parenthesized expression)
 parser! {
     fn atom[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -99,7 +98,6 @@ parser! {
     }
 }
 
-/// Parse a function expression: fun x -> e
 parser! {
     fn fun_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -114,7 +112,6 @@ parser! {
     }
 }
 
-/// Parse a let expression: let x = e1 in e2
 parser! {
     fn let_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -133,7 +130,6 @@ parser! {
     }
 }
 
-/// Parse an if expression: if e1 then e2 else e3
 parser! {
     fn if_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -156,7 +152,6 @@ parser! {
     }
 }
 
-/// Parse a primary expression (atom, let, if, fun, or app)
 parser! {
     fn primary[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -170,7 +165,6 @@ parser! {
     }
 }
 
-/// Parse function application (left-associative): f x y = (f x) y
 parser! {
     fn app_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -183,7 +177,6 @@ parser! {
     }
 }
 
-/// Parse multiplicative operations: *, /
 parser! {
     fn mul_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -206,7 +199,6 @@ parser! {
     }
 }
 
-/// Parse additive operations: +, -
 parser! {
     fn add_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -229,7 +221,6 @@ parser! {
     }
 }
 
-/// Parse comparison operations: ==, !=, <, <=, >, >=
 parser! {
     fn cmp_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -254,7 +245,6 @@ parser! {
     }
 }
 
-/// Parse a full expression
 parser! {
     fn expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -263,7 +253,6 @@ parser! {
     }
 }
 
-/// Parse a complete program (expression with optional leading/trailing whitespace)
 parser! {
     pub fn program[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
