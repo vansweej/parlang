@@ -925,12 +925,13 @@ mod tests {
         
         // Create a temporary library file
         let lib_content = "let double = fun x -> x * 2 in 0";
-        let temp_file = "/tmp/test_load_simple.par";
-        fs::write(temp_file, lib_content).unwrap();
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_load_simple.par");
+        fs::write(&temp_file, lib_content).unwrap();
         
         let env = Environment::new();
         let expr = Expr::Load(
-            temp_file.to_string(),
+            temp_file.to_str().unwrap().to_string(),
             Box::new(Expr::App(
                 Box::new(Expr::Var("double".to_string())),
                 Box::new(Expr::Int(21)),
@@ -941,7 +942,7 @@ mod tests {
         assert_eq!(result, Ok(Value::Int(42)));
         
         // Cleanup
-        fs::remove_file(temp_file).ok();
+        fs::remove_file(&temp_file).ok();
     }
 
     #[test]
@@ -950,13 +951,14 @@ mod tests {
         
         // Create a library with multiple functions
         let lib_content = "let double = fun x -> x * 2 in let triple = fun x -> x * 3 in 0";
-        let temp_file = "/tmp/test_load_multiple.par";
-        fs::write(temp_file, lib_content).unwrap();
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_load_multiple.par");
+        fs::write(&temp_file, lib_content).unwrap();
         
         let env = Environment::new();
         // Use both double and triple
         let expr = Expr::Load(
-            temp_file.to_string(),
+            temp_file.to_str().unwrap().to_string(),
             Box::new(Expr::BinOp(
                 BinOp::Add,
                 Box::new(Expr::App(
@@ -974,7 +976,7 @@ mod tests {
         assert_eq!(result, Ok(Value::Int(41))); // 10*2 + 7*3 = 20 + 21 = 41
         
         // Cleanup
-        fs::remove_file(temp_file).ok();
+        fs::remove_file(&temp_file).ok();
     }
 
     #[test]
@@ -983,12 +985,13 @@ mod tests {
         
         // Library with nested lets creating multiple bindings
         let lib_content = "let square = fun x -> x * x in let cube = fun x -> x * x * x in 0";
-        let temp_file = "/tmp/test_load_nested_lets.par";
-        fs::write(temp_file, lib_content).unwrap();
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_load_nested_lets.par");
+        fs::write(&temp_file, lib_content).unwrap();
         
         let env = Environment::new();
         let expr = Expr::Load(
-            temp_file.to_string(),
+            temp_file.to_str().unwrap().to_string(),
             Box::new(Expr::App(
                 Box::new(Expr::Var("cube".to_string())),
                 Box::new(Expr::Int(3)),
@@ -999,7 +1002,7 @@ mod tests {
         assert_eq!(result, Ok(Value::Int(27))); // 3^3 = 27
         
         // Cleanup
-        fs::remove_file(temp_file).ok();
+        fs::remove_file(&temp_file).ok();
     }
 
     #[test]
@@ -1023,12 +1026,13 @@ mod tests {
         
         // Create a file with invalid syntax
         let lib_content = "let x = ";
-        let temp_file = "/tmp/test_load_parse_error.par";
-        fs::write(temp_file, lib_content).unwrap();
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_load_parse_error.par");
+        fs::write(&temp_file, lib_content).unwrap();
         
         let env = Environment::new();
         let expr = Expr::Load(
-            temp_file.to_string(),
+            temp_file.to_str().unwrap().to_string(),
             Box::new(Expr::Int(42)),
         );
         
@@ -1039,7 +1043,7 @@ mod tests {
         }
         
         // Cleanup
-        fs::remove_file(temp_file).ok();
+        fs::remove_file(&temp_file).ok();
     }
 
     #[test]
@@ -1048,17 +1052,18 @@ mod tests {
         
         // Create first library
         let lib1_content = "let helper = fun x -> x + 1 in 0";
-        let temp_file1 = "/tmp/test_load_lib1.par";
-        fs::write(temp_file1, lib1_content).unwrap();
+        let temp_dir = std::env::temp_dir();
+        let temp_file1 = temp_dir.join("test_load_lib1.par");
+        fs::write(&temp_file1, lib1_content).unwrap();
         
         // Create second library that loads the first
-        let lib2_content = format!("load \"{}\" in let double_helper = fun x -> helper (helper x) in 0", temp_file1);
-        let temp_file2 = "/tmp/test_load_lib2.par";
-        fs::write(temp_file2, &lib2_content).unwrap();
+        let lib2_content = format!("load \"{}\" in let double_helper = fun x -> helper (helper x) in 0", temp_file1.to_str().unwrap());
+        let temp_file2 = temp_dir.join("test_load_lib2.par");
+        fs::write(&temp_file2, &lib2_content).unwrap();
         
         let env = Environment::new();
         let expr = Expr::Load(
-            temp_file2.to_string(),
+            temp_file2.to_str().unwrap().to_string(),
             Box::new(Expr::App(
                 Box::new(Expr::Var("double_helper".to_string())),
                 Box::new(Expr::Int(10)),
@@ -1069,8 +1074,8 @@ mod tests {
         assert_eq!(result, Ok(Value::Int(12))); // 10 + 1 + 1 = 12
         
         // Cleanup
-        fs::remove_file(temp_file1).ok();
-        fs::remove_file(temp_file2).ok();
+        fs::remove_file(&temp_file1).ok();
+        fs::remove_file(&temp_file2).ok();
     }
 
     #[test]
@@ -1079,8 +1084,9 @@ mod tests {
         
         // Create a library
         let lib_content = "let double = fun x -> x * 2 in 0";
-        let temp_file = "/tmp/test_load_preserve.par";
-        fs::write(temp_file, lib_content).unwrap();
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_load_preserve.par");
+        fs::write(&temp_file, lib_content).unwrap();
         
         // Create an environment with existing bindings
         let mut env = Environment::new();
@@ -1088,7 +1094,7 @@ mod tests {
         
         // Load library and use both outer and library bindings
         let expr = Expr::Load(
-            temp_file.to_string(),
+            temp_file.to_str().unwrap().to_string(),
             Box::new(Expr::BinOp(
                 BinOp::Add,
                 Box::new(Expr::Var("y".to_string())),
@@ -1103,7 +1109,7 @@ mod tests {
         assert_eq!(result, Ok(Value::Int(20))); // 10 + (5*2) = 20
         
         // Cleanup
-        fs::remove_file(temp_file).ok();
+        fs::remove_file(&temp_file).ok();
     }
 
     // Test environment merge
