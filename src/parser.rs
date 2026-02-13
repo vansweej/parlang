@@ -629,8 +629,6 @@ mod tests {
     #[test]
     fn test_var_with_underscore() {
         assert_eq!(parse("foo_bar"), Ok(Expr::Var("foo_bar".to_string())));
-        // Note: identifiers starting with underscore are not supported by the parser
-        // as the identifier parser starts with letter(), not letter().or(token('_'))
     }
 
     #[test]

@@ -259,4 +259,3 @@ fn test_realistic_example_3() {
 fn test_all_operators_together() {
     assert_eq!(parse_and_eval("if 10 + 5 * 2 == 20 then 1 else 0"), Ok(Value::Int(1)));
 }
-
