@@ -1135,7 +1135,8 @@ fn test_tuple_projection_out_of_bounds() {
 
 #[test]
 fn test_tuple_projection_non_tuple() {
-    let result = parse_and_eval("42.0");
+    // Use let binding to force tuple projection on an integer
+    let result = parse_and_eval("let x = 42 in x.0");
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("Tuple projection requires a tuple"));
 }
