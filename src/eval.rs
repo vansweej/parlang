@@ -19,6 +19,12 @@ pub enum Value {
     /// Record value: field name -> value
     /// Uses HashMap for O(1) field access at runtime
     Record(HashMap<String, Value>),
+    /// Variant value (sum type instance)
+    /// Variant: (constructor_name, payload_values)
+    /// e.g., Some(42) -> Variant("Some", vec![Int(42)])
+    ///       None -> Variant("None", vec![])
+    ///       Cons(1, rest) -> Variant("Cons", vec![Int(1), <list>])
+    Variant(String, Vec<Value>),
 }
 
 impl fmt::Display for Value {
@@ -52,14 +58,36 @@ impl fmt::Display for Value {
                 }
                 write!(f, "}}")
             }
+            Value::Variant(ctor, args) => {
+                write!(f, "{}", ctor)?;
+                if !args.is_empty() {
+                    write!(f, "(")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 { write!(f, ", ")?; }
+                        write!(f, "{}", arg)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
+            }
         }
     }
+}
+
+/// Constructor information for sum types
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConstructorInfo {
+    /// Type name this constructor belongs to
+    pub type_name: String,
+    /// Number of arguments this constructor takes
+    pub arity: usize,
 }
 
 /// Environment for variable bindings
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
     bindings: HashMap<String, Value>,
+    constructors: HashMap<String, ConstructorInfo>,
 }
 
 impl Environment {
@@ -67,6 +95,7 @@ impl Environment {
     pub fn new() -> Self {
         Environment {
             bindings: HashMap::new(),
+            constructors: HashMap::new(),
         }
     }
 
@@ -93,6 +122,14 @@ impl Environment {
         }
         new_env
     }
+    
+    pub fn register_constructor(&mut self, name: String, info: ConstructorInfo) {
+        self.constructors.insert(name, info);
+    }
+    
+    pub fn lookup_constructor(&self, name: &str) -> Option<&ConstructorInfo> {
+        self.constructors.get(name)
+    }
 }
 
 impl Default for Environment {
@@ -113,6 +150,12 @@ pub enum EvalError {
     FieldNotFound(String, Vec<String>),
     /// Expected record but got a different type
     RecordExpected(String),
+    /// Unknown constructor
+    UnknownConstructor(String),
+    /// Constructor arity mismatch: name, expected, got
+    ConstructorArityMismatch(String, usize, usize),
+    /// Pattern match is non-exhaustive
+    PatternMatchNonExhaustive,
 }
 
 impl fmt::Display for EvalError {
@@ -128,6 +171,15 @@ impl fmt::Display for EvalError {
             }
             EvalError::RecordExpected(got) => {
                 write!(f, "Expected record, got {got}")
+            }
+            EvalError::UnknownConstructor(name) => {
+                write!(f, "Unknown constructor: {}", name)
+            }
+            EvalError::ConstructorArityMismatch(name, expected, got) => {
+                write!(f, "Constructor {} expects {} arguments, got {}", name, expected, got)
+            }
+            EvalError::PatternMatchNonExhaustive => {
+                write!(f, "Pattern match is non-exhaustive")
             }
         }
     }
@@ -321,6 +373,34 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
                                 // Field not found in value record - pattern doesn't match
                                 return None;
                             }
+                        }
+                    }
+                    
+                    Some(current_env)
+                }
+                _ => None,
+            }
+        }
+        Pattern::Constructor(pattern_ctor, pattern_args) => {
+            // Constructor pattern matching
+            match value {
+                Value::Variant(value_ctor, value_args) => {
+                    // Constructor names must match
+                    if pattern_ctor != value_ctor {
+                        return None;
+                    }
+                    
+                    // Argument counts must match
+                    if pattern_args.len() != value_args.len() {
+                        return None;
+                    }
+                    
+                    // Match each argument recursively
+                    let mut current_env = env.clone();
+                    for (pat, val) in pattern_args.iter().zip(value_args.iter()) {
+                        match match_pattern(pat, val, &current_env) {
+                            Some(new_env) => current_env = new_env,
+                            None => return None,
                         }
                     }
                     
@@ -549,6 +629,45 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     Err(EvalError::RecordExpected(format!("{:?}", other)))
                 }
             }
+        }
+        
+        Expr::TypeDef { name, type_params: _, constructors, body } => {
+            // Register all constructors in the environment
+            let mut new_env = env.clone();
+            
+            for (ctor_name, ctor_types) in constructors {
+                let ctor_info = ConstructorInfo {
+                    type_name: name.clone(),
+                    arity: ctor_types.len(),
+                };
+                new_env.register_constructor(ctor_name.clone(), ctor_info);
+            }
+            
+            // Evaluate body in extended environment
+            eval(body, &new_env)
+        }
+        
+        Expr::Constructor(ctor_name, args) => {
+            // Look up constructor info
+            let ctor_info = env.lookup_constructor(ctor_name)
+                .ok_or_else(|| EvalError::UnknownConstructor(ctor_name.clone()))?;
+            
+            // Check arity
+            if args.len() != ctor_info.arity {
+                return Err(EvalError::ConstructorArityMismatch(
+                    ctor_name.clone(),
+                    ctor_info.arity,
+                    args.len()
+                ));
+            }
+            
+            // Evaluate all arguments
+            let mut values = Vec::new();
+            for arg in args {
+                values.push(eval(arg, env)?);
+            }
+            
+            Ok(Value::Variant(ctor_name.clone(), values))
         }
     }
 }

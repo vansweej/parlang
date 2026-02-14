@@ -25,6 +25,9 @@ pub enum Pattern {
     /// Record pattern: { field1: pattern1, field2: pattern2, ... }
     /// Can be partial (only match some fields)
     Record(Vec<(String, Pattern)>),
+    
+    /// Constructor pattern: Some x, Cons head tail, Left value
+    Constructor(String, Vec<Pattern>),
 }
 
 /// Type expressions for type aliases
@@ -38,6 +41,19 @@ pub enum TypeExpr {
     Fun(Box<TypeExpr>, Box<TypeExpr>),
     /// Type alias reference: Name
     Alias(String),
+}
+
+/// Type annotations for sum type definitions
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeAnnotation {
+    /// Concrete type: Int, Bool
+    Concrete(String),
+    /// Type variable: a, b, t
+    Var(String),
+    /// Function type: a -> b
+    Fun(Box<TypeAnnotation>, Box<TypeAnnotation>),
+    /// Applied type: Option Int, List a
+    App(String, Vec<TypeAnnotation>),
 }
 
 /// Expression types in the language
@@ -99,6 +115,23 @@ pub enum Expr {
     /// Field access: expr.field
     /// Accesses a named field from a record
     FieldAccess(Box<Expr>, String),
+    
+    /// Type definition: type Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
+    /// Introduces a new algebraic data type with constructors
+    TypeDef {
+        /// Type name (e.g., "Option", "Either", "List")
+        name: String,
+        /// Type parameters (e.g., ["a", "b"] for polymorphic types)
+        type_params: Vec<String>,
+        /// Constructors: (name, payload types)
+        /// e.g., [("Some", vec![TypeAnnotation::Var("a")]), ("None", vec![])]
+        constructors: Vec<(String, Vec<TypeAnnotation>)>,
+        /// Body expression where this type is in scope
+        body: Box<Expr>,
+    },
+    
+    /// Constructor application: Some 42, Cons 1 rest, Left x
+    Constructor(String, Vec<Expr>),
 }
 
 /// Binary operators
@@ -177,6 +210,28 @@ impl fmt::Display for Expr {
             Expr::FieldAccess(record, field) => {
                 write!(f, "{record}.{field}")
             }
+            Expr::TypeDef { name, type_params, constructors, body } => {
+                write!(f, "(type {}", name)?;
+                for param in type_params {
+                    write!(f, " {}", param)?;
+                }
+                write!(f, " =")?;
+                for (i, (ctor, types)) in constructors.iter().enumerate() {
+                    if i > 0 { write!(f, " |")?; }
+                    write!(f, " {}", ctor)?;
+                    for ty in types {
+                        write!(f, " {}", ty)?;
+                    }
+                }
+                write!(f, " in {})", body)
+            }
+            Expr::Constructor(name, args) => {
+                write!(f, "{}", name)?;
+                for arg in args {
+                    write!(f, " {}", arg)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -194,6 +249,23 @@ impl fmt::Display for TypeExpr {
                 }
             }
             TypeExpr::Alias(name) => write!(f, "{name}"),
+        }
+    }
+}
+
+impl fmt::Display for TypeAnnotation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TypeAnnotation::Concrete(name) => write!(f, "{}", name),
+            TypeAnnotation::Var(name) => write!(f, "{}", name),
+            TypeAnnotation::Fun(arg, ret) => write!(f, "({} -> {})", arg, ret),
+            TypeAnnotation::App(name, args) => {
+                write!(f, "{}", name)?;
+                for arg in args {
+                    write!(f, " {}", arg)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -232,6 +304,13 @@ impl fmt::Display for Pattern {
                     write!(f, "{name}: {pattern}")?;
                 }
                 write!(f, "}}")
+            }
+            Pattern::Constructor(name, patterns) => {
+                write!(f, "{}", name)?;
+                for pattern in patterns {
+                    write!(f, " {}", pattern)?;
+                }
+                Ok(())
             }
         }
     }
