@@ -315,8 +315,15 @@ parser! {
     {
         choice((
             // Try applied type first: List a, Option Int
+            // But reject "in" keyword
             attempt((
-                raw_identifier().skip(spaces()),
+                raw_identifier().then(|name| {
+                    if name == "in" {
+                        combine::unexpected("keyword").map(move |()| name.clone()).right()
+                    } else {
+                        combine::value(name).left()
+                    }
+                }).skip(spaces()),
                 many1(type_annotation_atom().skip(spaces()))
             ).map(|(name, args)| TypeAnnotation::App(name, args))),
             // Parenthesized type annotation
@@ -326,12 +333,17 @@ parser! {
                 type_annotation()
             )),
             // Simple identifier: Int, Bool, a, b
-            raw_identifier().map(|name| {
-                // Distinguish between concrete types (capitalized) and type variables
-                if name.chars().next().unwrap().is_uppercase() {
-                    TypeAnnotation::Concrete(name)
+            raw_identifier().then(|name| {
+                // Reject "in" keyword which could be confused with type annotation
+                if name == "in" {
+                    combine::unexpected("keyword").map(move |()| TypeAnnotation::Var(name.clone())).right()
                 } else {
-                    TypeAnnotation::Var(name)
+                    let result = if name.chars().next().unwrap().is_uppercase() {
+                        TypeAnnotation::Concrete(name)
+                    } else {
+                        TypeAnnotation::Var(name)
+                    };
+                    combine::value(result).left()
                 }
             }),
         ))
@@ -549,7 +561,7 @@ parser! {
                         Pattern::Literal(Literal::Int(value))
                     })
             }),
-            // Tuple pattern
+            // Parenthesized pattern or tuple pattern
             attempt(between(
                 token('(').skip(spaces()),
                 token(')'),
@@ -561,9 +573,15 @@ parser! {
                         match first_opt {
                             None => Pattern::Tuple(vec![]),
                             Some(first) => {
-                                let mut patterns = vec![first];
-                                patterns.extend(rest);
-                                Pattern::Tuple(patterns)
+                                if rest.is_empty() {
+                                    // Single element without comma: just return the pattern (parenthesized)
+                                    first
+                                } else {
+                                    // Multiple elements: create tuple
+                                    let mut patterns = vec![first];
+                                    patterns.extend(rest);
+                                    Pattern::Tuple(patterns)
+                                }
                             }
                         }
                     }),
@@ -608,7 +626,7 @@ parser! {
     {
         choice((
             attempt(type_def_expr()),  // Try type def before type alias
-            // attempt(type_alias_expr()),  // Temporarily disabled
+            attempt(type_alias_expr()),
             attempt(let_expr()),
             attempt(load_expr()),
             attempt(if_expr()),
