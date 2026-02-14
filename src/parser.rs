@@ -355,7 +355,7 @@ parser! {
              .skip(spaces()))),
             token('=').skip(spaces()),
             // First constructor (without |)
-            attempt((
+            (
                 // Constructor name (must start with uppercase)
                 (
                     combine::parser::char::upper(),
@@ -365,7 +365,7 @@ parser! {
                  .skip(spaces()),
                 // Constructor argument types
                 many(attempt(type_annotation_atom().skip(spaces())))
-            )),
+            ),
             // Additional constructors (each starting with |)
             many(attempt((
                 token('|').skip(spaces()),
