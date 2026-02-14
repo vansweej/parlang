@@ -245,14 +245,39 @@ The type system supports:
 
 ### Recursive Functions
 
-Recursive functions (using `rec`) are not yet supported by the type checker:
+Recursive functions (using `rec`) are now fully supported by the type checker:
 
 ```parlang
 > rec factorial -> fun n -> if n == 0 then 1 else n * factorial (n - 1)
-Type error: Recursive functions require type annotations
+Type: Int -> Int
+<function factorial>
 ```
 
-This is a known limitation. Full support for recursive functions would require fixpoint typing or explicit type annotations.
+The type checker uses **fixpoint typing** to infer the types of recursive functions. It:
+1. Creates a fresh type variable for the recursive function
+2. Adds the function name to the environment before checking the body
+3. Infers the body type with the recursive name available
+4. Unifies the inferred type with the assumed type
+
+**Examples:**
+
+```parlang
+# Factorial
+> let fact = rec f -> fun n -> if n == 0 then 1 else n * f (n - 1) in fact 5
+Type: Int
+3628800
+
+# Fibonacci
+> rec fib -> fun n -> if n <= 1 then n else fib (n - 1) + fib (n - 2)
+Type: Int -> Int
+<function fib>
+
+# Type error: wrong argument type
+> rec f -> fun n -> if n == 0 then 1 else f true
+Type error: Cannot unify types: Bool and Int
+```
+
+**Note:** Recursive functions are monomorphic (not generalized like let-bound functions), so a recursive identity function `rec f -> fun x -> x` cannot be used at multiple types within the same scope.
 
 ### Tuples and Pattern Matching
 
