@@ -270,6 +270,52 @@ Run a `.par` file:
 cargo run -- examples/simple.par
 ```
 
+### AST Visualization
+
+Dump the Abstract Syntax Tree (AST) to a DOT file for visualization:
+
+```bash
+# Dump AST to a DOT file (Graphviz format)
+cargo run -- examples/simple.par --dump-ast ast.dot
+
+# Or using short form
+cargo run -- examples/simple.par -d ast.dot
+```
+
+Then render the DOT file to an image using Graphviz:
+
+```bash
+# Install Graphviz (if not already installed)
+# Ubuntu/Debian: sudo apt install graphviz
+# macOS: brew install graphviz
+# Windows: choco install graphviz
+
+# Render to PNG
+dot -Tpng ast.dot -o ast.png
+
+# Or render to SVG (scalable)
+dot -Tsvg ast.dot -o ast.svg
+```
+
+The AST visualization is useful for:
+- Understanding program structure
+- Debugging parser behavior
+- Learning how expressions are represented internally
+- Documentation and teaching
+
+### Command-Line Options
+
+```bash
+# Show help
+cargo run -- --help
+
+# Show version
+cargo run -- --version
+
+# Start REPL explicitly
+cargo run -- repl
+```
+
 ## Examples
 
 See the `examples/` directory for sample programs:
@@ -299,6 +345,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Parser Module](docs/MODULE_PARSER.md)** - Parser implementation using combinators
 - **[Evaluator Module](docs/MODULE_EVAL.md)** - Expression evaluation and runtime
 - **[Main Module](docs/MODULE_MAIN.md)** - CLI and REPL interface
+- **[DOT Module](docs/MODULE_DOT.md)** - AST visualization in Graphviz DOT format
 
 ### 📖 API Reference
 - **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation for using ParLang as a library
@@ -310,7 +357,8 @@ The language implementation consists of:
 1. **AST** (`src/ast.rs`): Abstract syntax tree definitions for expressions
 2. **Parser** (`src/parser.rs`): Parser built with the `combine` library
 3. **Evaluator** (`src/eval.rs`): Interpreter that evaluates expressions
-4. **REPL/CLI** (`src/main.rs`): Command-line interface
+4. **DOT** (`src/dot.rs`): AST visualization in Graphviz DOT format
+5. **REPL/CLI** (`src/main.rs`): Command-line interface using clap
 
 For detailed architecture information, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

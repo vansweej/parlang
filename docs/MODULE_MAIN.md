@@ -7,18 +7,19 @@ The `main.rs` module implements the command-line interface and Read-Eval-Print L
 **Location**: `src/main.rs`  
 **Lines of Code**: ~116  
 **Key Functions**: `main()`, `repl()`, `execute()`  
-**External Dependencies**: Standard library only (`std::env`, `std::fs`, `std::io`)
+**External Dependencies**: clap 4.5 (CLI parsing), Standard library (`std::fs`, `std::io`)
 
 ## Purpose
 
 The main module is responsible for:
 
-1. **Command-Line Interface**: Parsing arguments and routing to appropriate execution mode
+1. **Command-Line Interface**: Parsing arguments using clap and routing to appropriate execution mode
 2. **REPL Mode**: Providing interactive expression evaluation with immediate feedback
 3. **File Execution**: Loading and executing ParLang programs from files
-4. **User Interaction**: Handling input/output and presenting results
-5. **Error Handling**: Catching and reporting parse and evaluation errors
-6. **Exit Codes**: Returning appropriate exit codes for file execution errors
+4. **AST Visualization**: Optionally dumping AST to DOT format (Graphviz)
+5. **User Interaction**: Handling input/output and presenting results
+6. **Error Handling**: Catching and reporting parse and evaluation errors
+7. **Exit Codes**: Returning appropriate exit codes for file execution errors
 
 ## Architecture
 
@@ -84,16 +85,95 @@ graph LR
     MAIN --> IO
 ```
 
+## CLI Structure
+
+The main module uses [clap](https://github.com/clap-rs/clap) v4.5 with derive macros for command-line argument parsing, providing a robust and user-friendly CLI interface.
+
+### CLI Definition
+
+```rust
+#[derive(Parser)]
+#[command(name = "parlang")]
+#[command(author, version, about = "A small ML-alike functional language", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    /// Input file to execute (.par file)
+    file: Option<String>,
+
+    /// Dump AST to DOT file (Graphviz format)
+    #[arg(short, long, value_name = "FILE")]
+    dump_ast: Option<String>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start interactive REPL
+    Repl,
+}
+```
+
+### Available Commands and Options
+
+**REPL Mode**:
+```bash
+parlang                    # Start REPL (default if no arguments)
+parlang repl              # Explicitly start REPL
+```
+
+**File Execution**:
+```bash
+parlang <FILE>            # Execute a .par file
+parlang examples/simple.par
+```
+
+**AST Visualization**:
+```bash
+parlang <FILE> --dump-ast <OUTPUT>     # Execute and dump AST to DOT file
+parlang <FILE> -d <OUTPUT>             # Short form
+parlang script.par --dump-ast ast.dot  # Example
+```
+
+**Help and Version**:
+```bash
+parlang --help            # Show help message
+parlang -h                # Short form
+parlang --version         # Show version
+parlang -V                # Short form
+```
+
+### Help Output
+
+```
+$ parlang --help
+A small ML-alike functional language
+
+Usage: parlang [OPTIONS] [FILE] [COMMAND]
+
+Commands:
+  repl  Start interactive REPL
+  help  Print this message or the help of the given subcommand(s)
+
+Arguments:
+  [FILE]  Input file to execute (.par file)
+
+Options:
+  -d, --dump-ast <FILE>  Dump AST to DOT file (Graphviz format)
+  -h, --help             Print help
+  -V, --version          Print version
+```
+
 ## Execution Modes
 
 ### Mode Selection Flow
 
 ```mermaid
 flowchart TD
-    START[Program Start] --> ARGS{Check<br/>command-line<br/>arguments}
+    START[Program Start] --> PARSE[Parse CLI args<br/>with clap]
     
-    ARGS -->|args.len == 1<br/>no file| REPL_MODE[REPL Mode]
-    ARGS -->|args.len > 1<br/>has file| FILE_MODE[File Execution Mode]
+    PARSE -->|No file arg<br/>or 'repl' command| REPL_MODE[REPL Mode]
+    PARSE -->|File arg provided| FILE_MODE[File Execution Mode]
     
     REPL_MODE --> REPL_INIT[Print welcome banner]
     REPL_INIT --> REPL_LOOP[Enter REPL loop]
@@ -101,22 +181,36 @@ flowchart TD
     REPL_END --> EXIT_0[Exit code 0]
     
     FILE_MODE --> READ{Read file}
-    READ -->|success| EXECUTE[Execute contents]
+    READ -->|success| PARSE_FILE[Parse file contents]
     READ -->|error| FILE_ERROR[Print error message]
+    
+    PARSE_FILE -->|parse ok| DUMP{--dump-ast<br/>specified?}
+    PARSE_FILE -->|parse error| PARSE_ERROR[Print error]
+    
+    DUMP -->|yes| WRITE_DOT[Write AST to DOT file]
+    DUMP -->|no| EXECUTE
+    
+    WRITE_DOT -->|success| EXECUTE[Execute contents]
+    WRITE_DOT -->|error| DOT_ERROR[Print error message]
     
     EXECUTE -->|success| PRINT[Print result]
     EXECUTE -->|error| EXEC_ERROR[Print error message]
     
     PRINT --> EXIT_0
     FILE_ERROR --> EXIT_1[Exit code 1]
+    PARSE_ERROR --> EXIT_1
+    DOT_ERROR --> EXIT_1
     EXEC_ERROR --> EXIT_1
 ```
 
 ### 1. REPL Mode (Interactive)
 
-**Activated**: When program is run without arguments
+**Activated**: When program is run without arguments or with `repl` subcommand
 
-**Command**: `parlang` or `cargo run`
+**Commands**: 
+- `parlang` 
+- `parlang repl`
+- `cargo run`
 
 **Behavior**:
 - Displays welcome banner with version information
@@ -132,14 +226,58 @@ flowchart TD
 
 **Activated**: When program is run with a filename argument
 
-**Command**: `parlang script.par` or `cargo run script.par`
+**Commands**: 
+- `parlang script.par`
+- `parlang script.par --dump-ast ast.dot`
+- `cargo run -- script.par`
 
 **Behavior**:
 - Reads the specified file
 - Parses the entire file contents as a single expression
+- **Optional**: If `--dump-ast` is specified, writes the AST to a DOT file before execution
 - Evaluates the expression in a fresh environment
 - Prints the final result value
 - Exits with code 0 on success, code 1 on any error
+
+### 3. AST Visualization (DOT Format)
+
+The `--dump-ast` option allows you to visualize the Abstract Syntax Tree of your ParLang programs.
+
+**Usage**:
+```bash
+parlang examples/simple.par --dump-ast simple.dot
+```
+
+**Output**: A Graphviz DOT file representing the AST structure that can be rendered with:
+```bash
+dot -Tpng simple.dot -o simple.png
+dot -Tsvg simple.dot -o simple.svg
+```
+
+**Example DOT Output**:
+```dot
+digraph AST {
+  node [shape=box, style=rounded];
+  edge [fontsize=10];
+
+  node0 [label="Let\ndouble"];
+  node1 [label="Fun\nx"];
+  node2 [label="BinOp\n+"];
+  node3 [label="Var\nx"];
+  node4 [label="Var\nx"];
+  node2 -> node3 [label="left"];
+  node2 -> node4 [label="right"];
+  node1 -> node2 [label="body"];
+  node0 -> node1 [label="value"];
+  ...
+}
+```
+
+**Features**:
+- Visualizes all AST nodes (expressions, patterns, operations)
+- Shows relationships between nodes with labeled edges
+- Supports all ParLang constructs (let, fun, match, tuples, etc.)
+- Useful for understanding program structure and debugging
 
 ## Function Documentation
 
