@@ -225,6 +225,7 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
 fn type_annotation_to_type(
     annotation: &crate::ast::TypeAnnotation,
     type_param_map: &HashMap<String, Type>,
+    env: &mut TypeEnv,
 ) -> Type {
     match annotation {
         crate::ast::TypeAnnotation::Concrete(name) => {
@@ -232,7 +233,8 @@ fn type_annotation_to_type(
                 "Int" => Type::Int,
                 "Bool" => Type::Bool,
                 _ => {
-                    // Unknown concrete type - treat as a sum type with no args
+                    // User-defined sum type (not a built-in primitive)
+                    // Treat as a sum type with no arguments
                     Type::SumType(name.clone(), vec![])
                 }
             }
@@ -240,21 +242,21 @@ fn type_annotation_to_type(
         crate::ast::TypeAnnotation::Var(name) => {
             // Look up the type variable in the parameter map
             type_param_map.get(name).cloned().unwrap_or_else(|| {
-                // If not found, create a fresh type variable
-                // This shouldn't happen in a well-formed program
-                Type::Var(TypeVar(0))
+                // Type parameter not found in map - generate a fresh variable
+                // This handles the case where a type parameter is used but not declared
+                env.fresh_var()
             })
         }
         crate::ast::TypeAnnotation::Fun(arg, ret) => {
             Type::Fun(
-                Box::new(type_annotation_to_type(arg, type_param_map)),
-                Box::new(type_annotation_to_type(ret, type_param_map)),
+                Box::new(type_annotation_to_type(arg, type_param_map, env)),
+                Box::new(type_annotation_to_type(ret, type_param_map, env)),
             )
         }
         crate::ast::TypeAnnotation::App(name, args) => {
             let arg_types: Vec<Type> = args
                 .iter()
-                .map(|arg| type_annotation_to_type(arg, type_param_map))
+                .map(|arg| type_annotation_to_type(arg, type_param_map, env))
                 .collect();
             Type::SumType(name.clone(), arg_types)
         }
@@ -274,6 +276,8 @@ pub enum TypeError {
     RecordExpected(String),
     /// Record type field mismatch during unification
     RecordFieldMismatch,
+    /// Constructor applied with wrong number of arguments: constructor name, expected, actual
+    ConstructorArityMismatch(String, usize, usize),
 }
 
 impl fmt::Display for TypeError {
@@ -299,6 +303,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::RecordFieldMismatch => {
                 write!(f, "Record types have different fields")
+            }
+            TypeError::ConstructorArityMismatch(name, expected, actual) => {
+                write!(f, "Constructor '{name}' expects {expected} arguments, but got {actual}")
             }
         }
     }
@@ -682,13 +689,17 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 
                 // Check that the number of arguments matches
                 if arg_types.len() != info.payload_types.len() {
-                    // For now, just return a fresh type variable if mismatch
-                    return Ok((env.fresh_var(), subst));
+                    // Return an error for argument count mismatch
+                    return Err(TypeError::ConstructorArityMismatch(
+                        name.clone(),
+                        info.payload_types.len(),
+                        arg_types.len(),
+                    ));
                 }
                 
                 // Unify each argument with its expected type
                 for (arg_ty, expected_annotation) in arg_types.iter().zip(&info.payload_types) {
-                    let expected_ty = type_annotation_to_type(expected_annotation, &type_param_map);
+                    let expected_ty = type_annotation_to_type(expected_annotation, &type_param_map, env);
                     let s = unify(arg_ty, &expected_ty)?;
                     subst = compose_subst(&s, &subst);
                 }

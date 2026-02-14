@@ -347,3 +347,41 @@ fn test_tree_type() {
         _ => panic!("Expected SumType"),
     }
 }
+
+/// Test constructor arity mismatch error
+#[test]
+fn test_constructor_arity_mismatch_too_few() {
+    let input = r#"
+        type Option a = Some a | None in
+        Some
+    "#;
+    let expr = parse(input).expect("Parse failed");
+    let result = typecheck(&expr);
+    // Some expects 1 argument but got 0
+    assert!(result.is_err(), "Expected type error for arity mismatch");
+}
+
+/// Test constructor arity mismatch error - too many args
+#[test]
+fn test_constructor_arity_mismatch_too_many() {
+    let input = r#"
+        type Option a = Some a | None in
+        None 42
+    "#;
+    let expr = parse(input).expect("Parse failed");
+    let result = typecheck(&expr);
+    // None expects 0 arguments but got 1
+    assert!(result.is_err(), "Expected type error for arity mismatch");
+}
+
+/// Test correct arity for multi-argument constructor
+#[test]
+fn test_multi_arg_constructor_correct() {
+    let input = r#"
+        type Tree a = Leaf a | Node (Tree a) (Tree a) in
+        Node (Leaf 1) (Leaf 2)
+    "#;
+    let expr = parse(input).expect("Parse failed");
+    let result = typecheck(&expr);
+    assert!(result.is_ok(), "Type check failed: {:?}", result.err());
+}
