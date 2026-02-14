@@ -37,6 +37,9 @@ pub enum Type {
     /// All elements have the same type T, array has fixed size n
     /// E.g., Array[Int, 3] is an array of 3 integers
     Array(Box<Type>, usize),
+    /// Reference type: Ref T
+    /// Represents a mutable reference to a value of type T
+    Ref(Box<Type>),
 }
 
 /// Type variable identifier
@@ -118,6 +121,9 @@ impl fmt::Display for Type {
             }
             Type::Array(elem_type, size) => {
                 write!(f, "Array[{elem_type}, {size}]")
+            }
+            Type::Ref(inner) => {
+                write!(f, "Ref {inner}")
             }
         }
     }

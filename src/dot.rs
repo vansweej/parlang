@@ -266,6 +266,23 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             output.push_str(&format!("  {node_id} -> {arr_id} [label=\"array\"];\n"));
             output.push_str(&format!("  {node_id} -> {index_id} [label=\"index\"];\n"));
         }
+        Expr::Ref(expr) => {
+            output.push_str(&format!("  {node_id} [label=\"Ref\"];\n"));
+            let expr_id = expr_to_dot(expr, output, gen);
+            output.push_str(&format!("  {node_id} -> {expr_id} [label=\"value\"];\n"));
+        }
+        Expr::Deref(expr) => {
+            output.push_str(&format!("  {node_id} [label=\"Deref\"];\n"));
+            let expr_id = expr_to_dot(expr, output, gen);
+            output.push_str(&format!("  {node_id} -> {expr_id} [label=\"ref\"];\n"));
+        }
+        Expr::RefAssign(ref_expr, value) => {
+            output.push_str(&format!("  {node_id} [label=\"RefAssign\"];\n"));
+            let ref_id = expr_to_dot(ref_expr, output, gen);
+            let value_id = expr_to_dot(value, output, gen);
+            output.push_str(&format!("  {node_id} -> {ref_id} [label=\"ref\"];\n"));
+            output.push_str(&format!("  {node_id} -> {value_id} [label=\"value\"];\n"));
+        }
     }
     
     node_id
