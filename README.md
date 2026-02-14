@@ -6,7 +6,7 @@ A small ML-alike functional language written in Rust, with a parser built using 
 
 ParLang is a simple functional programming language with:
 
-- **Basic Types**: Integers and booleans
+- **Basic Types**: Integers, booleans, characters, and floating point numbers
 - **Type Inference**: Optional Hindley-Milner type system with automatic type inference
 - **Type Aliases**: Define alternative names for types for better code documentation
 - **Generic Types**: Full support for parameterized types (Option Int, List Bool, Either A B)
@@ -31,8 +31,11 @@ ParLang is a simple functional programming language with:
 ```
 42          # Integer
 -10         # Negative integer
+3.14        # Float
+-2.5        # Negative float
 true        # Boolean
 false       # Boolean
+'a'         # Character
 ```
 
 ### Variables and Let Bindings

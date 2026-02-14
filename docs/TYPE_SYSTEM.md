@@ -8,11 +8,40 @@ The type system is optional and can be enabled in the REPL using the `PARLANG_TY
 
 ## Basic Types
 
-ParLang has three basic types:
+ParLang has four basic types:
 
 - **Int**: Integer values (e.g., `42`, `-10`, `0`)
 - **Bool**: Boolean values (`true`, `false`)
 - **Char**: Character values (e.g., `'a'`, `'Z'`, `'\n'`)
+- **Float**: Floating point values (e.g., `3.14`, `-2.5`, `0.0`)
+
+### Integer Type
+
+The `Int` type represents 64-bit signed integers.
+
+**Syntax:**
+```parlang
+42       # positive integer
+-10      # negative integer
+0        # zero
+```
+
+**Supported Operations:**
+- Arithmetic: `+`, `-`, `*`, `/`
+- Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
+
+### Boolean Type
+
+The `Bool` type represents boolean truth values.
+
+**Syntax:**
+```parlang
+true     # true value
+false    # false value
+```
+
+**Supported Operations:**
+- Equality: `==`, `!=`
 
 ### Character Type
 
@@ -53,6 +82,56 @@ Char literals can be used in pattern matching:
 > match 'a' with | 'a' -> 1 | 'b' -> 2 | _ -> 3
 Type: Int
 1
+```
+
+### Floating Point Type
+
+The `Float` type represents 64-bit floating point numbers (IEEE 754 double precision).
+
+**Syntax:**
+```parlang
+3.14     # positive float
+-2.5     # negative float
+0.0      # zero
+123.456  # multi-digit float
+```
+
+**Supported Operations:**
+- Arithmetic: `+`, `-`, `*`, `/`
+- Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
+
+**Type Inference:**
+```parlang
+> 3.14
+Type: Float
+3.14
+
+> fun x -> x + 1.0
+Type: Float -> Float
+
+> 2.5 < 3.5
+Type: Bool
+true
+```
+
+**Important Notes:**
+- Float and Int are separate types and cannot be mixed in arithmetic operations
+- Floating point comparisons may have precision issues due to the nature of IEEE 754
+- Division by zero returns an error
+
+**Examples:**
+```parlang
+> 1.5 + 2.5
+Type: Float
+4.0
+
+> 10.0 / 4.0
+Type: Float
+2.5
+
+> let pi = 3.14159 in pi * 2.0
+Type: Float
+6.28318
 ```
 
 ## Function Types
