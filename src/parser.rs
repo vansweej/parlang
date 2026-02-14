@@ -125,6 +125,12 @@ where
         .skip(combine::not_followed_by(alpha_num().or(token('_'))))
 }
 
+/// Reserved keywords that cannot be used as identifiers
+const KEYWORDS: &[&str] = &[
+    "let", "in", "if", "then", "else", "fun", "true", "false", 
+    "load", "rec", "match", "with", "type", "ref"
+];
+
 /// Parse an identifier (variable name) - ensures it's not a keyword
 fn identifier<Input>() -> impl Parser<Input, Output = String>
 where
@@ -133,10 +139,7 @@ where
 {
     raw_identifier().then(|name: String| {
         // Reject keywords by returning a failing parser
-        if matches!(
-            name.as_str(),
-            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with" | "type" | "ref"
-        ) {
+        if KEYWORDS.contains(&name.as_str()) {
             // Use a parser that will never succeed to reject keywords
             combine::unexpected("keyword").map(move |()| name.clone()).right()
         } else {
@@ -823,7 +826,7 @@ parser! {
     {
         choice((
             // Parse dereference: !expr
-            attempt((token('!').skip(spaces()), proj_expr().skip(spaces()))
+            attempt((token('!').skip(spaces()), proj_expr())
                 .map(|(_, expr)| Expr::Deref(Box::new(expr)))),
             // Otherwise just parse projection expression
             proj_expr()
