@@ -3,47 +3,94 @@
 /// This executable provides:
 /// - REPL mode for interactive evaluation
 /// - File execution mode for running .par files
+/// - AST dumping to DOT format for visualization
 
-use parlang::{parse, eval, extract_bindings, Environment, Value};
-use std::env;
+use clap::{Parser, Subcommand};
+use parlang::{parse, eval, extract_bindings, dot, Environment};
 use std::fs;
 use std::io::{self, Write};
+use std::process;
+
+#[derive(Parser)]
+#[command(name = "parlang")]
+#[command(author, version, about = "A small ML-alike functional language", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    /// Input file to execute (.par file)
+    file: Option<String>,
+
+    /// Dump AST to DOT file (Graphviz format)
+    #[arg(short, long, value_name = "FILE")]
+    dump_ast: Option<String>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Start interactive REPL
+    Repl,
+}
 
 #[cfg(not(tarpaulin_include))]
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let cli = Cli::parse();
 
-    if args.len() > 1 {
-        // File execution mode
-        let filename = &args[1];
+    // Handle REPL command or no arguments
+    if cli.command.is_some() || (cli.file.is_none() && cli.dump_ast.is_none()) {
+        // REPL mode
+        println!("ParLang v{} - A small ML-alike functional language", env!("CARGO_PKG_VERSION"));
+        println!("Type expressions to evaluate them. Press Ctrl+C to exit.");
+        println!();
+        repl();
+        return;
+    }
+
+    // File execution mode
+    if let Some(filename) = &cli.file {
         match fs::read_to_string(filename) {
             Ok(contents) => {
-                match execute(&contents) {
-                    Ok(value) => println!("{}", value),
+                // Parse the file
+                match parse(&contents) {
+                    Ok(expr) => {
+                        // Dump AST if requested
+                        if let Some(dot_file) = &cli.dump_ast {
+                            match dot::write_ast_to_dot_file(&expr, dot_file) {
+                                Ok(_) => {
+                                    eprintln!("AST dumped to: {}", dot_file);
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to write DOT file '{}': {}", dot_file, e);
+                                    process::exit(1);
+                                }
+                            }
+                        }
+
+                        // Execute the program
+                        let env = Environment::new();
+                        match eval(&expr, &env).map_err(|e| e.to_string()) {
+                            Ok(value) => println!("{}", value),
+                            Err(e) => {
+                                eprintln!("Error: {}", e);
+                                process::exit(1);
+                            }
+                        }
+                    }
                     Err(e) => {
-                        eprintln!("Error: {}", e);
-                        std::process::exit(1);
+                        eprintln!("Parse error: {}", e);
+                        process::exit(1);
                     }
                 }
             }
             Err(e) => {
                 eprintln!("Failed to read file '{}': {}", filename, e);
-                std::process::exit(1);
+                process::exit(1);
             }
         }
-    } else {
-        // REPL mode
-        println!("ParLang v0.1.0 - A small ML-alike functional language");
-        println!("Type expressions to evaluate them. Press Ctrl+C to exit.");
-        println!();
-        repl();
+    } else if cli.dump_ast.is_some() {
+        eprintln!("Error: --dump-ast requires a file argument");
+        process::exit(1);
     }
-}
-
-fn execute(source: &str) -> Result<Value, String> {
-    let expr = parse(source)?;
-    let env = Environment::new();
-    eval(&expr, &env).map_err(|e| e.to_string())
 }
 
 fn repl() {
