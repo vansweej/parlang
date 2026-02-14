@@ -536,3 +536,272 @@ fn test_incomplete_expression_function() {
     assert!(parse("fun x ->").is_err());
     assert!(parse("let f = fun x ->").is_err());
 }
+
+// ============================================================================
+// Recursion Tests
+// ============================================================================
+
+#[test]
+fn test_rec_simple_identity() {
+    // Simple recursive function that just returns its argument (base case)
+    let result = parse_and_eval("(rec f -> fun n -> n) 42");
+    assert_eq!(result, Ok(Value::Int(42)));
+}
+
+#[test]
+fn test_rec_factorial() {
+    // Classic factorial using recursion
+    let factorial = r#"
+        (rec factorial -> fun n ->
+            if n == 0
+            then 1
+            else n * factorial (n - 1)
+        ) 5
+    "#;
+    assert_eq!(parse_and_eval(factorial), Ok(Value::Int(120)));
+}
+
+#[test]
+fn test_rec_factorial_larger() {
+    // Factorial of 10
+    let factorial = r#"
+        (rec factorial -> fun n ->
+            if n == 0
+            then 1
+            else n * factorial (n - 1)
+        ) 10
+    "#;
+    assert_eq!(parse_and_eval(factorial), Ok(Value::Int(3628800)));
+}
+
+#[test]
+fn test_rec_fibonacci() {
+    // Fibonacci sequence using recursion
+    let fib = r#"
+        (rec fib -> fun n ->
+            if n == 0
+            then 0
+            else if n == 1
+            then 1
+            else fib (n - 1) + fib (n - 2)
+        ) 10
+    "#;
+    assert_eq!(parse_and_eval(fib), Ok(Value::Int(55)));
+}
+
+#[test]
+fn test_rec_sum_to_n() {
+    // Sum from 1 to n using recursion (not tail recursive, so keep it small)
+    let sum = r#"
+        (rec sum -> fun n ->
+            if n == 0
+            then 0
+            else n + sum (n - 1)
+        ) 10
+    "#;
+    assert_eq!(parse_and_eval(sum), Ok(Value::Int(55)));
+}
+
+#[test]
+fn test_rec_countdown() {
+    // Countdown to zero
+    let countdown = r#"
+        (rec countdown -> fun n ->
+            if n == 0
+            then 0
+            else countdown (n - 1)
+        ) 10
+    "#;
+    assert_eq!(parse_and_eval(countdown), Ok(Value::Int(0)));
+}
+
+#[test]
+fn test_rec_with_let() {
+    // Recursive function with let binding
+    let code = r#"
+        let fact = rec factorial -> fun n ->
+            if n == 0
+            then 1
+            else n * factorial (n - 1)
+        in fact 6
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(720)));
+}
+
+#[test]
+fn test_rec_power() {
+    // Compute x^n using recursion
+    let power = r#"
+        (rec pow -> fun n ->
+            if n == 0
+            then 1
+            else 2 * pow (n - 1)
+        ) 8
+    "#;
+    assert_eq!(parse_and_eval(power), Ok(Value::Int(256)));
+}
+
+#[test]
+fn test_rec_even_odd() {
+    // Test even using mutual recursion simulation (via helper)
+    let even = r#"
+        (rec is_even -> fun n ->
+            if n == 0
+            then true
+            else if n == 1
+            then false
+            else is_even (n - 2)
+        ) 10
+    "#;
+    assert_eq!(parse_and_eval(even), Ok(Value::Bool(true)));
+    
+    let odd = r#"
+        (rec is_even -> fun n ->
+            if n == 0
+            then true
+            else if n == 1
+            then false
+            else is_even (n - 2)
+        ) 11
+    "#;
+    assert_eq!(parse_and_eval(odd), Ok(Value::Bool(false)));
+}
+
+#[test]
+fn test_rec_tail_call_optimization() {
+    // Test simple tail recursion with smaller number
+    let sum = r#"
+        let sum_helper = rec helper -> fun acc -> fun n ->
+            if n == 0
+            then acc
+            else helper (acc + n) (n - 1)
+        in sum_helper 0 100
+    "#;
+    assert_eq!(parse_and_eval(sum), Ok(Value::Int(5050)));
+}
+
+#[test]
+fn test_rec_gcd() {
+    // Greatest common divisor using Euclidean algorithm
+    let gcd = r#"
+        (rec gcd -> fun a -> fun b ->
+            if b == 0
+            then a
+            else gcd b (a - (a / b) * b)
+        ) 48 18
+    "#;
+    assert_eq!(parse_and_eval(gcd), Ok(Value::Int(6)));
+}
+
+#[test]
+fn test_rec_nested_calls() {
+    // Test recursive function with nested arithmetic
+    let code = r#"
+        (rec f -> fun n ->
+            if n == 0
+            then 0
+            else (f (n - 1)) + n
+        ) 5
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(15)));
+}
+
+#[test]
+fn test_rec_comparison_in_recursion() {
+    // Test comparison operators in recursive function
+    let max_value = r#"
+        (rec find_max -> fun current -> fun n ->
+            if n == 0
+            then current
+            else if n > current
+            then find_max n (n - 1)
+            else find_max current (n - 1)
+        ) 0 10
+    "#;
+    assert_eq!(parse_and_eval(max_value), Ok(Value::Int(10)));
+}
+
+#[test]
+fn test_rec_multiple_base_cases() {
+    // Recursive function with multiple base cases
+    let fib_like = r#"
+        (rec f -> fun n ->
+            if n == 0
+            then 1
+            else if n == 1
+            then 1
+            else if n == 2
+            then 2
+            else f (n - 1) + f (n - 2)
+        ) 6
+    "#;
+    assert_eq!(parse_and_eval(fib_like), Ok(Value::Int(13)));
+}
+
+#[test]
+fn test_rec_with_boolean_result() {
+    // Recursive function returning boolean
+    let is_positive = r#"
+        (rec check -> fun n ->
+            if n > 0
+            then true
+            else false
+        ) 5
+    "#;
+    assert_eq!(parse_and_eval(is_positive), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn test_rec_seq_binding() {
+    // Test recursive function with sequential bindings
+    let code = r#"
+        let factorial = rec f -> fun n ->
+            if n == 0
+            then 1
+            else n * f (n - 1);
+        factorial 5
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(120)));
+}
+
+#[test]
+fn test_rec_repl_persistence() {
+    // Test that recursive functions persist in REPL environment
+    let env = Environment::new();
+    let (_, env) = parse_eval_and_extract(
+        "let factorial = rec f -> fun n -> if n == 0 then 1 else n * f (n - 1);",
+        &env,
+    )
+    .unwrap();
+    let (result, _) = parse_eval_and_extract("factorial 5", &env).unwrap();
+    assert_eq!(result, Value::Int(120));
+}
+
+#[test]
+fn test_rec_curried_function() {
+    // Test recursive function with currying
+    let code = r#"
+        let add_up_to = rec f -> fun acc -> fun n ->
+            if n == 0
+            then acc
+            else f (acc + n) (n - 1)
+        in let add_from_zero = add_up_to 0
+        in add_from_zero 10
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(55)));
+}
+
+#[test]
+fn test_rec_error_non_function_body() {
+    // rec expression body must be a function
+    let result = parse_and_eval("(rec f -> 42) 5");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("must be a function"));
+}
+
+#[test]
+fn test_rec_non_recursive_function() {
+    // A recursive function that doesn't actually recurse (valid but non-recursive)
+    let result = parse_and_eval("(rec f -> fun x -> x + 1) 41");
+    assert_eq!(result, Ok(Value::Int(42)));
+}

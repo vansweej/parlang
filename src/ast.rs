@@ -36,6 +36,10 @@ pub enum Expr {
     /// Sequential let bindings: let x = e1; let y = e2; expr
     /// Vector of (name, value) pairs, followed by a body expression
     Seq(Vec<(String, Expr)>, Box<Expr>),
+    
+    /// Recursive function definition: rec name -> body
+    /// The function can reference itself by name within its body
+    Rec(String, Box<Expr>),
 }
 
 /// Binary operators
@@ -79,6 +83,7 @@ impl fmt::Display for Expr {
                 }
                 write!(f, "; {})", body)
             }
+            Expr::Rec(name, body) => write!(f, "(rec {} -> {})", name, body),
         }
     }
 }
@@ -425,5 +430,26 @@ mod tests {
             format!("{}", expr),
             "(let f = (fun x -> (x + 1)) in (f 41))"
         );
+    }
+
+    #[test]
+    fn test_expr_rec() {
+        let expr = Expr::Rec("f".to_string(), Box::new(Expr::Var("f".to_string())));
+        assert_eq!(
+            expr,
+            Expr::Rec("f".to_string(), Box::new(Expr::Var("f".to_string())))
+        );
+    }
+
+    #[test]
+    fn test_display_rec() {
+        let expr = Expr::Rec(
+            "factorial".to_string(),
+            Box::new(Expr::Fun(
+                "n".to_string(),
+                Box::new(Expr::Var("n".to_string())),
+            )),
+        );
+        assert_eq!(format!("{}", expr), "(rec factorial -> (fun n -> n))");
     }
 }

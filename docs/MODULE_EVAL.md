@@ -55,9 +55,10 @@ The `Value` enum represents all possible runtime values in ParLang:
 ```rust
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-    Int(i64),                              // Integer value
-    Bool(bool),                            // Boolean value
-    Closure(String, Expr, Environment),    // Function closure
+    Int(i64),                                          // Integer value
+    Bool(bool),                                        // Boolean value
+    Closure(String, Expr, Environment),                // Function closure
+    RecClosure(String, String, Expr, Environment),     // Recursive function closure
 }
 ```
 
@@ -147,6 +148,38 @@ Value::Closure(
 **Display**: `<function x>` (shows parameter name, hides body)
 
 **Key Feature**: Closures capture their defining environment, enabling lexical scoping.
+
+#### 4. `RecClosure(String, String, Expr, Environment)` - Recursive Function Closure
+
+Represents a recursive function value that can reference itself by name.
+
+**Components**:
+- **Function name** (`String`): The recursive function's name (for self-reference)
+- **Parameter name** (`String`): The function's parameter
+- **Body** (`Expr`): The function's body expression
+- **Captured environment** (`Environment`): Variable bindings from the definition site
+
+**Example**:
+```rust
+// rec factorial -> fun n -> if n == 0 then 1 else n * factorial (n - 1)
+Value::RecClosure(
+    "factorial".to_string(),
+    "n".to_string(),
+    Expr::If(
+        Box::new(Expr::BinOp(BinOp::Eq, ...)),
+        Box::new(Expr::Int(1)),
+        Box::new(Expr::BinOp(BinOp::Mul, ...))
+    ),
+    env
+)
+```
+
+**Display**: `<recursive function factorial>` (shows function name, hides body)
+
+**Key Features**:
+- Self-reference: The function name is bound within its own body
+- Tail call optimization: Direct tail calls use iteration instead of recursion
+- Lexical scoping: Captures the environment at definition time
 
 ### Environment Management
 

@@ -64,12 +64,12 @@ The lexical structure consists of the following token categories:
 Keywords are reserved identifiers with special syntactic meaning:
 
 ```
-let     in      if      then    else    fun     true    false   load
+let     in      if      then    else    fun     true    false   load    rec
 ```
 
 **Formal Definition:**
 ```
-keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load"
+keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec"
 ```
 
 #### 2.2.2 Identifiers
@@ -215,6 +215,7 @@ primary_expr ::= atom
               | let_expr
               | load_expr
               | if_expr
+              | rec_expr
               | fun_expr
 
 (* Atomic expressions *)
@@ -229,6 +230,8 @@ let_expr ::= "let" identifier '=' expression "in" expression
 load_expr ::= "load" string_literal "in" expression
 
 if_expr ::= "if" expression "then" expression "else" expression
+
+rec_expr ::= "rec" identifier "->" expression
 
 fun_expr ::= "fun" identifier "->" expression
 
@@ -351,6 +354,7 @@ ParLang uses **big-step operational semantics** (natural semantics) with an envi
 Value ::= Int(i64)
         | Bool(bool)
         | Closure(param: String, body: Expr, env: Environment)
+        | RecClosure(name: String, param: String, body: Expr, env: Environment)
 ```
 
 #### 5.1.2 Environments
@@ -553,6 +557,58 @@ x * y
 
 ∅ ⊢ (fun x -> fun y -> x + y) 3 4 ⇓ Int(7)  (currying)
 ```
+
+#### 5.2.7b Recursive Functions
+
+```
+body = fun param -> expr
+──────────────────────────────────────────────────  [E-REC]
+Γ ⊢ rec name -> body ⇓ RecClosure(name, param, expr, Γ)
+```
+
+**Semantics:**
+- A `rec` expression creates a **recursive closure** that can reference itself
+- The body of a `rec` expression must be a function definition
+- The recursive function name is bound in its own body, enabling self-reference
+- Tail call optimization is applied to prevent stack overflow for tail-recursive functions
+
+**Runtime Value:**
+```rust
+RecClosure(name: String, param: String, body: Expr, env: Environment)
+```
+
+**Application of Recursive Closures:**
+```
+Γ ⊢ e₁ ⇓ RecClosure(name, param, body, Γ')
+Γ ⊢ e₂ ⇓ v₂
+Γ''  = Γ'[name ↦ RecClosure(name, param, body, Γ')]
+Γ''' = Γ''[param ↦ v₂]
+eval_with_tco(body, Γ''', name, param, Γ') ⇓ v
+───────────────────────────────────────────────────────  [E-APP-REC]
+Γ ⊢ e₁ e₂ ⇓ v
+```
+
+**Tail Call Optimization:**
+When the function body is a direct tail call to itself (i.e., the last operation is a call to the recursive function), the evaluator uses iteration instead of recursion to prevent stack overflow.
+
+**Example:**
+```
+∅ ⊢ rec factorial -> fun n -> if n == 0 then 1 else n * factorial (n - 1)
+  ⇓ RecClosure(factorial, n, if n == 0 then 1 else n * factorial (n - 1), ∅)
+
+∅ ⊢ (rec factorial -> fun n -> if n == 0 then 1 else n * factorial (n - 1)) 5
+  ⇓ Int(120)
+
+# Tail-recursive sum with accumulator
+∅ ⊢ (rec sum -> fun acc -> fun n -> if n == 0 then acc else sum (acc + n) (n - 1)) 0 100
+  ⇓ Int(5050)
+```
+
+**Properties:**
+- **Self-reference**: The function can call itself by name
+- **TCO for direct tail calls**: Prevents stack overflow for tail-recursive patterns
+- **Currying support**: Recursive functions can be curried like regular functions
+- **Lexical scoping**: Recursive closures capture their definition environment
 
 #### 5.2.8 Load Expression
 

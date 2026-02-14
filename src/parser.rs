@@ -75,7 +75,7 @@ where
         // Reject keywords by returning a failing parser
         if matches!(
             name.as_str(),
-            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load"
+            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec"
         ) {
             // Use a parser that will never succeed to reject keywords
             combine::unexpected("keyword").map(move |_: ()| name.clone()).right()
@@ -122,6 +122,20 @@ parser! {
             expr(),
         )
             .map(|(_, param, _, body)| Expr::Fun(param, Box::new(body)))
+    }
+}
+
+parser! {
+    fn rec_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        (
+            string("rec").skip(spaces()),
+            identifier().skip(spaces()),
+            string("->").skip(spaces()),
+            expr(),
+        )
+            .map(|(_, name, _, body)| Expr::Rec(name, Box::new(body)))
     }
 }
 
@@ -191,6 +205,7 @@ parser! {
             attempt(let_expr()),
             attempt(load_expr()),
             attempt(if_expr()),
+            attempt(rec_expr()),
             attempt(fun_expr()),
             attempt(atom()),
         ))

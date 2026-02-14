@@ -13,6 +13,8 @@ pub enum Value {
     Int(i64),
     Bool(bool),
     Closure(String, Expr, Environment),
+    /// Recursive closure: function name, parameter name, body, environment
+    RecClosure(String, String, Expr, Environment),
 }
 
 impl fmt::Display for Value {
@@ -21,6 +23,7 @@ impl fmt::Display for Value {
             Value::Int(n) => write!(f, "{}", n),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Closure(param, _, _) => write!(f, "<function {}>", param),
+            Value::RecClosure(name, _, _, _) => write!(f, "<recursive function {}>", name),
         }
     }
 }
@@ -88,6 +91,62 @@ impl fmt::Display for EvalError {
 }
 
 impl std::error::Error for EvalError {}
+
+/// Evaluate an expression with tail call optimization for recursive functions
+/// This function uses iteration instead of recursion for tail-recursive calls
+/// 
+/// Note: This implementation clones the body and environment on each iteration.
+/// A future optimization could use Rc/Arc to reduce allocations for deep recursion.
+fn eval_with_tco(
+    body: &Expr,
+    initial_env: &Environment,
+    rec_name: &str,
+    param_name: &str,
+    closure_env: &Environment,
+) -> Result<Value, EvalError> {
+    let mut current_expr = body.clone();
+    let mut current_env = initial_env.clone();
+    
+    loop {
+        // Check if the expression is a tail call to the recursive function
+        match &current_expr {
+            // Direct tail call: rec_name arg
+            Expr::App(func, arg) => {
+                // Check if this is a call to the recursive function (possibly nested in applications)
+                if is_tail_call_to(func, rec_name) {
+                    // This is a tail call - evaluate arg and loop instead of recursing
+                    let arg_val = eval(arg, &current_env)?;
+                    
+                    // Reset environment for next iteration
+                    let rec_val = Value::RecClosure(
+                        rec_name.to_string(),
+                        param_name.to_string(),
+                        body.clone(),
+                        closure_env.clone(),
+                    );
+                    current_env = closure_env.extend(rec_name.to_string(), rec_val);
+                    current_env = current_env.extend(param_name.to_string(), arg_val);
+                    current_expr = body.clone();
+                    continue;
+                }
+                // Not a tail call to self - evaluate normally and return
+                break eval(&current_expr, &current_env);
+            }
+            // For if expressions, we can't do TCO easily, so just evaluate
+            _ => break eval(&current_expr, &current_env),
+        }
+    }
+}
+
+/// Check if an expression is ultimately a call to the recursive function
+/// Handles nested applications like: (rec_name arg1) arg2
+fn is_tail_call_to(expr: &Expr, rec_name: &str) -> bool {
+    match expr {
+        Expr::Var(name) => name == rec_name,
+        Expr::App(func, _) => is_tail_call_to(func, rec_name),
+        _ => false,
+    }
+}
 
 /// Extract bindings from nested let expressions
 /// This walks through the AST and extracts all top-level let bindings.
@@ -182,6 +241,21 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     let new_env = closure_env.extend(param, arg_val);
                     eval(&body, &new_env)
                 }
+                Value::RecClosure(rec_name, param, body, closure_env) => {
+                    // Create an environment with the recursive function bound to itself
+                    let rec_val = Value::RecClosure(
+                        rec_name.clone(),
+                        param.clone(),
+                        body.clone(),
+                        closure_env.clone(),
+                    );
+                    let env_with_rec = closure_env.extend(rec_name.clone(), rec_val);
+                    let new_env = env_with_rec.extend(param.clone(), arg_val);
+                    
+                    // Evaluate the body - TCO happens naturally via iteration below
+                    // when the body is a tail call
+                    eval_with_tco(&body, &new_env, &rec_name, &param, &closure_env)
+                }
                 _ => Err(EvalError::TypeError(
                     "Application requires a function".to_string(),
                 )),
@@ -216,6 +290,25 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             }
             // Evaluate the body in the extended environment
             eval(body, &current_env)
+        }
+        
+        Expr::Rec(name, body) => {
+            // Parse the body which should be a function (fun param -> expr)
+            // The recursive function can reference itself by name within its body
+            match body.as_ref() {
+                Expr::Fun(param, fun_body) => {
+                    // Create a recursive closure that captures the function name
+                    Ok(Value::RecClosure(
+                        name.clone(),
+                        param.clone(),
+                        (**fun_body).clone(),
+                        env.clone(),
+                    ))
+                }
+                _ => Err(EvalError::TypeError(
+                    "rec expression body must be a function".to_string(),
+                )),
+            }
         }
     }
 }
@@ -943,7 +1036,6 @@ mod tests {
     #[test]
     fn test_load_simple_library() {
         use std::fs;
-        use std::io::Write;
         
         // Create a temporary library file
         let lib_content = "let double = fun x -> x * 2 in 0";

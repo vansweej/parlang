@@ -201,13 +201,13 @@ fn identifier<Input>() -> impl Parser<Input, Output = String>
 - Cannot be a keyword
 
 **Keywords** (rejected):
-- `let`, `in`, `if`, `then`, `else`, `fun`, `true`, `false`
+- `let`, `in`, `if`, `then`, `else`, `fun`, `true`, `false`, `load`, `rec`
 
 **Implementation**:
 ```rust
 raw_identifier().then(|name: String| {
     if matches!(name.as_str(),
-        "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false"
+        "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec"
     ) {
         combine::unexpected("keyword").map(move |_: ()| name.clone()).right()
     } else {
@@ -353,9 +353,40 @@ fun x -> x + 1
     .map(|(_, param, _, body)| Expr::Fun(param, Box::new(body)))
 ```
 
+#### `rec_expr()`
+
+Parses recursive function definitions.
+
+```rust
+fn rec_expr[Input]()(Input) -> Expr
+```
+
+**Syntax**: `rec <name> -> <body>`
+
+**Example**:
+```
+rec factorial -> fun n -> if n == 0 then 1 else n * factorial (n - 1)
+```
+
+**Implementation**:
+```rust
+(
+    string("rec").skip(spaces()),
+    identifier().skip(spaces()),
+    string("->").skip(spaces()),
+    expr(),
+)
+    .map(|(_, name, _, body)| Expr::Rec(name, Box::new(body)))
+```
+
+**Notes**:
+- The function name is used for self-reference within the body
+- The body is typically a function expression (`fun param -> ...`)
+- Enables recursive algorithms without requiring Y-combinator
+
 #### `primary()`
 
-Parses primary expressions (let, if, fun, or atoms).
+Parses primary expressions (let, if, rec, fun, or atoms).
 
 ```rust
 fn primary[Input]()(Input) -> Expr
@@ -363,9 +394,11 @@ fn primary[Input]()(Input) -> Expr
 
 **Priority** (tries in order):
 1. `let_expr()`
-2. `if_expr()`
-3. `fun_expr()`
-4. `atom()`
+2. `load_expr()`
+3. `if_expr()`
+4. `rec_expr()`
+5. `fun_expr()`
+6. `atom()`
 
 ### Operator Precedence Parsers
 

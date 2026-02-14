@@ -1,0 +1,35 @@
+let factorial = rec f -> fun n ->
+    if n == 0
+    then 1
+    else n * f (n - 1);
+
+let fibonacci = rec fib -> fun n ->
+    if n == 0
+    then 0
+    else if n == 1
+    then 1
+    else fib (n - 1) + fib (n - 2);
+
+let sum_to_n = rec sum_helper -> fun acc -> fun n ->
+    if n == 0
+    then acc
+    else sum_helper (acc + n) (n - 1);
+
+let gcd = rec gcd_helper -> fun a -> fun b ->
+    if b == 0
+    then a
+    else gcd_helper b (a - (a / b) * b);
+
+let is_even = rec check -> fun n ->
+    if n == 0
+    then true
+    else if n == 1
+    then false
+    else check (n - 2);
+
+let power_of_2 = rec pow -> fun n ->
+    if n == 0
+    then 1
+    else 2 * pow (n - 1);
+
+0
