@@ -1,0 +1,9 @@
+type Option a = Some a | None in
+
+let maybeValue = Some 42 in
+let result = match maybeValue with
+| Some n -> n + 1
+| None -> 0
+in
+
+result

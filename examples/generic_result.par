@@ -1,0 +1,14 @@
+type Result a b = Ok a | Err b in
+let divide = fun x -> fun y ->
+    if y == 0
+    then Err false
+    else Ok (x / y)
+in
+let handleResult = fun result ->
+    match result with
+    | Ok value -> value
+    | Err _ -> 0
+in
+let successResult = divide 100 5 in
+let errorResult = divide 100 0 in
+handleResult successResult + handleResult errorResult

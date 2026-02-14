@@ -15,6 +15,10 @@ pub enum Type {
     /// Record type: { field1: Type1, field2: Type2, ... }
     /// Uses HashMap for O(1) field lookup during type checking
     Record(std::collections::HashMap<String, Type>),
+    /// Generic sum type: Type constructor applied to type arguments
+    /// E.g., Option Int, List Bool, Either Int Bool
+    /// First element is the type constructor name, second is the list of type arguments
+    SumType(String, Vec<Type>),
 }
 
 /// Type variable identifier
@@ -56,6 +60,15 @@ impl fmt::Display for Type {
                     write!(f, "{name}: {ty}")?;
                 }
                 write!(f, "}}")
+            }
+            Type::SumType(name, args) => {
+                write!(f, "{name}")?;
+                if !args.is_empty() {
+                    for arg in args {
+                        write!(f, " {arg}")?;
+                    }
+                }
+                Ok(())
             }
         }
     }
@@ -277,5 +290,84 @@ mod tests {
         let ty = Type::Record(fields);
         let cloned = ty.clone();
         assert_eq!(ty, cloned);
+    }
+
+    // Tests for SumType (generic types)
+    #[test]
+    fn test_sum_type_no_args() {
+        let ty = Type::SumType("Option".to_string(), vec![]);
+        assert_eq!(ty, Type::SumType("Option".to_string(), vec![]));
+    }
+
+    #[test]
+    fn test_sum_type_single_arg() {
+        let ty = Type::SumType("Option".to_string(), vec![Type::Int]);
+        assert_eq!(ty, Type::SumType("Option".to_string(), vec![Type::Int]));
+    }
+
+    #[test]
+    fn test_sum_type_multiple_args() {
+        let ty = Type::SumType("Either".to_string(), vec![Type::Int, Type::Bool]);
+        assert_eq!(ty, Type::SumType("Either".to_string(), vec![Type::Int, Type::Bool]));
+    }
+
+    #[test]
+    fn test_sum_type_nested() {
+        let inner = Type::SumType("Option".to_string(), vec![Type::Int]);
+        let outer = Type::SumType("List".to_string(), vec![inner]);
+        assert_eq!(
+            outer,
+            Type::SumType("List".to_string(), vec![Type::SumType("Option".to_string(), vec![Type::Int])])
+        );
+    }
+
+    #[test]
+    fn test_display_sum_type_no_args() {
+        let ty = Type::SumType("Unit".to_string(), vec![]);
+        assert_eq!(format!("{ty}"), "Unit");
+    }
+
+    #[test]
+    fn test_display_sum_type_single_arg() {
+        let ty = Type::SumType("Option".to_string(), vec![Type::Int]);
+        assert_eq!(format!("{ty}"), "Option Int");
+    }
+
+    #[test]
+    fn test_display_sum_type_multiple_args() {
+        let ty = Type::SumType("Either".to_string(), vec![Type::Int, Type::Bool]);
+        assert_eq!(format!("{ty}"), "Either Int Bool");
+    }
+
+    #[test]
+    fn test_display_sum_type_with_type_var() {
+        let ty = Type::SumType("Option".to_string(), vec![Type::Var(TypeVar(0))]);
+        assert_eq!(format!("{ty}"), "Option t0");
+    }
+
+    #[test]
+    fn test_display_sum_type_nested() {
+        let inner = Type::SumType("Option".to_string(), vec![Type::Int]);
+        let outer = Type::SumType("List".to_string(), vec![inner]);
+        assert_eq!(format!("{outer}"), "List Option Int");
+    }
+
+    #[test]
+    fn test_sum_type_clone() {
+        let ty = Type::SumType("Option".to_string(), vec![Type::Int]);
+        let cloned = ty.clone();
+        assert_eq!(ty, cloned);
+    }
+
+    #[test]
+    fn test_sum_type_equality() {
+        let ty1 = Type::SumType("Option".to_string(), vec![Type::Int]);
+        let ty2 = Type::SumType("Option".to_string(), vec![Type::Int]);
+        let ty3 = Type::SumType("Option".to_string(), vec![Type::Bool]);
+        let ty4 = Type::SumType("List".to_string(), vec![Type::Int]);
+        
+        assert_eq!(ty1, ty2);
+        assert_ne!(ty1, ty3); // Different type argument
+        assert_ne!(ty1, ty4); // Different type constructor
     }
 }

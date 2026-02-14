@@ -4,12 +4,25 @@ use crate::types::{Type, TypeScheme, TypeVar};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+/// Sum type constructor information
+#[derive(Debug, Clone)]
+pub struct ConstructorInfo {
+    /// Type parameters (e.g., ["a", "b"] for Either a b)
+    pub type_params: Vec<String>,
+    /// Payload types for this constructor
+    pub payload_types: Vec<crate::ast::TypeAnnotation>,
+    /// Name of the sum type this constructor belongs to
+    pub sum_type_name: String,
+}
+
 /// Type environment (Γ) mapping variables to type schemes
 #[derive(Debug, Clone)]
 pub struct TypeEnv {
     bindings: HashMap<String, TypeScheme>,
     next_var: usize,
     type_aliases: HashMap<String, Type>,
+    /// Constructor information: maps constructor name to its type info
+    constructors: HashMap<String, ConstructorInfo>,
 }
 
 impl TypeEnv {
@@ -18,6 +31,7 @@ impl TypeEnv {
             bindings: HashMap::new(),
             next_var: 0,
             type_aliases: HashMap::new(),
+            constructors: HashMap::new(),
         }
     }
 
@@ -99,6 +113,20 @@ impl TypeEnv {
     pub fn resolve_type_alias(&self, name: &str) -> Option<Type> {
         self.type_aliases.get(name).cloned()
     }
+
+    /// Register a constructor for a sum type
+    pub fn register_constructor(
+        &mut self,
+        constructor_name: String,
+        info: ConstructorInfo,
+    ) {
+        self.constructors.insert(constructor_name, info);
+    }
+
+    /// Look up constructor information
+    pub fn lookup_constructor(&self, name: &str) -> Option<&ConstructorInfo> {
+        self.constructors.get(name)
+    }
 }
 
 impl Default for TypeEnv {
@@ -151,6 +179,13 @@ fn apply_subst_with_visited(
             }
             Type::Record(new_fields)
         }
+        Type::SumType(name, args) => {
+            let new_args = args
+                .iter()
+                .map(|arg| apply_subst_with_visited(subst, arg, visited))
+                .collect();
+            Type::SumType(name.clone(), new_args)
+        }
     }
 }
 
@@ -175,6 +210,56 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
             }
             set
         }
+        Type::SumType(_name, args) => {
+            let mut set = HashSet::new();
+            for arg in args {
+                set.extend(free_type_vars(arg));
+            }
+            set
+        }
+    }
+}
+
+/// Convert TypeAnnotation to Type
+/// This is used when processing sum type definitions
+fn type_annotation_to_type(
+    annotation: &crate::ast::TypeAnnotation,
+    type_param_map: &HashMap<String, Type>,
+    env: &mut TypeEnv,
+) -> Type {
+    match annotation {
+        crate::ast::TypeAnnotation::Concrete(name) => {
+            match name.as_str() {
+                "Int" => Type::Int,
+                "Bool" => Type::Bool,
+                _ => {
+                    // User-defined sum type (not a built-in primitive)
+                    // Treat as a sum type with no arguments
+                    Type::SumType(name.clone(), vec![])
+                }
+            }
+        }
+        crate::ast::TypeAnnotation::Var(name) => {
+            // Look up the type variable in the parameter map
+            type_param_map.get(name).cloned().unwrap_or_else(|| {
+                // Type parameter not found in map - generate a fresh variable
+                // This handles the case where a type parameter is used but not declared
+                env.fresh_var()
+            })
+        }
+        crate::ast::TypeAnnotation::Fun(arg, ret) => {
+            Type::Fun(
+                Box::new(type_annotation_to_type(arg, type_param_map, env)),
+                Box::new(type_annotation_to_type(ret, type_param_map, env)),
+            )
+        }
+        crate::ast::TypeAnnotation::App(name, args) => {
+            let arg_types: Vec<Type> = args
+                .iter()
+                .map(|arg| type_annotation_to_type(arg, type_param_map, env))
+                .collect();
+            Type::SumType(name.clone(), arg_types)
+        }
     }
 }
 
@@ -191,6 +276,8 @@ pub enum TypeError {
     RecordExpected(String),
     /// Record type field mismatch during unification
     RecordFieldMismatch,
+    /// Constructor applied with wrong number of arguments: constructor name, expected, actual
+    ConstructorArityMismatch(String, usize, usize),
 }
 
 impl fmt::Display for TypeError {
@@ -216,6 +303,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::RecordFieldMismatch => {
                 write!(f, "Record types have different fields")
+            }
+            TypeError::ConstructorArityMismatch(name, expected, actual) => {
+                write!(f, "Constructor '{name}' expects {expected} arguments, but got {actual}")
             }
         }
     }
@@ -258,6 +348,28 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
                         return Err(TypeError::RecordFieldMismatch);
                     }
                 }
+            }
+            
+            Ok(subst)
+        }
+
+        (Type::SumType(name1, args1), Type::SumType(name2, args2)) => {
+            // Sum types must have the same name and same number of type arguments
+            if name1 != name2 {
+                return Err(TypeError::UnificationError(t1.clone(), t2.clone()));
+            }
+            
+            if args1.len() != args2.len() {
+                return Err(TypeError::UnificationError(t1.clone(), t2.clone()));
+            }
+            
+            // Unify all type arguments
+            let mut subst = HashMap::new();
+            for (arg1, arg2) in args1.iter().zip(args2.iter()) {
+                let arg1 = apply_subst(&subst, arg1);
+                let arg2 = apply_subst(&subst, arg2);
+                let s = unify(&arg1, &arg2)?;
+                subst = compose_subst(&s, &subst);
             }
             
             Ok(subst)
@@ -541,18 +653,72 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             }
         }
         
-        Expr::TypeDef { name: _, type_params: _, constructors: _, body } => {
-            // For now, type checking for sum types is simplified
-            // We just type check the body and ignore the type definition
-            // A complete implementation would register constructors and their types
+        Expr::TypeDef { name, type_params, constructors, body } => {
+            // Register constructors in the environment
+            for (ctor_name, _payload_types) in constructors {
+                let info = ConstructorInfo {
+                    type_params: type_params.clone(),
+                    payload_types: _payload_types.clone(),
+                    sum_type_name: name.clone(),
+                };
+                env.register_constructor(ctor_name.clone(), info);
+            }
+            
+            // Type check the body with constructors available
             infer(body, env)
         }
         
-        Expr::Constructor(_name, _args) => {
-            // For now, we return a fresh type variable for constructors
-            // A complete implementation would look up the constructor type
-            // and check argument types
-            Ok((env.fresh_var(), HashMap::new()))
+        Expr::Constructor(name, args) => {
+            // Look up constructor information and clone it to avoid borrow issues
+            if let Some(info) = env.lookup_constructor(name).cloned() {
+                // Create a mapping from type parameters to fresh type variables
+                let mut type_param_map = HashMap::new();
+                for param in &info.type_params {
+                    type_param_map.insert(param.clone(), env.fresh_var());
+                }
+                
+                // Type check each argument
+                let mut subst = HashMap::new();
+                let mut arg_types = Vec::new();
+                
+                for arg in args {
+                    let (arg_ty, s) = infer(arg, env)?;
+                    subst = compose_subst(&s, &subst);
+                    arg_types.push(apply_subst(&subst, &arg_ty));
+                }
+                
+                // Check that the number of arguments matches
+                if arg_types.len() != info.payload_types.len() {
+                    // Return an error for argument count mismatch
+                    return Err(TypeError::ConstructorArityMismatch(
+                        name.clone(),
+                        info.payload_types.len(),
+                        arg_types.len(),
+                    ));
+                }
+                
+                // Unify each argument with its expected type
+                for (arg_ty, expected_annotation) in arg_types.iter().zip(&info.payload_types) {
+                    let expected_ty = type_annotation_to_type(expected_annotation, &type_param_map, env);
+                    let s = unify(arg_ty, &expected_ty)?;
+                    subst = compose_subst(&s, &subst);
+                }
+                
+                // Create the result type
+                let type_args: Vec<Type> = info.type_params
+                    .iter()
+                    .map(|param| {
+                        apply_subst(&subst, &type_param_map[param])
+                    })
+                    .collect();
+                
+                let result_ty = Type::SumType(info.sum_type_name.clone(), type_args);
+                Ok((result_ty, subst))
+            } else {
+                // Constructor not registered - return a fresh type variable
+                // This maintains backward compatibility
+                Ok((env.fresh_var(), HashMap::new()))
+            }
         }
     }
 }
