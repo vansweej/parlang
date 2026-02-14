@@ -112,15 +112,25 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             output.push_str(&format!("  {node_id} -> {then_id} [label=\"then\"];\n"));
             output.push_str(&format!("  {node_id} -> {else_id} [label=\"else\"];\n"));
         }
-        Expr::Let(name, value, body) => {
-            output.push_str(&format!("  {} [label=\"Let\\n{}\"];\n", node_id, escape_label(name)));
+        Expr::Let(name, ty_ann, value, body) => {
+            let label = if let Some(ty) = ty_ann {
+                format!("Let\\n{} : {}", escape_label(name), ty)
+            } else {
+                format!("Let\\n{}", escape_label(name))
+            };
+            output.push_str(&format!("  {} [label=\"{}\"];\n", node_id, label));
             let value_id = expr_to_dot(value, output, gen);
             let body_id = expr_to_dot(body, output, gen);
             output.push_str(&format!("  {node_id} -> {value_id} [label=\"value\"];\n"));
             output.push_str(&format!("  {node_id} -> {body_id} [label=\"body\"];\n"));
         }
-        Expr::Fun(param, body) => {
-            output.push_str(&format!("  {} [label=\"Fun\\n{}\"];\n", node_id, escape_label(param)));
+        Expr::Fun(param, ty_ann, body) => {
+            let label = if let Some(ty) = ty_ann {
+                format!("Fun\\n{} : {}", escape_label(param), ty)
+            } else {
+                format!("Fun\\n{}", escape_label(param))
+            };
+            output.push_str(&format!("  {} [label=\"{}\"];\n", node_id, label));
             let body_id = expr_to_dot(body, output, gen);
             output.push_str(&format!("  {node_id} -> {body_id} [label=\"body\"];\n"));
         }
@@ -138,9 +148,14 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
         }
         Expr::Seq(bindings, body) => {
             output.push_str(&format!("  {node_id} [label=\"Seq\"];\n"));
-            for (i, (name, value)) in bindings.iter().enumerate() {
+            for (i, (name, ty_ann, value)) in bindings.iter().enumerate() {
                 let binding_id = gen.next();
-                output.push_str(&format!("  {} [label=\"Binding\\n{}\"];\n", binding_id, escape_label(name)));
+                let label = if let Some(ty) = ty_ann {
+                    format!("Binding\\n{} : {}", escape_label(name), ty)
+                } else {
+                    format!("Binding\\n{}", escape_label(name))
+                };
+                output.push_str(&format!("  {} [label=\"{}\"];\n", binding_id, label));
                 let value_id = expr_to_dot(value, output, gen);
                 output.push_str(&format!("  {node_id} -> {binding_id} [label=\"binding {i}\"];\n"));
                 output.push_str(&format!("  {binding_id} -> {value_id} [label=\"value\"];\n"));
@@ -380,6 +395,7 @@ mod tests {
     fn test_let_expr() {
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(42)),
             Box::new(Expr::Var("x".to_string())),
         );
@@ -392,7 +408,7 @@ mod tests {
 
     #[test]
     fn test_fun_expr() {
-        let expr = Expr::Fun("x".to_string(), Box::new(Expr::Var("x".to_string())));
+        let expr = Expr::Fun("x".to_string(), None, Box::new(Expr::Var("x".to_string())));
         let dot = ast_to_dot(&expr);
         assert!(dot.contains("[label=\"Fun\\nx\"]"));
         assert!(dot.contains("[label=\"Var\\nx\"]"));
@@ -453,8 +469,8 @@ mod tests {
     #[test]
     fn test_seq_expr() {
         let bindings = vec![
-            ("x".to_string(), Expr::Int(42)),
-            ("y".to_string(), Expr::Int(10)),
+            ("x".to_string(), None, Expr::Int(42)),
+            ("y".to_string(), None, Expr::Int(10)),
         ];
         let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
         let dot = ast_to_dot(&expr);
@@ -486,8 +502,10 @@ mod tests {
         // let f = fun x -> x + 1 in f 41
         let expr = Expr::Let(
             "f".to_string(),
+            None,
             Box::new(Expr::Fun(
                 "x".to_string(),
+                None,
                 Box::new(Expr::BinOp(
                     BinOp::Add,
                     Box::new(Expr::Var("x".to_string())),

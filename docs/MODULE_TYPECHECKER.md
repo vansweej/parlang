@@ -45,7 +45,7 @@ pub enum TypeError {
 - `UnboundVariable(name)`: Variable used before definition
 - `UnificationError(t1, t2)`: Cannot make types t1 and t2 equal
 - `OccursCheckFailed(var, ty)`: Type variable occurs in the type it's being unified with (would create infinite type)
-- `RecursionRequiresAnnotation`: Recursive functions not yet supported
+- `RecursionRequiresAnnotation`: Reserved for future use (recursive functions are now supported)
 
 ### `Substitution` Type
 
@@ -225,6 +225,37 @@ Expr::App(func, arg) =>
     return t_result
 ```
 
+### Recursive Functions
+
+```rust
+Expr::Rec(name, body) =>
+    create fresh type variable t_rec for the recursive function
+    extend environment with name:t_rec
+    infer body in extended environment => t_body
+    apply accumulated substitutions to t_rec
+    unify t_rec with t_body
+    return t_body
+```
+
+Recursive functions are supported through **fixpoint typing**:
+1. A fresh type variable is created for the recursive function
+2. The function name is bound to this type in the environment before checking the body
+3. The body is type-checked with the recursive name available
+4. The inferred type is unified with the assumed type
+
+This allows the type checker to correctly handle self-references in recursive functions like factorial, fibonacci, etc.
+
+**Example:**
+```rust
+// rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)
+// Type: Int -> Int
+```
+
+**Limitations:**
+- Recursive functions that would create infinite types (e.g., certain curried recursive patterns) may fail the occurs check
+- Recursive functions are monomorphic (not generalized like let-bound functions)
+
+
 ## Usage Examples
 
 ### Basic Type Inference
@@ -279,18 +310,29 @@ let ty = typecheck(&expr).unwrap();
 // ty is (t2 -> t3) -> (t1 -> t2) -> t1 -> t3
 ```
 
-## Limitations
-
 ### Recursive Functions
 
-Recursive functions using `rec` are not yet supported:
-
 ```rust
+// Factorial function
 let expr = parse("rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)").unwrap();
-assert!(typecheck(&expr).is_err());
+let ty = typecheck(&expr).unwrap();
+assert_eq!(ty, Type::Fun(Box::new(Type::Int), Box::new(Type::Int)));
+
+// Fibonacci function
+let expr = parse("rec fib -> fun n -> if n == 0 then 0 else if n == 1 then 1 else fib (n - 1) + fib (n - 2)").unwrap();
+let ty = typecheck(&expr).unwrap();
+// ty is Int -> Int
+
+// Using recursive function in let binding
+let expr = parse("let fact = rec f -> fun n -> if n == 0 then 1 else n * f (n - 1) in fact 5").unwrap();
+assert_eq!(typecheck(&expr).unwrap(), Type::Int);
+
+// Type error: wrong argument type in recursive call
+let expr = parse("rec f -> fun n -> if n == 0 then 1 else f true").unwrap();
+assert!(typecheck(&expr).is_err());  // f expects Int but gets Bool
 ```
 
-This would require fixpoint typing or explicit type annotations.
+## Limitations
 
 ### Tuples and Pattern Matching
 

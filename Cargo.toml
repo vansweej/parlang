@@ -21,9 +21,6 @@ path = "src/main.rs"
 name = "parlang"
 path = "src/lib.rs"
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
-
 [lints.clippy]
 # Enforce stricter linting for better code quality
 pedantic = { level = "warn", priority = -1 }

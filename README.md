@@ -19,6 +19,7 @@ ParLang is a simple functional programming language with:
 - **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
 - **Pattern Matching**: Match expressions for cleaner multi-branch logic (supports records, tuples, literals, and sum types)
+- **Exhaustiveness Checking**: Automatic warnings for non-exhaustive pattern matches, helping catch bugs early
 - **Binary Operations**: Arithmetic (`+`, `-`, `*`, `/`) and comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`)
 - **Function Application**: Call functions with arguments
 - **Currying**: Functions naturally support partial application
@@ -56,6 +57,18 @@ You can define multiple bindings without nesting `in` keywords by using semicolo
 fun x -> x + 1                         # Anonymous function
 (fun x -> x * 2) 21                    # Result: 42
 ```
+
+### Type Annotations
+
+ParLang supports **explicit type annotations** for variables to improve code documentation and enable early error detection:
+
+```
+let x : Int = 42 in x + 1              # Type annotation on variable
+let active : Bool = true;              # Sequential binding with annotation
+let count : Int = 100;                 # Multiple annotated bindings
+```
+
+Type annotations are optional and work alongside automatic type inference. See [Type Annotations Documentation](docs/TYPE_ANNOTATIONS.md) for details.
 
 ### Conditionals
 ```
@@ -99,6 +112,31 @@ let factorial = rec fact -> fun n ->
 ```
 
 Pattern matching evaluates patterns from top to bottom and executes the first matching arm. This is especially useful for replacing deeply nested if-then-else chains with more readable code.
+
+### Exhaustiveness Checking
+
+**New Feature:** ParLang now includes automatic exhaustiveness checking for pattern matching!
+
+The exhaustiveness checker warns you when a `match` expression doesn't cover all possible cases:
+
+```
+type Option a = Some a | None in
+match x with
+| Some n -> n
+# Warning: pattern match is non-exhaustive
+# Missing cases: None
+```
+
+**Exhaustive match (no warning):**
+```
+type Option a = Some a | None in
+match x with
+| Some n -> n
+| None -> 0
+# ✓ All cases covered
+```
+
+The checker helps catch bugs early by ensuring you handle all constructors in sum types. For more details, see [Exhaustiveness Checking Documentation](docs/EXHAUSTIVENESS_CHECKING.md).
 
 ### Tuples
 
@@ -185,7 +223,26 @@ in let olderPerson = { name: person.name, age: person.age + 1 }
 in olderPerson                         # Result: { name: 42, age: 31 }
 ```
 
-Records support polymorphic field access - a function like `fun p -> p.age` works with any record that has an `age` field. See [docs/RECORDS.md](docs/RECORDS.md) for comprehensive documentation and advanced examples.
+**Row Polymorphism:**
+
+Records support **row polymorphism**, allowing functions to work with any record that has at least certain fields:
+
+```
+# Function that works with any record having an 'age' field
+let getAge = fun r -> r.age
+
+# Works with different record types
+getAge { name: 42, age: 30 }           # Result: 30
+getAge { age: 25, city: 100 }          # Result: 25
+```
+
+When type checking is enabled, row polymorphic functions show their flexible type:
+```
+> fun p -> p.age
+Type: { age: t0 | r0 } -> t0
+```
+
+The type `{ age: t0 | r0 }` means "a record with at least an `age` field (type `t0`), plus any other fields (`r0`)". This provides flexibility while maintaining type safety. See [docs/RECORDS.md](docs/RECORDS.md) for comprehensive documentation and advanced examples.
 
 ### Type Aliases
 
@@ -465,13 +522,14 @@ Type error: Cannot unify types: Int and Bool
 
 ### Type System Features
 
-- **Automatic Type Inference**: No type annotations required
+- **Automatic Type Inference**: No type annotations required (but supported!)
+- **Explicit Type Annotations**: Optional type annotations for better documentation and early error detection
 - **Polymorphic Types**: Functions can work with multiple types
 - **Let-Polymorphism**: Let-bound functions are generalized
 - **Sound Type System**: Well-typed programs won't have type errors at runtime
 - **Clear Error Messages**: Helpful messages when types don't match
 
-For detailed information about the type system, see **[Type System Documentation](docs/TYPE_SYSTEM.md)**.
+For detailed information about the type system, see **[Type System Documentation](docs/TYPE_SYSTEM.md)** and **[Type Annotations Documentation](docs/TYPE_ANNOTATIONS.md)**.
 
 ## Installation
 
@@ -618,6 +676,7 @@ See the `examples/` directory for sample programs:
 - `type_alias_simple.par` - Simple function type alias
 - `type_alias_binary.par` - Binary operation type alias
 - `type_alias_nested.par` - Nested type aliases
+- `type_annotations.par` - Explicit type annotations for variables
 
 ## Documentation
 
@@ -628,7 +687,10 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Language Specification](docs/LANGUAGE_SPEC.md)** - Formal language specification with grammar and semantics
 - **[Type System](docs/TYPE_SYSTEM.md)** - Hindley-Milner type inference system documentation
 - **[Type Inference](docs/TYPE_INFERENCE.md)** - Deep dive into the type inference algorithm (Algorithm W)
+- **[Type Annotations](docs/TYPE_ANNOTATIONS.md)** - Explicit type annotations for better documentation and error detection
 - **[Generic Types](docs/GENERIC_TYPES.md)** - Parameterized types and type inference for generic data structures
+- **[Sum Types](docs/SUM_TYPES.md)** - Algebraic data types with pattern matching
+- **[Exhaustiveness Checking](docs/EXHAUSTIVENESS_CHECKING.md)** - Automatic checking for complete pattern matches
 - **[Examples Guide](docs/EXAMPLES.md)** - Tutorial-style examples from basic to advanced
 - **[Security & Performance](docs/SECURITY.md)** - Security considerations and performance best practices
 - **[Error Handling](docs/ERROR_HANDLING.md)** - Error types, patterns, and debugging strategies
@@ -666,6 +728,26 @@ For detailed architecture information, see [docs/ARCHITECTURE.md](docs/ARCHITECT
 ```bash
 cargo test
 ```
+
+### Code Coverage
+
+To generate code coverage reports, use [cargo-tarpaulin](https://github.com/xd009642/tarpaulin):
+
+```bash
+# Install tarpaulin (if not already installed)
+cargo install cargo-tarpaulin
+
+# Run tests with coverage
+cargo tarpaulin
+
+# Generate HTML report
+cargo tarpaulin --out Html
+
+# Generate detailed coverage with line-by-line details
+cargo tarpaulin --out Html --output-dir coverage
+```
+
+The project currently achieves over 84% code coverage across all modules.
 
 ## License
 
