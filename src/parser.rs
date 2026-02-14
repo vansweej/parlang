@@ -350,7 +350,9 @@ parser! {
             many(attempt((
                 combine::parser::char::lower(),
                 many::<String, _, _>(alpha_num().or(token('_')))
-            ).map(|(first, rest)| format!("{}{}", first, rest)).skip(spaces()))),
+            ).map(|(first, rest)| format!("{}{}", first, rest))
+             .skip(combine::not_followed_by(alpha_num().or(token('_'))))
+             .skip(spaces()))),
             token('=').skip(spaces()),
             // Constructors separated by |
             combine::sep_by1(
@@ -359,7 +361,9 @@ parser! {
                     (
                         combine::parser::char::upper(),
                         many::<String, _, _>(alpha_num().or(token('_')))
-                    ).map(|(first, rest)| format!("{}{}", first, rest)).skip(spaces()),
+                    ).map(|(first, rest)| format!("{}{}", first, rest))
+                     .skip(combine::not_followed_by(alpha_num().or(token('_'))))
+                     .skip(spaces()),
                     // Constructor argument types
                     many(attempt(type_annotation_atom().skip(spaces())))
                 ),
