@@ -1043,7 +1043,7 @@ mod tests {
 
     #[test]
     fn test_environment_default() {
-        let env: Environment = Default::default();
+        let env = Environment::default();
         assert_eq!(env.lookup("x"), None);
     }
 
