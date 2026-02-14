@@ -365,10 +365,10 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
             
             // Unify all type arguments
             let mut subst = HashMap::new();
-            for (arg1, arg2) in args1.iter().zip(args2.iter()) {
-                let arg1 = apply_subst(&subst, arg1);
-                let arg2 = apply_subst(&subst, arg2);
-                let s = unify(&arg1, &arg2)?;
+            for (type_arg1, type_arg2) in args1.iter().zip(args2.iter()) {
+                let type_arg1 = apply_subst(&subst, type_arg1);
+                let type_arg2 = apply_subst(&subst, type_arg2);
+                let s = unify(&type_arg1, &type_arg2)?;
                 subst = compose_subst(&s, &subst);
             }
             

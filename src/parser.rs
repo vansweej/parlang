@@ -1,7 +1,9 @@
 /// Parser for the `ParLang` language using the combine parser combinator library
 /// This implements a parser for ML-alike functional language syntax
 use crate::ast::{BinOp, Expr, Literal, Pattern, TypeAnnotation};
+use combine::error::StreamError;
 use combine::parser::char::{alpha_num, letter, spaces, string};
+use combine::stream::StreamErrorFor;
 use combine::{
     attempt, between, choice, many, many1, optional, parser, token, EasyParser, Parser,
     ParseError, Stream,
@@ -13,13 +15,11 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    // Parse digits and convert to i64. The unwrap is safe here because:
-    // 1. combine's digit() parser ensures we only have '0'-'9' characters
-    // 2. many1 ensures we have at least one digit
-    // 3. A string of valid digits will always parse to i64 successfully
-    // Note: Very large numbers (> i64::MAX) will be caught by parse() and could panic,
-    // but this is acceptable for a toy language implementation
-    let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
+    // Parse digits and convert to i64
+    let number = many1(combine::parser::char::digit()).and_then(|s: String| {
+        s.parse::<i64>()
+            .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("integer overflow"))
+    });
     
     (optional(token('-')), number)
         .map(|(sign, n)| {
@@ -338,7 +338,8 @@ parser! {
                 if name == "in" {
                     combine::unexpected("keyword").map(|()| TypeAnnotation::Var(String::new())).right()
                 } else {
-                    let result = if name.chars().next().unwrap().is_uppercase() {
+                    // Check if first character is uppercase to distinguish concrete types from type variables
+                    let result = if name.as_bytes().first().map_or(false, |c| c.is_ascii_uppercase()) {
                         TypeAnnotation::Concrete(name)
                     } else {
                         TypeAnnotation::Var(name)
@@ -518,11 +519,11 @@ parser! {
             attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
             // Integer literal pattern: 0, 1, 42, -10
             attempt({
-                // The unwrap is safe here because:
-                // 1. combine's digit() parser ensures we only have '0'-'9' characters
-                // 2. many1 ensures we have at least one digit
-                // 3. A string of valid digits will always parse to i64 successfully
-                let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
+                // Parse integer literal in pattern
+                let number = many1(combine::parser::char::digit()).and_then(|s: String| {
+                    s.parse::<i64>()
+                        .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("integer overflow"))
+                });
                 (optional(token('-')), number)
                     .map(|(sign, n)| {
                         let value = if sign.is_some() { -n } else { n };
@@ -554,7 +555,10 @@ parser! {
             attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
             // Integer literals
             attempt({
-                let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
+                let number = many1(combine::parser::char::digit()).and_then(|s: String| {
+                    s.parse::<i64>()
+                        .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("integer overflow"))
+                });
                 (optional(token('-')), number)
                     .map(|(sign, n)| {
                         let value = if sign.is_some() { -n } else { n };
@@ -647,12 +651,10 @@ parser! {
             // Parse projections: either .number (tuple) or .identifier (record field)
             many(token('.').with(choice((
                 // Try to parse a number first (tuple projection)
-                attempt(many1(combine::parser::char::digit()).map(|s: String| {
-                    // The unwrap is safe here because:
-                    // 1. combine's digit() parser ensures we only have '0'-'9' characters
-                    // 2. many1 ensures we have at least one digit
-                    // 3. A string of valid digits will always parse to usize successfully
-                    (true, s.parse::<usize>().unwrap(), String::new())
+                attempt(many1(combine::parser::char::digit()).and_then(|s: String| {
+                    s.parse::<usize>()
+                        .map(|n| (true, n, String::new()))
+                        .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("index overflow"))
                 })),
                 // Otherwise parse an identifier (field access)
                 identifier().map(|name| (false, 0, name))

@@ -553,10 +553,8 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                 }
             }
             
-            // No pattern matched
-            Err(EvalError::TypeError(
-                "No pattern matched in match expression".to_string(),
-            ))
+            // No pattern matched - use the dedicated error variant
+            Err(EvalError::PatternMatchNonExhaustive)
         }
         
         Expr::Tuple(elements) => {
@@ -675,15 +673,29 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
 /// Evaluate a binary operation
 fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> {
     match (op, left, right) {
-        // Arithmetic operations
-        (BinOp::Add, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b)),
-        (BinOp::Sub, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b)),
-        (BinOp::Mul, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b)),
+        // Arithmetic operations with overflow checking
+        (BinOp::Add, Value::Int(a), Value::Int(b)) => {
+            a.checked_add(b)
+                .map(Value::Int)
+                .ok_or_else(|| EvalError::TypeError("Integer overflow in addition".to_string()))
+        }
+        (BinOp::Sub, Value::Int(a), Value::Int(b)) => {
+            a.checked_sub(b)
+                .map(Value::Int)
+                .ok_or_else(|| EvalError::TypeError("Integer overflow in subtraction".to_string()))
+        }
+        (BinOp::Mul, Value::Int(a), Value::Int(b)) => {
+            a.checked_mul(b)
+                .map(Value::Int)
+                .ok_or_else(|| EvalError::TypeError("Integer overflow in multiplication".to_string()))
+        }
         (BinOp::Div, Value::Int(a), Value::Int(b)) => {
             if b == 0 {
                 Err(EvalError::DivisionByZero)
             } else {
-                Ok(Value::Int(a / b))
+                a.checked_div(b)
+                    .map(Value::Int)
+                    .ok_or_else(|| EvalError::TypeError("Integer overflow in division".to_string()))
             }
         }
         
@@ -698,8 +710,8 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Eq, Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
         (BinOp::Neq, Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a != b)),
         
-        _ => Err(EvalError::TypeError(format!(
-            "Type error in binary operation: {op:?}"
+        (op, left, right) => Err(EvalError::TypeError(format!(
+            "Type error in binary operation {:?}: cannot apply to {:?} and {:?}", op, left, right
         ))),
     }
 }
