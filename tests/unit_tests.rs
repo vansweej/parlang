@@ -213,3 +213,51 @@ fn test_rec_with_complex_tail_call() {
     let result = eval(&expr, &env);
     assert_eq!(result, Ok(Value::Int(0)));
 }
+
+#[test]
+fn test_pattern_match_tuple_mismatch() {
+    // Test matching a tuple pattern against a non-tuple value
+    let code = r"match 42 with | (x, y) -> x | _ -> 0";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env);
+    // Should match the wildcard since tuple pattern doesn't match an int
+    assert_eq!(result, Ok(Value::Int(0)));
+}
+
+#[test]
+fn test_pattern_match_tuple_length_mismatch() {
+    // Test matching a tuple pattern with wrong number of elements
+    let code = r"match (1, 2, 3) with | (x, y) -> x | _ -> 0";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env);
+    // Should match the wildcard since tuple pattern has wrong length
+    assert_eq!(result, Ok(Value::Int(0)));
+}
+
+#[test]
+fn test_is_tail_call_expr_var() {
+    // Test is_tail_call_to with Expr::Var path
+    let code = r"(rec f -> fun n -> if n == 0 then 42 else f) 0";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env);
+    assert_eq!(result, Ok(Value::Int(42)));
+}
+
+#[test]
+fn test_is_tail_call_app_path() {
+    // Test is_tail_call_to with nested App
+    let code = r"
+        (rec sum -> fun n ->
+            if n == 0
+            then 0
+            else n + (sum (n - 1))
+        ) 3
+    ";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env);
+    assert_eq!(result, Ok(Value::Int(6))); // 3+2+1+0
+}
