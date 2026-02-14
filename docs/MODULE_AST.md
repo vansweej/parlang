@@ -33,6 +33,9 @@ pub enum Expr {
     Let(String, Box<Expr>, Box<Expr>),         // Let binding
     Fun(String, Box<Expr>),                    // Function definition
     App(Box<Expr>, Box<Expr>),                 // Function application
+    Load(String, Box<Expr>),                   // Load library
+    Seq(Vec<(String, Expr)>, Box<Expr>),       // Sequential bindings
+    Rec(String, Box<Expr>),                    // Recursive function
 }
 ```
 
@@ -259,6 +262,111 @@ Expr::App(
 **Notes**:
 - Application is left-associative: `f x y` = `(f x) y`
 - Both function and argument can be arbitrary expressions
+
+##### 9. `Load(String, Box<Expr>)` - Load Library
+
+Represents loading and importing definitions from a library file.
+
+**Syntax**: `load "<filepath>" in <body>`
+
+**Example AST**:
+```rust
+// load "examples/stdlib.par" in double 21
+Expr::Load(
+    "examples/stdlib.par".to_string(),
+    Box::new(Expr::App(
+        Box::new(Expr::Var("double".to_string())),
+        Box::new(Expr::Int(21))
+    ))
+)
+```
+
+**Structure**:
+- **First**: File path (String)
+- **Second**: Body expression evaluated with loaded bindings
+
+**Notes**:
+- Library files are parsed and their bindings are extracted
+- Bindings from the library extend the current environment
+- Libraries can load other libraries (nested loads)
+
+##### 10. `Seq(Vec<(String, Expr)>, Box<Expr>)` - Sequential Let Bindings
+
+Represents sequential let bindings separated by semicolons.
+
+**Syntax**: `let x = e1; let y = e2; body`
+
+**Example AST**:
+```rust
+// let x = 42; let y = 10; x + y
+Expr::Seq(
+    vec![
+        ("x".to_string(), Expr::Int(42)),
+        ("y".to_string(), Expr::Int(10))
+    ],
+    Box::new(Expr::BinOp(
+        BinOp::Add,
+        Box::new(Expr::Var("x".to_string())),
+        Box::new(Expr::Var("y".to_string()))
+    ))
+)
+```
+
+**Structure**:
+- **First**: Vector of (name, expression) pairs
+- **Second**: Body expression
+
+**Notes**:
+- Each binding can reference previous bindings in the sequence
+- Syntactic sugar for nested let-in expressions
+- Commonly used at the top level of programs and in the REPL
+
+##### 11. `Rec(String, Box<Expr>)` - Recursive Function
+
+Represents a named recursive function that can reference itself.
+
+**Syntax**: `rec <name> -> <body>`
+
+**Example AST**:
+```rust
+// rec factorial -> fun n -> if n == 0 then 1 else n * factorial (n - 1)
+Expr::Rec(
+    "factorial".to_string(),
+    Box::new(Expr::Fun(
+        "n".to_string(),
+        Box::new(Expr::If(
+            Box::new(Expr::BinOp(
+                BinOp::Eq,
+                Box::new(Expr::Var("n".to_string())),
+                Box::new(Expr::Int(0))
+            )),
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::BinOp(
+                BinOp::Mul,
+                Box::new(Expr::Var("n".to_string())),
+                Box::new(Expr::App(
+                    Box::new(Expr::Var("factorial".to_string())),
+                    Box::new(Expr::BinOp(
+                        BinOp::Sub,
+                        Box::new(Expr::Var("n".to_string())),
+                        Box::new(Expr::Int(1))
+                    ))
+                ))
+            ))
+        ))
+    ))
+)
+```
+
+**Structure**:
+- **First**: Function name (String) - used for self-reference
+- **Second**: Function body (typically a `Fun` expression)
+
+**Notes**:
+- The body must be a function definition
+- The function name is bound within its own body, enabling recursion
+- Tail call optimization is applied for tail-recursive patterns
+- Allows expressing algorithms that require self-reference
 
 ### Binary Operators (`BinOp`)
 

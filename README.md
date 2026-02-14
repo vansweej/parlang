@@ -9,6 +9,7 @@ ParLang is a simple functional programming language with:
 - **Basic Types**: Integers and booleans
 - **Variables**: Let bindings for creating local variables
 - **Functions**: First-class functions with closure support
+- **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
 - **Binary Operations**: Arithmetic (`+`, `-`, `*`, `/`) and comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`)
 - **Function Application**: Call functions with arguments
@@ -71,6 +72,36 @@ let add = fun x -> fun y -> x + y
 in let add5 = add 5
 in add5 10   # Result: 15
 ```
+
+### Recursion
+
+ParLang supports named recursion using the `rec` keyword. Recursive functions can reference themselves by name, enabling powerful iterative patterns.
+
+**Basic recursion:**
+```
+rec factorial -> fun n ->
+    if n == 0
+    then 1
+    else n * factorial (n - 1)
+```
+
+**Tail recursion with accumulator (optimized):**
+```
+let sum_to_n = rec helper -> fun acc -> fun n ->
+    if n == 0
+    then acc
+    else helper (acc + n) (n - 1)
+in sum_to_n 0 100   # Result: 5050
+```
+
+**Using recursive functions:**
+```
+let factorial = rec f -> fun n ->
+    if n == 0 then 1 else n * f (n - 1)
+in factorial 10     # Result: 3628800
+```
+
+The language implements tail call optimization (TCO) for recursive functions, allowing deep recursion without stack overflow for tail-recursive patterns.
 
 ### Loading Libraries
 ```
@@ -176,6 +207,9 @@ See the `examples/` directory for sample programs:
 - `simple.par` - Basic let bindings and function application
 - `conditional.par` - Conditional expressions
 - `currying.par` - Currying and partial application
+- `factorial.par` - Recursive factorial function
+- `recursion.par` - Library of recursive functions (factorial, fibonacci, gcd, etc.)
+- `use_recursion.par` - Example of loading and using recursive functions
 - `stdlib.par` - Standard library with common functions
 - `math.par` - Mathematical utility functions
 - `use_stdlib.par` - Example of loading and using library functions
