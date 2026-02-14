@@ -180,6 +180,38 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             let tuple_id = expr_to_dot(tuple, output, gen);
             output.push_str(&format!("  {node_id} -> {tuple_id} [label=\"tuple\"];\n"));
         }
+        Expr::TypeAlias(name, ty_expr, body) => {
+            output.push_str(&format!("  {} [label=\"TypeAlias\\n{}\"];\n", node_id, escape_label(name)));
+            let type_id = type_expr_to_dot(ty_expr, output, gen);
+            let body_id = expr_to_dot(body, output, gen);
+            output.push_str(&format!("  {node_id} -> {type_id} [label=\"type\"];\n"));
+            output.push_str(&format!("  {node_id} -> {body_id} [label=\"body\"];\n"));
+        }
+    }
+    
+    node_id
+}
+
+fn type_expr_to_dot(ty_expr: &crate::ast::TypeExpr, output: &mut String, gen: &mut NodeIdGenerator) -> String {
+    let node_id = gen.next();
+    
+    match ty_expr {
+        crate::ast::TypeExpr::Int => {
+            output.push_str(&format!("  {node_id} [label=\"Type\\nInt\"];\n"));
+        }
+        crate::ast::TypeExpr::Bool => {
+            output.push_str(&format!("  {node_id} [label=\"Type\\nBool\"];\n"));
+        }
+        crate::ast::TypeExpr::Fun(arg, ret) => {
+            output.push_str(&format!("  {node_id} [label=\"Type\\nFun\"];\n"));
+            let arg_id = type_expr_to_dot(arg, output, gen);
+            let ret_id = type_expr_to_dot(ret, output, gen);
+            output.push_str(&format!("  {node_id} -> {arg_id} [label=\"arg\"];\n"));
+            output.push_str(&format!("  {node_id} -> {ret_id} [label=\"ret\"];\n"));
+        }
+        crate::ast::TypeExpr::Alias(name) => {
+            output.push_str(&format!("  {} [label=\"TypeAlias\\n{}\"];\n", node_id, escape_label(name)));
+        }
     }
     
     node_id

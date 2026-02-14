@@ -9,6 +9,7 @@ use std::fmt;
 pub struct TypeEnv {
     bindings: HashMap<String, TypeScheme>,
     next_var: usize,
+    type_aliases: HashMap<String, Type>,
 }
 
 impl TypeEnv {
@@ -16,6 +17,7 @@ impl TypeEnv {
         TypeEnv {
             bindings: HashMap::new(),
             next_var: 0,
+            type_aliases: HashMap::new(),
         }
     }
 
@@ -86,6 +88,16 @@ impl TypeEnv {
                 free
             })
             .collect()
+    }
+
+    /// Define a type alias
+    pub fn define_type_alias(&mut self, name: String, ty: Type) {
+        self.type_aliases.insert(name, ty);
+    }
+
+    /// Resolve a type alias by name
+    pub fn resolve_type_alias(&self, name: &str) -> Option<Type> {
+        self.type_aliases.get(name).cloned()
     }
 }
 
@@ -229,6 +241,23 @@ fn compose_subst(s1: &Substitution, s2: &Substitution) -> Substitution {
 fn apply_subst_env(subst: &Substitution, env: &mut TypeEnv) {
     for scheme in env.bindings.values_mut() {
         scheme.ty = apply_subst(subst, &scheme.ty);
+    }
+}
+
+/// Convert a TypeExpr to a Type, resolving any aliases
+fn resolve_type_expr(ty_expr: &crate::ast::TypeExpr, env: &TypeEnv) -> Result<Type, TypeError> {
+    match ty_expr {
+        crate::ast::TypeExpr::Int => Ok(Type::Int),
+        crate::ast::TypeExpr::Bool => Ok(Type::Bool),
+        crate::ast::TypeExpr::Fun(arg, ret) => {
+            let arg_ty = resolve_type_expr(arg, env)?;
+            let ret_ty = resolve_type_expr(ret, env)?;
+            Ok(Type::Fun(Box::new(arg_ty), Box::new(ret_ty)))
+        }
+        crate::ast::TypeExpr::Alias(name) => {
+            env.resolve_type_alias(name)
+                .ok_or_else(|| TypeError::UnboundVariable(name.clone()))
+        }
     }
 }
 
@@ -378,6 +407,18 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
         Expr::Seq(_, _) => {
             // For now, return a type variable for sequential expressions
             Ok((env.fresh_var(), HashMap::new()))
+        }
+
+        Expr::TypeAlias(name, ty_expr, body) => {
+            // Resolve the type expression to a Type
+            let ty = resolve_type_expr(ty_expr, env)?;
+            
+            // Define the type alias in the environment
+            let mut new_env = env.clone();
+            new_env.define_type_alias(name.clone(), ty);
+            
+            // Infer the type of the body with the extended environment
+            infer(body, &mut new_env)
         }
     }
 }

@@ -80,7 +80,7 @@ where
         // Reject keywords by returning a failing parser
         if matches!(
             name.as_str(),
-            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with"
+            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with" | "type"
         ) {
             // Use a parser that will never succeed to reject keywords
             combine::unexpected("keyword").map(move |()| name.clone()).right()
@@ -178,6 +178,65 @@ parser! {
             expr(),
         )
             .map(|(_, name, _, body)| Expr::Rec(name, Box::new(body)))
+    }
+}
+
+/// Parse a type expression atom (Int, Bool, or type alias reference)
+fn type_atom<Input>() -> impl Parser<Input, Output = crate::ast::TypeExpr>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    choice((
+        attempt(string("Int")).map(|_| crate::ast::TypeExpr::Int),
+        attempt(string("Bool")).map(|_| crate::ast::TypeExpr::Bool),
+        // Parenthesized type expression
+        attempt(between(
+            token('(').skip(spaces()),
+            token(')'),
+            type_expr().skip(spaces())
+        )),
+        identifier().map(crate::ast::TypeExpr::Alias),
+    ))
+}
+
+parser! {
+    fn type_expr[Input]()(Input) -> crate::ast::TypeExpr
+    where [Input: Stream<Token = char>]
+    {
+        // Parse left-associative function types: T1 -> T2 -> T3 is (T1 -> (T2 -> T3))
+        // We parse the first type, then optionally parse "-> type_expr"
+        (
+            type_atom().skip(spaces()),
+            optional(
+                string("->").skip(spaces())
+                    .with(type_expr())
+            ),
+        )
+            .map(|(arg, ret_opt)| {
+                match ret_opt {
+                    None => arg,
+                    Some(ret) => crate::ast::TypeExpr::Fun(Box::new(arg), Box::new(ret)),
+                }
+            })
+    }
+}
+
+parser! {
+    fn type_alias_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        (
+            string("type").skip(spaces()),
+            identifier().skip(spaces()),
+            token('=').skip(spaces()),
+            type_expr().skip(spaces()),
+            string("in").skip(spaces()),
+            expr(),
+        )
+            .map(|(_, name, _, ty_expr, _, body)| {
+                Expr::TypeAlias(name, ty_expr, Box::new(body))
+            })
     }
 }
 
@@ -324,6 +383,7 @@ parser! {
     where [Input: Stream<Token = char>]
     {
         choice((
+            attempt(type_alias_expr()),
             attempt(let_expr()),
             attempt(load_expr()),
             attempt(if_expr()),
