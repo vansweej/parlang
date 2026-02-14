@@ -8,6 +8,8 @@ pub enum Type {
     Int,
     /// Boolean type
     Bool,
+    /// Character type
+    Char,
     /// Function type: T1 -> T2
     Fun(Box<Type>, Box<Type>),
     /// Type variable (for polymorphism): α, β, γ
@@ -53,6 +55,7 @@ impl fmt::Display for Type {
         match self {
             Type::Int => write!(f, "Int"),
             Type::Bool => write!(f, "Bool"),
+            Type::Char => write!(f, "Char"),
             Type::Fun(arg, ret) => {
                 // Add parentheses around function arguments if they are also functions
                 match arg.as_ref() {

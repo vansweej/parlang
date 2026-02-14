@@ -69,6 +69,8 @@ pub enum Literal {
     Int(i64),
     /// Boolean literal
     Bool(bool),
+    /// Character literal
+    Char(char),
 }
 
 /// Pattern for pattern matching
@@ -124,6 +126,9 @@ pub enum Expr {
     
     /// Boolean literal: true, false
     Bool(bool),
+    
+    /// Character literal: 'a', 'Z', '\n'
+    Char(char),
     
     /// Variable reference: x, y, foo
     Var(String),
@@ -216,6 +221,18 @@ impl fmt::Display for Expr {
         match self {
             Expr::Int(n) => write!(f, "{n}"),
             Expr::Bool(b) => write!(f, "{b}"),
+            Expr::Char(c) => {
+                write!(f, "'")?;
+                match c {
+                    '\n' => write!(f, "\\n")?,
+                    '\t' => write!(f, "\\t")?,
+                    '\r' => write!(f, "\\r")?,
+                    '\\' => write!(f, "\\\\")?,
+                    '\'' => write!(f, "\\'")?,
+                    _ => write!(f, "{c}")?,
+                }
+                write!(f, "'")
+            }
             Expr::Var(name) => write!(f, "{name}"),
             Expr::BinOp(op, left, right) => write!(f, "({left} {op} {right})"),
             Expr::If(cond, then_branch, else_branch) => {
@@ -351,6 +368,18 @@ impl fmt::Display for Literal {
         match self {
             Literal::Int(n) => write!(f, "{n}"),
             Literal::Bool(b) => write!(f, "{b}"),
+            Literal::Char(c) => {
+                write!(f, "'")?;
+                match c {
+                    '\n' => write!(f, "\\n")?,
+                    '\t' => write!(f, "\\t")?,
+                    '\r' => write!(f, "\\r")?,
+                    '\\' => write!(f, "\\\\")?,
+                    '\'' => write!(f, "\\'")?,
+                    _ => write!(f, "{c}")?,
+                }
+                write!(f, "'")
+            }
         }
     }
 }

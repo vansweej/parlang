@@ -49,6 +49,30 @@ where
     ))
 }
 
+/// Parse a character literal
+fn char_literal<Input>() -> impl Parser<Input, Output = Expr>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    between(
+        token('\''),
+        token('\''),
+        choice((
+            attempt(token('\\').with(choice((
+                token('n').map(|_| '\n'),
+                token('t').map(|_| '\t'),
+                token('r').map(|_| '\r'),
+                token('\\').map(|_| '\\'),
+                token('\'').map(|_| '\''),
+                token('"').map(|_| '"'),
+            )))),
+            combine::satisfy(|c: char| c != '\'' && c != '\\'),
+        )),
+    )
+    .map(Expr::Char)
+}
+
 /// Parse a string literal
 fn string_literal<Input>() -> impl Parser<Input, Output = String>
 where
@@ -196,6 +220,7 @@ parser! {
     {
         choice((
             attempt(bool_literal()),
+            attempt(char_literal()),
             attempt(int()),
             attempt(record()),
             attempt(constructor()),  // Try constructor before variable
