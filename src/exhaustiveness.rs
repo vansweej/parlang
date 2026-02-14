@@ -151,6 +151,10 @@ fn analyze_pattern(
         Pattern::Literal(Literal::Int(n)) => {
             int_literals.insert(*n);
         }
+        Pattern::Literal(Literal::Char(_)) => {
+            // Char literals are not exhaustively checked currently
+            // (there are too many possible char values)
+        }
         Pattern::Constructor(name, args) => {
             constructors.insert(name.clone());
             // Recursively analyze nested patterns

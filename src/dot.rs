@@ -93,6 +93,17 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
         Expr::Bool(b) => {
             output.push_str(&format!("  {node_id} [label=\"Bool\\n{b}\"];\n"));
         }
+        Expr::Char(c) => {
+            let label = match c {
+                '\n' => "\\\\n".to_string(),
+                '\t' => "\\\\t".to_string(),
+                '\r' => "\\\\r".to_string(),
+                '\\' => "\\\\\\\\".to_string(),
+                '\'' => "\\\\'".to_string(),
+                _ => c.to_string(),
+            };
+            output.push_str(&format!("  {node_id} [label=\"Char\\n'{label}'\"];\n"));
+        }
         Expr::Var(name) => {
             output.push_str(&format!("  {} [label=\"Var\\n{}\"];\n", node_id, escape_label(name)));
         }
@@ -276,6 +287,17 @@ fn pattern_to_dot(pattern: &Pattern, output: &mut String, gen: &mut NodeIdGenera
             let label = match lit {
                 Literal::Int(n) => format!("Literal\\nInt {n}"),
                 Literal::Bool(b) => format!("Literal\\nBool {b}"),
+                Literal::Char(c) => {
+                    let char_label = match c {
+                        '\n' => "\\\\n".to_string(),
+                        '\t' => "\\\\t".to_string(),
+                        '\r' => "\\\\r".to_string(),
+                        '\\' => "\\\\\\\\".to_string(),
+                        '\'' => "\\\\'".to_string(),
+                        _ => c.to_string(),
+                    };
+                    format!("Literal\\nChar '{char_label}'")
+                }
             };
             output.push_str(&format!("  {node_id} [label=\"{label}\"];\n"));
         }

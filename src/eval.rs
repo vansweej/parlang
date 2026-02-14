@@ -12,6 +12,7 @@ use std::path::Path;
 pub enum Value {
     Int(i64),
     Bool(bool),
+    Char(char),
     Closure(String, Expr, Environment),
     /// Recursive closure: function name, parameter name, body, environment
     RecClosure(String, String, Expr, Environment),
@@ -33,6 +34,18 @@ impl fmt::Display for Value {
         match self {
             Value::Int(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
+            Value::Char(c) => {
+                write!(f, "'")?;
+                match c {
+                    '\n' => write!(f, "\\n")?,
+                    '\t' => write!(f, "\\t")?,
+                    '\r' => write!(f, "\\r")?,
+                    '\\' => write!(f, "\\\\")?,
+                    '\'' => write!(f, "\\'")?,
+                    _ => write!(f, "{c}")?,
+                }
+                write!(f, "'")
+            }
             Value::Closure(param, _, _) => write!(f, "<function {param}>"),
             Value::RecClosure(name, _, _, _) => write!(f, "<recursive function {name}>"),
             Value::Tuple(values) => {
@@ -401,6 +414,7 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
             match (lit, value) {
                 (Literal::Int(n1), Value::Int(n2)) if n1 == n2 => Some(env.clone()),
                 (Literal::Bool(b1), Value::Bool(b2)) if b1 == b2 => Some(env.clone()),
+                (Literal::Char(c1), Value::Char(c2)) if c1 == c2 => Some(env.clone()),
                 _ => None,
             }
         }
@@ -503,6 +517,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
     match expr {
         Expr::Int(n) => Ok(Value::Int(*n)),
         Expr::Bool(b) => Ok(Value::Bool(*b)),
+        Expr::Char(c) => Ok(Value::Char(*c)),
         
         Expr::Var(name) => env
             .lookup(name)
@@ -787,7 +802,7 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
             }
         }
         
-        // Comparison operations
+        // Comparison operations for Int
         (BinOp::Eq, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a == b)),
         (BinOp::Neq, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a != b)),
         (BinOp::Lt, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a < b)),
@@ -795,8 +810,17 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Gt, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a > b)),
         (BinOp::Ge, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a >= b)),
         
+        // Comparison operations for Bool
         (BinOp::Eq, Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
         (BinOp::Neq, Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a != b)),
+        
+        // Comparison operations for Char
+        (BinOp::Eq, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a == b)),
+        (BinOp::Neq, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a != b)),
+        (BinOp::Lt, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a < b)),
+        (BinOp::Le, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a <= b)),
+        (BinOp::Gt, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a > b)),
+        (BinOp::Ge, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a >= b)),
         
         (op, left, right) => Err(EvalError::TypeError(format!(
             "Type error in binary operation {:?}: cannot apply to {:?} and {:?}", op, left, right

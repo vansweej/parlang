@@ -1237,3 +1237,100 @@ fn test_empty_tuple_display() {
     assert_eq!(format!("{result}"), "()");
 }
 
+// ============================================
+// Character Literal Tests
+// ============================================
+
+#[test]
+fn test_char_literal() {
+    assert_eq!(parse_and_eval("'a'"), Ok(Value::Char('a')));
+    assert_eq!(parse_and_eval("'Z'"), Ok(Value::Char('Z')));
+    assert_eq!(parse_and_eval("'0'"), Ok(Value::Char('0')));
+    assert_eq!(parse_and_eval("' '"), Ok(Value::Char(' ')));
+}
+
+#[test]
+fn test_char_escape_sequences() {
+    assert_eq!(parse_and_eval("'\\n'"), Ok(Value::Char('\n')));
+    assert_eq!(parse_and_eval("'\\t'"), Ok(Value::Char('\t')));
+    assert_eq!(parse_and_eval("'\\r'"), Ok(Value::Char('\r')));
+    assert_eq!(parse_and_eval("'\\\\'"), Ok(Value::Char('\\')));
+    assert_eq!(parse_and_eval("'\\''"), Ok(Value::Char('\'')));
+    assert_eq!(parse_and_eval("'\\\"'"), Ok(Value::Char('"')));
+}
+
+#[test]
+fn test_char_in_let_binding() {
+    let code = "let c = 'x' in c";
+    assert_eq!(parse_and_eval(code), Ok(Value::Char('x')));
+}
+
+#[test]
+fn test_char_equality() {
+    assert_eq!(parse_and_eval("'a' == 'a'"), Ok(Value::Bool(true)));
+    assert_eq!(parse_and_eval("'a' == 'b'"), Ok(Value::Bool(false)));
+    assert_eq!(parse_and_eval("'a' != 'b'"), Ok(Value::Bool(true)));
+    assert_eq!(parse_and_eval("'a' != 'a'"), Ok(Value::Bool(false)));
+}
+
+#[test]
+fn test_char_ordering() {
+    assert_eq!(parse_and_eval("'a' < 'b'"), Ok(Value::Bool(true)));
+    assert_eq!(parse_and_eval("'z' > 'a'"), Ok(Value::Bool(true)));
+    assert_eq!(parse_and_eval("'m' <= 'm'"), Ok(Value::Bool(true)));
+    assert_eq!(parse_and_eval("'x' >= 'w'"), Ok(Value::Bool(true)));
+    assert_eq!(parse_and_eval("'b' < 'a'"), Ok(Value::Bool(false)));
+}
+
+#[test]
+fn test_char_in_if() {
+    let code = "if 'a' == 'a' then true else false";
+    assert_eq!(parse_and_eval(code), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn test_char_arithmetic_error() {
+    // Chars don't support arithmetic operations
+    assert!(parse_and_eval("'a' + 'b'").is_err());
+    assert!(parse_and_eval("'a' - 'b'").is_err());
+    assert!(parse_and_eval("'a' * 'b'").is_err());
+    assert!(parse_and_eval("'a' / 'b'").is_err());
+}
+
+#[test]
+fn test_char_pattern_matching() {
+    let code = "match 'a' with | 'a' -> 1 | 'b' -> 2 | _ -> 3";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(1)));
+}
+
+#[test]
+fn test_char_pattern_matching_escape() {
+    let code = "match '\\n' with | '\\n' -> 10 | '\\t' -> 20 | _ -> 30";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(10)));
+}
+
+#[test]
+fn test_char_display() {
+    // Test that char values display with proper escaping
+    assert_eq!(format!("{}", Value::Char('a')), "'a'");
+    assert_eq!(format!("{}", Value::Char('\n')), "'\\n'");
+    assert_eq!(format!("{}", Value::Char('\t')), "'\\t'");
+    assert_eq!(format!("{}", Value::Char('\\')), "'\\\\'");
+    assert_eq!(format!("{}", Value::Char('\'')), "'\\''");
+}
+
+#[test]
+fn test_char_in_function() {
+    let code = "let is_a = fun c -> c == 'a' in is_a 'a'";
+    assert_eq!(parse_and_eval(code), Ok(Value::Bool(true)));
+    
+    let code2 = "let is_a = fun c -> c == 'a' in is_a 'b'";
+    assert_eq!(parse_and_eval(code2), Ok(Value::Bool(false)));
+}
+
+#[test]
+fn test_char_comparison_chain() {
+    let code = "if 'a' < 'b' then if 'b' < 'c' then true else false else false";
+    assert_eq!(parse_and_eval(code), Ok(Value::Bool(true)));
+}
+
