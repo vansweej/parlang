@@ -58,6 +58,18 @@ fun x -> x + 1                         # Anonymous function
 (fun x -> x * 2) 21                    # Result: 42
 ```
 
+### Type Annotations
+
+ParLang supports **explicit type annotations** for variables to improve code documentation and enable early error detection:
+
+```
+let x : Int = 42 in x + 1              # Type annotation on variable
+let active : Bool = true;              # Sequential binding with annotation
+let count : Int = 100;                 # Multiple annotated bindings
+```
+
+Type annotations are optional and work alongside automatic type inference. See [Type Annotations Documentation](docs/TYPE_ANNOTATIONS.md) for details.
+
 ### Conditionals
 ```
 if true then 1 else 2                  # Result: 1
@@ -510,13 +522,14 @@ Type error: Cannot unify types: Int and Bool
 
 ### Type System Features
 
-- **Automatic Type Inference**: No type annotations required
+- **Automatic Type Inference**: No type annotations required (but supported!)
+- **Explicit Type Annotations**: Optional type annotations for better documentation and early error detection
 - **Polymorphic Types**: Functions can work with multiple types
 - **Let-Polymorphism**: Let-bound functions are generalized
 - **Sound Type System**: Well-typed programs won't have type errors at runtime
 - **Clear Error Messages**: Helpful messages when types don't match
 
-For detailed information about the type system, see **[Type System Documentation](docs/TYPE_SYSTEM.md)**.
+For detailed information about the type system, see **[Type System Documentation](docs/TYPE_SYSTEM.md)** and **[Type Annotations Documentation](docs/TYPE_ANNOTATIONS.md)**.
 
 ## Installation
 
@@ -663,6 +676,7 @@ See the `examples/` directory for sample programs:
 - `type_alias_simple.par` - Simple function type alias
 - `type_alias_binary.par` - Binary operation type alias
 - `type_alias_nested.par` - Nested type aliases
+- `type_annotations.par` - Explicit type annotations for variables
 
 ## Documentation
 
@@ -672,6 +686,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Architecture Guide](docs/ARCHITECTURE.md)** - System architecture, component interaction, and design patterns
 - **[Language Specification](docs/LANGUAGE_SPEC.md)** - Formal language specification with grammar and semantics
 - **[Type System](docs/TYPE_SYSTEM.md)** - Hindley-Milner type inference system documentation
+- **[Type Annotations](docs/TYPE_ANNOTATIONS.md)** - Explicit type annotations for better documentation and error detection
 - **[Generic Types](docs/GENERIC_TYPES.md)** - Parameterized types and type inference for generic data structures
 - **[Sum Types](docs/SUM_TYPES.md)** - Algebraic data types with pattern matching
 - **[Exhaustiveness Checking](docs/EXHAUSTIVENESS_CHECKING.md)** - Automatic checking for complete pattern matches
