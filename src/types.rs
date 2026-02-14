@@ -12,6 +12,9 @@ pub enum Type {
     Char,
     /// Floating point type
     Float,
+    /// Unit type: ()
+    /// Represents the type of the empty tuple, used for side effects
+    Unit,
     /// Function type: T1 -> T2
     Fun(Box<Type>, Box<Type>),
     /// Type variable (for polymorphism): α, β, γ
@@ -59,6 +62,7 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "Bool"),
             Type::Char => write!(f, "Char"),
             Type::Float => write!(f, "Float"),
+            Type::Unit => write!(f, "()"),
             Type::Fun(arg, ret) => {
                 // Add parentheses around function arguments if they are also functions
                 match arg.as_ref() {
@@ -202,6 +206,25 @@ mod tests {
     }
 
     #[test]
+    fn test_display_unit() {
+        assert_eq!(format!("{}", Type::Unit), "()");
+    }
+
+    #[test]
+    fn test_type_unit_equality() {
+        assert_eq!(Type::Unit, Type::Unit);
+        assert_ne!(Type::Unit, Type::Int);
+        assert_ne!(Type::Unit, Type::Bool);
+    }
+
+    #[test]
+    fn test_type_unit_clone() {
+        let t1 = Type::Unit;
+        let t2 = t1.clone();
+        assert_eq!(t1, t2);
+    }
+
+    #[test]
     fn test_display_var() {
         assert_eq!(format!("{}", Type::Var(TypeVar(0))), "t0");
         assert_eq!(format!("{}", Type::Var(TypeVar(42))), "t42");
@@ -231,6 +254,27 @@ mod tests {
             Box::new(Type::Fun(Box::new(Type::Bool), Box::new(Type::Int))),
         );
         assert_eq!(format!("{ty}"), "Int -> Bool -> Int");
+    }
+
+    #[test]
+    fn test_display_function_with_unit_arg() {
+        // () -> Int
+        let ty = Type::Fun(Box::new(Type::Unit), Box::new(Type::Int));
+        assert_eq!(format!("{ty}"), "() -> Int");
+    }
+
+    #[test]
+    fn test_display_function_with_unit_ret() {
+        // Int -> ()
+        let ty = Type::Fun(Box::new(Type::Int), Box::new(Type::Unit));
+        assert_eq!(format!("{ty}"), "Int -> ()");
+    }
+
+    #[test]
+    fn test_display_function_unit_to_unit() {
+        // () -> ()
+        let ty = Type::Fun(Box::new(Type::Unit), Box::new(Type::Unit));
+        assert_eq!(format!("{ty}"), "() -> ()");
     }
 
     #[test]
@@ -267,6 +311,16 @@ mod tests {
             ),
         };
         assert_eq!(format!("{scheme}"), "forall t0, t1. t0 -> t1");
+    }
+
+    #[test]
+    fn test_display_type_scheme_unit() {
+        let scheme = TypeScheme {
+            vars: vec![],
+            row_vars: vec![],
+            ty: Type::Unit,
+        };
+        assert_eq!(format!("{scheme}"), "()");
     }
 
     // Test Record type
