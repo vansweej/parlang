@@ -1,6 +1,7 @@
 /// Evaluator/Interpreter for the `ParLang` language
 /// This module implements the runtime evaluation of `ParLang` expressions
 use crate::ast::{BinOp, Expr, Literal, Pattern};
+use crate::exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
@@ -129,6 +130,20 @@ impl Environment {
     
     pub fn lookup_constructor(&self, name: &str) -> Option<&ConstructorInfo> {
         self.constructors.get(name)
+    }
+    
+    /// Get constructor information by name (used by exhaustiveness checker)
+    pub fn get_constructor(&self, name: &str) -> Option<&ConstructorInfo> {
+        self.constructors.get(name)
+    }
+    
+    /// Get all constructors for a given type name (used by exhaustiveness checker)
+    pub fn get_constructors_for_type(&self, type_name: &str) -> Vec<String> {
+        self.constructors
+            .iter()
+            .filter(|(_, info)| info.type_name == type_name)
+            .map(|(name, _)| name.clone())
+            .collect()
     }
 }
 
@@ -542,6 +557,18 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
         }
         
         Expr::Match(scrutinee, arms) => {
+            // Check exhaustiveness of patterns
+            let patterns: Vec<Pattern> = arms.iter().map(|(p, _)| p.clone()).collect();
+            let exhaustiveness = check_exhaustiveness(&patterns, env);
+            
+            if !exhaustiveness.is_exhaustive() {
+                // Print warning to stderr for non-exhaustive patterns
+                if let ExhaustivenessResult::NonExhaustive(missing) = exhaustiveness {
+                    eprintln!("Warning: pattern match is non-exhaustive");
+                    eprintln!("  Missing cases: {}", missing.join(", "));
+                }
+            }
+            
             // Evaluate the scrutinee expression
             let val = eval(scrutinee, env)?;
             
