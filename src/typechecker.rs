@@ -546,10 +546,27 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             Ok((result_ty, subst))
         }
 
-        Expr::Rec(_, _) => {
-            // For recursive functions, we need to handle the self-reference
-            // This is a simplified version - full implementation would need fixpoint typing
-            Err(TypeError::RecursionRequiresAnnotation)
+        Expr::Rec(name, body) => {
+            // For recursive functions, we use fixpoint typing:
+            // 1. Generate a fresh type variable for the recursive function
+            // 2. Add it to the environment before checking the body
+            // 3. Infer the type of the body with the recursive name bound
+            // 4. Unify the inferred type with the assumed type
+            
+            let rec_ty = env.fresh_var();
+            let mut extended_env = env.extend(name.clone(), rec_ty.clone());
+            
+            let (body_ty, subst) = infer(body, &mut extended_env)?;
+            
+            // The body type should be the same as the recursive function type
+            // (after applying the substitution from inferring the body)
+            let rec_ty = apply_subst(&subst, &rec_ty);
+            let s2 = unify(&rec_ty, &body_ty)?;
+            
+            let final_ty = apply_subst(&s2, &body_ty);
+            let final_subst = compose_subst(&s2, &subst);
+            
+            Ok((final_ty, final_subst))
         }
 
         Expr::Tuple(_elements) => {
@@ -918,11 +935,16 @@ mod tests {
     }
 
     #[test]
-    fn test_rec_not_supported() {
-        // Recursive functions should return an error for now
-        assert!(matches!(
-            check("rec f -> fun n -> if n == 0 then 1 else n"),
-            Err(TypeError::RecursionRequiresAnnotation)
-        ));
+    fn test_rec_simple() {
+        // Test that recursive functions are now supported
+        let ty = check("rec f -> fun n -> if n == 0 then 1 else n").unwrap();
+        assert_eq!(ty, Type::Fun(Box::new(Type::Int), Box::new(Type::Int)));
+    }
+    
+    #[test]
+    fn test_rec_factorial() {
+        // Test factorial: rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)
+        let ty = check("rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)").unwrap();
+        assert_eq!(ty, Type::Fun(Box::new(Type::Int), Box::new(Type::Int)));
     }
 }
