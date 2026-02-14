@@ -1,0 +1,14 @@
+digraph AST {
+  node [shape=box, style=rounded];
+  edge [fontsize=10];
+
+  node0 [label="Let\nx"];
+  node1 [label="Int\n42"];
+  node2 [label="BinOp\n+"];
+  node3 [label="Var\nx"];
+  node4 [label="Int\n1"];
+  node2 -> node3 [label="left"];
+  node2 -> node4 [label="right"];
+  node0 -> node1 [label="value"];
+  node0 -> node2 [label="body"];
+}

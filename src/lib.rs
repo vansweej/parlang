@@ -20,6 +20,7 @@
 pub mod ast;
 pub mod parser;
 pub mod eval;
+pub mod dot;
 
 // Re-export commonly used types and functions
 pub use ast::{Expr, BinOp};
