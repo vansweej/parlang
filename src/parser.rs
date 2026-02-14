@@ -9,6 +9,12 @@ use combine::{
     ParseError, Stream,
 };
 
+/// Helper function to check if a string starts with an uppercase ASCII character.
+/// Used to distinguish concrete types (Int, Bool) from type variables (a, b).
+fn starts_with_uppercase(s: &str) -> bool {
+    s.as_bytes().first().map_or(false, |c| c.is_ascii_uppercase())
+}
+
 /// Parse an integer literal
 fn int<Input>() -> impl Parser<Input, Output = Expr>
 where
@@ -339,7 +345,7 @@ parser! {
                     combine::unexpected("keyword").map(|()| TypeAnnotation::Var(String::new())).right()
                 } else {
                     // Check if first character is uppercase to distinguish concrete types from type variables
-                    let result = if name.as_bytes().first().map_or(false, |c| c.is_ascii_uppercase()) {
+                    let result = if starts_with_uppercase(&name) {
                         TypeAnnotation::Concrete(name)
                     } else {
                         TypeAnnotation::Var(name)
