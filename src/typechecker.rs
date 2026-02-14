@@ -100,19 +100,34 @@ type Substitution = HashMap<TypeVar, Type>;
 
 /// Apply substitution to a type
 fn apply_subst(subst: &Substitution, ty: &Type) -> Type {
+    apply_subst_with_visited(subst, ty, &mut HashSet::new())
+}
+
+/// Apply substitution to a type with cycle detection
+fn apply_subst_with_visited(
+    subst: &Substitution,
+    ty: &Type,
+    visited: &mut HashSet<TypeVar>,
+) -> Type {
     match ty {
         Type::Int | Type::Bool => ty.clone(),
         Type::Var(v) => {
+            if visited.contains(v) {
+                // Cycle detected, return the variable as-is
+                return ty.clone();
+            }
             if let Some(t) = subst.get(v) {
-                // Apply substitution recursively to handle chains
-                apply_subst(subst, t)
+                visited.insert(v.clone());
+                let result = apply_subst_with_visited(subst, t, visited);
+                visited.remove(v);
+                result
             } else {
                 ty.clone()
             }
         }
         Type::Fun(arg, ret) => Type::Fun(
-            Box::new(apply_subst(subst, arg)),
-            Box::new(apply_subst(subst, ret)),
+            Box::new(apply_subst_with_visited(subst, arg, visited)),
+            Box::new(apply_subst_with_visited(subst, ret, visited)),
         ),
     }
 }
