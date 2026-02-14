@@ -128,7 +128,7 @@ fn repl() {
                     }
                     
                     // Add the line to our accumulator (with newline to match old behavior)
-                    lines.push(line.clone() + "\n");
+                    lines.push(line + "\n");
                     is_first_line = false;
                     
                     // Try to parse the accumulated input after each line
@@ -142,9 +142,9 @@ fn repl() {
                     }
                 }
                 Err(ReadlineError::Interrupted) => {
-                    // Ctrl+C
+                    // Ctrl+C - reset the multiline input state and start fresh
                     println!("^C");
-                    continue;
+                    break;
                 }
                 Err(ReadlineError::Eof) => {
                     // Ctrl+D
