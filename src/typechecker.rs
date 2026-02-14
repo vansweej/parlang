@@ -957,7 +957,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                         }
                     }
                 }
-                Type::RecordRow(fields, _row_var) => {
+                Type::RecordRow(fields, _) => {
                     // Look up the field type in the known fields
                     match fields.get(field_name) {
                         Some(field_ty) => Ok((field_ty.clone(), s1)),

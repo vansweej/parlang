@@ -405,7 +405,7 @@ Even though `getAge` is polymorphic, the type system still catches field access 
 ```parlang
 let getName = fun r -> r.name
 let getAge = fun r -> r.age
-let describeQualified only works with records that have both 'name' and 'age'
+# describe only works with records that have both 'name' and 'age'
 let describe = fun r -> getName r + getAge r
 ```
 
