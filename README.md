@@ -631,6 +631,8 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Generic Types](docs/GENERIC_TYPES.md)** - Parameterized types and type inference for generic data structures
 - **[Examples Guide](docs/EXAMPLES.md)** - Tutorial-style examples from basic to advanced
 - **[Security & Performance](docs/SECURITY.md)** - Security considerations and performance best practices
+- **[Error Handling](docs/ERROR_HANDLING.md)** - Error types, patterns, and debugging strategies
+- **[Test Guidelines](docs/TEST_GUIDELINES.md)** - Testing standards, patterns, and best practices
 - **[Contributing Guide](CONTRIBUTING.md)** - Guidelines for contributing to ParLang
 
 ### 🔧 Module Documentation
