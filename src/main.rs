@@ -96,7 +96,7 @@ fn main() {
 
 fn repl() {
     let mut env = Environment::new();
-    let mut rl = DefaultEditor::new().unwrap();
+    let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
 
     loop {
         // Accumulate multiline input
@@ -124,7 +124,9 @@ fn repl() {
                     
                     // Add the line to history if it's the first line
                     if is_first_line {
-                        let _ = rl.add_history_entry(line.as_str());
+                        if let Err(e) = rl.add_history_entry(line.as_str()) {
+                            eprintln!("Warning: Failed to add entry to history: {}", e);
+                        }
                     }
                     
                     // Add the line to our accumulator (with newline to match old behavior)
