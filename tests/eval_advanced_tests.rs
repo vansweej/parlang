@@ -21,9 +21,9 @@ fn test_tco_deep_recursion_countdown() {
 }
 
 #[test]
-fn test_tco_deep_recursion_accumulator() {
-    // Test TCO with accumulator pattern (sum from 0 to 10)
-    // Note: This is NOT tail-recursive due to addition after recursive call
+fn test_non_tail_recursive_sum() {
+    // Test non-tail recursive sum (addition happens after recursive call)
+    // This is NOT tail-recursive due to the addition after the recursive call
     // The recursion depth is limited to prevent stack overflow
     let code = r"
         (rec helper -> fun n ->
