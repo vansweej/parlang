@@ -435,3 +435,110 @@ fn test_rec_nested_recursion() {
     let result = typecheck(&expr);
     assert!(result.is_ok());
 }
+
+// ============================================
+// Character Type Inference Tests
+// ============================================
+
+#[test]
+fn test_infer_char_literal() {
+    let expr = parse("'a'").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(ty, Type::Char);
+    
+    let expr2 = parse("'\\n'").unwrap();
+    let ty2 = typecheck(&expr2).unwrap();
+    assert_eq!(ty2, Type::Char);
+}
+
+#[test]
+fn test_char_comparison_types() {
+    // Equality comparisons
+    let expr1 = parse("'a' == 'b'").unwrap();
+    let ty1 = typecheck(&expr1).unwrap();
+    assert_eq!(ty1, Type::Bool);
+    
+    let expr2 = parse("'a' != 'z'").unwrap();
+    let ty2 = typecheck(&expr2).unwrap();
+    assert_eq!(ty2, Type::Bool);
+    
+    // Ordering comparisons
+    let expr3 = parse("'a' < 'z'").unwrap();
+    let ty3 = typecheck(&expr3).unwrap();
+    assert_eq!(ty3, Type::Bool);
+    
+    let expr4 = parse("'x' <= 'y'").unwrap();
+    let ty4 = typecheck(&expr4).unwrap();
+    assert_eq!(ty4, Type::Bool);
+}
+
+#[test]
+fn test_char_in_function() {
+    // Function taking char and returning bool
+    let expr = parse("fun c -> c == 'a'").unwrap();
+    let result = typecheck(&expr);
+    assert!(result.is_ok());
+    
+    // Function taking char and returning char
+    let expr2 = parse("fun c -> c").unwrap();
+    let result2 = typecheck(&expr2);
+    assert!(result2.is_ok());
+}
+
+#[test]
+fn test_char_type_error_arithmetic() {
+    // Cannot add chars
+    let expr = parse("'a' + 'b'").unwrap();
+    let result = typecheck(&expr);
+    assert!(result.is_err());
+    
+    // Cannot subtract chars
+    let expr2 = parse("'a' - 'b'").unwrap();
+    let result2 = typecheck(&expr2);
+    assert!(result2.is_err());
+    
+    // Cannot multiply chars
+    let expr3 = parse("'a' * 'b'").unwrap();
+    let result3 = typecheck(&expr3);
+    assert!(result3.is_err());
+    
+    // Cannot divide chars
+    let expr4 = parse("'a' / 'b'").unwrap();
+    let result4 = typecheck(&expr4);
+    assert!(result4.is_err());
+}
+
+#[test]
+fn test_char_type_error_mixed() {
+    // Cannot compare char with int
+    let expr = parse("'a' == 42").unwrap();
+    let result = typecheck(&expr);
+    assert!(result.is_err());
+    
+    // Cannot order compare char with int
+    let expr2 = parse("'a' < 42").unwrap();
+    let result2 = typecheck(&expr2);
+    assert!(result2.is_err());
+}
+
+#[test]
+fn test_char_in_let() {
+    let expr = parse("let c = 'x' in c").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(ty, Type::Char);
+}
+
+#[test]
+fn test_char_in_if() {
+    let expr = parse("if 'a' == 'a' then 'b' else 'c'").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(ty, Type::Char);
+}
+
+#[test]
+fn test_char_polymorphic_function() {
+    // Identity function can work with char
+    let expr = parse("let id = fun x -> x in id 'a'").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(ty, Type::Char);
+}

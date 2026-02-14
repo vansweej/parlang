@@ -530,7 +530,7 @@ impl std::error::Error for TypeError {}
 /// Unification algorithm
 fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
     match (t1, t2) {
-        (Type::Int, Type::Int) | (Type::Bool, Type::Bool) => Ok(HashMap::new()),
+        (Type::Int, Type::Int) | (Type::Bool, Type::Bool) | (Type::Char, Type::Char) => Ok(HashMap::new()),
 
         (Type::Var(v), t) | (t, Type::Var(v)) => bind_var(v.clone(), t.clone()),
 

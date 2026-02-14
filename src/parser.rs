@@ -556,6 +556,25 @@ parser! {
             // Boolean literal pattern: true, false
             attempt(string("true").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(true)))),
             attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
+            // Character literal pattern: 'a', '\n', etc.
+            attempt(
+                between(
+                    token('\''),
+                    token('\''),
+                    choice((
+                        attempt(token('\\').with(choice((
+                            token('n').map(|_| '\n'),
+                            token('t').map(|_| '\t'),
+                            token('r').map(|_| '\r'),
+                            token('\\').map(|_| '\\'),
+                            token('\'').map(|_| '\''),
+                            token('"').map(|_| '"'),
+                        )))),
+                        combine::satisfy(|c: char| c != '\'' && c != '\\'),
+                    )),
+                )
+                .map(|c| Pattern::Literal(Literal::Char(c)))
+            ),
             // Integer literal pattern: 0, 1, 42, -10
             attempt({
                 // Parse integer literal in pattern
@@ -592,6 +611,25 @@ parser! {
             // Boolean literals
             attempt(string("true").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(true)))),
             attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
+            // Character literals
+            attempt(
+                between(
+                    token('\''),
+                    token('\''),
+                    choice((
+                        attempt(token('\\').with(choice((
+                            token('n').map(|_| '\n'),
+                            token('t').map(|_| '\t'),
+                            token('r').map(|_| '\r'),
+                            token('\\').map(|_| '\\'),
+                            token('\'').map(|_| '\''),
+                            token('"').map(|_| '"'),
+                        )))),
+                        combine::satisfy(|c: char| c != '\'' && c != '\\'),
+                    )),
+                )
+                .map(|c| Pattern::Literal(Literal::Char(c)))
+            ),
             // Integer literals
             attempt({
                 let number = many1(combine::parser::char::digit()).and_then(|s: String| {
