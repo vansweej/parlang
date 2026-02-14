@@ -1,0 +1,3 @@
+type BinaryOp = Int -> Int -> Int in
+let add = fun x -> fun y -> x + y in
+(add 10) 32

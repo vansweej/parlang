@@ -1,0 +1,5 @@
+type IntFunc = Int -> Int in
+type BoolFunc = Bool -> Bool in
+let f = fun x -> x + 1 in
+let g = fun b -> if b then false else true in
+f 41

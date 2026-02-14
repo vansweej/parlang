@@ -8,6 +8,7 @@ ParLang is a simple functional programming language with:
 
 - **Basic Types**: Integers and booleans
 - **Type Inference**: Optional Hindley-Milner type system with automatic type inference
+- **Type Aliases**: Define alternative names for types for better code documentation
 - **Tuples**: Heterogeneous tuples with projection and pattern matching
 - **Variables**: Let bindings for creating local variables
 - **Functions**: First-class functions with closure support
@@ -126,6 +127,45 @@ match (10, 20) with
 let swap = fun p -> (p.1, p.0)
 in swap (5, 10)          # Result: (10, 5)
 ```
+
+### Type Aliases
+
+Type aliases let you define alternative names for types, making code more self-documenting without runtime overhead.
+
+**Simple type alias:**
+```
+type MyInt = Int in 42
+# Type: Int
+# Result: 42
+```
+
+**Function type alias:**
+```
+type IntFunc = Int -> Int in
+let increment = fun x -> x + 1 in
+increment 41
+# Result: 42
+```
+
+**Higher-order function type alias:**
+```
+type Transform = (Int -> Int) -> Int in
+let apply = fun f -> f 21 in
+let double = fun x -> x + x in
+apply double
+# Result: 42
+```
+
+**Nested type aliases:**
+```
+type IntFunc = Int -> Int in
+type BoolFunc = Bool -> Bool in
+let f = fun x -> x + 1 in
+f 41
+# Result: 42
+```
+
+Type aliases are transparent - they don't affect runtime behavior, just provide documentation for types.
 
 ### Binary Operations
 ```
@@ -412,6 +452,10 @@ See the `examples/` directory for sample programs:
 - `stdlib.par` - Standard library with common functions
 - `math.par` - Mathematical utility functions
 - `use_stdlib.par` - Example of loading and using library functions
+- `type_aliases.par` - Basic type alias example
+- `type_alias_simple.par` - Simple function type alias
+- `type_alias_binary.par` - Binary operation type alias
+- `type_alias_nested.par` - Nested type aliases
 
 ## Documentation
 
