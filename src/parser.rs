@@ -140,6 +140,27 @@ where
     )
 }
 
+/// Parse a record literal: { field1: expr1, field2: expr2 }
+fn record<Input>() -> impl Parser<Input, Output = Expr>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    between(
+        token('{').skip(spaces()),
+        token('}'),
+        combine::sep_by(
+            (
+                identifier().skip(spaces()),
+                token(':').skip(spaces()),
+                expr().skip(spaces())
+            ).map(|(name, _, expr)| (name, expr)),
+            token(',').skip(spaces())
+        )
+    )
+    .map(Expr::Record)
+}
+
 parser! {
     fn atom[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -147,6 +168,7 @@ parser! {
         choice((
             attempt(bool_literal()),
             attempt(int()),
+            attempt(record()),
             attempt(variable()),
             attempt(tuple_or_paren()),
         ))
@@ -302,6 +324,19 @@ parser! {
     where [Input: Stream<Token = char>]
     {
         choice((
+            // Record pattern: { field1: pattern1, field2: pattern2, ... }
+            attempt(between(
+                token('{').skip(spaces()),
+                token('}'),
+                combine::sep_by(
+                    (
+                        identifier().skip(spaces()),
+                        token(':').skip(spaces()),
+                        pattern().skip(spaces())
+                    ).map(|(name, _, pat)| (name, pat)),
+                    token(',').skip(spaces())
+                )
+            ).map(Pattern::Record)),
             // Tuple pattern: (p1, p2, ...)
             attempt(between(
                 token('(').skip(spaces()),
@@ -401,15 +436,29 @@ parser! {
     {
         (
             primary().skip(spaces()),
-            // The unwrap is safe here because:
-            // 1. combine's digit() parser ensures we only have '0'-'9' characters
-            // 2. many1 ensures we have at least one digit
-            // 3. A string of valid digits will always parse to usize successfully for valid tuple indices
-            many(token('.').with(many1(combine::parser::char::digit()).map(|s: String| s.parse::<usize>().unwrap())))
+            // Parse projections: either .number (tuple) or .identifier (record field)
+            many(token('.').with(choice((
+                // Try to parse a number first (tuple projection)
+                attempt(many1(combine::parser::char::digit()).map(|s: String| {
+                    // The unwrap is safe here because:
+                    // 1. combine's digit() parser ensures we only have '0'-'9' characters
+                    // 2. many1 ensures we have at least one digit
+                    // 3. A string of valid digits will always parse to usize successfully
+                    (true, s.parse::<usize>().unwrap(), String::new())
+                })),
+                // Otherwise parse an identifier (field access)
+                identifier().map(|name| (false, 0, name))
+            ))))
         )
-            .map(|(base, indices): (Expr, Vec<usize>)| {
-                indices.into_iter()
-                    .fold(base, |expr, index| Expr::TupleProj(Box::new(expr), index))
+            .map(|(base, projs): (Expr, Vec<(bool, usize, String)>)| {
+                projs.into_iter()
+                    .fold(base, |expr, (is_tuple, index, field)| {
+                        if is_tuple {
+                            Expr::TupleProj(Box::new(expr), index)
+                        } else {
+                            Expr::FieldAccess(Box::new(expr), field)
+                        }
+                    })
             })
     }
 }
