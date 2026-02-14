@@ -7,6 +7,7 @@ A small ML-alike functional language written in Rust, with a parser built using 
 ParLang is a simple functional programming language with:
 
 - **Basic Types**: Integers, booleans, characters, and floating point numbers
+- **Arrays**: Fixed-size, homogeneous arrays with zero-based indexing (designed for FFI)
 - **Type Inference**: Optional Hindley-Milner type system with automatic type inference
 - **Type Aliases**: Define alternative names for types for better code documentation
 - **Generic Types**: Full support for parameterized types (Option Int, List Bool, Either A B)
@@ -171,6 +172,67 @@ match (10, 20) with
 let swap = fun p -> (p.1, p.0)
 in swap (5, 10)          # Result: (10, 5)
 ```
+
+### Arrays
+
+Arrays are fixed-size, homogeneous collections with zero-based indexing, primarily designed for FFI (Foreign Function Interface) use cases.
+
+**Array creation:**
+```
+[|1, 2, 3|]              # Array of 3 integers
+[|true, false|]          # Array of 2 booleans
+[|'a', 'b', 'c'|]        # Array of 3 characters
+[||]                     # Empty array
+```
+
+**Array indexing:**
+```
+let arr = [|10, 20, 30|]
+in arr[0]                # First element: 10
+
+[|100, 200, 300|][2]     # Third element: 300
+```
+
+**Array indexing with expressions:**
+```
+let arr = [|100, 200, 300|]
+in let index = 1 + 1
+in arr[index]            # Result: 300
+```
+
+**Nested arrays:**
+```
+let matrix = [|[|1, 2|], [|3, 4|]|]
+in matrix[0]             # Result: [|1, 2|]
+
+# Deep indexing
+matrix[1][0]             # Result: 3
+```
+
+**Arrays in functions:**
+```
+let getFirst = fun arr -> arr[0]
+in getFirst [|42, 43, 44|]  # Result: 42
+
+let makeArray = fun x -> fun y -> [|x, y|]
+in makeArray 10 20          # Result: [|10, 20|]
+```
+
+**Array type:**
+When type checking is enabled, arrays have type `Array[T, n]` where `T` is the element type and `n` is the size:
+```
+> [|1, 2, 3|]
+Type: Array[Int, 3]
+[|1, 2, 3|] (size: 3)
+```
+
+**Key features:**
+- Fixed size determined at creation
+- All elements must have the same type
+- Zero-based indexing with bounds checking
+- Efficient for FFI and fixed-size data structures
+
+For more details, see [Arrays Documentation](docs/ARRAYS.md).
 
 ### Records
 
@@ -693,6 +755,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Type Annotations](docs/TYPE_ANNOTATIONS.md)** - Explicit type annotations for better documentation and error detection
 - **[Generic Types](docs/GENERIC_TYPES.md)** - Parameterized types and type inference for generic data structures
 - **[Sum Types](docs/SUM_TYPES.md)** - Algebraic data types with pattern matching
+- **[Arrays](docs/ARRAYS.md)** - Fixed-size arrays with indexing for FFI and structured data
 - **[Exhaustiveness Checking](docs/EXHAUSTIVENESS_CHECKING.md)** - Automatic checking for complete pattern matches
 - **[Examples Guide](docs/EXAMPLES.md)** - Tutorial-style examples from basic to advanced
 - **[Security & Performance](docs/SECURITY.md)** - Security considerations and performance best practices
