@@ -230,3 +230,93 @@ fn test_nested_functions() {
     let ty = typecheck(&expr).unwrap();
     assert_eq!(ty, Type::Int);
 }
+
+#[test]
+fn test_type_env_default() {
+    use parlang::TypeEnv;
+    let env1 = TypeEnv::new();
+    let env2 = TypeEnv::default();
+    // Both should have the same initial counter value
+    assert_eq!(format!("{:?}", env1), format!("{:?}", env2));
+}
+
+#[test]
+fn test_type_error_display_unbound_variable() {
+    use parlang::TypeError;
+    let error = TypeError::UnboundVariable("x".to_string());
+    assert_eq!(format!("{error}"), "Unbound variable: x");
+}
+
+#[test]
+fn test_type_error_display_unification_error() {
+    use parlang::TypeError;
+    let error = TypeError::UnificationError(Type::Int, Type::Bool);
+    assert_eq!(format!("{error}"), "Cannot unify types: Int and Bool");
+}
+
+#[test]
+fn test_type_error_display_occurs_check() {
+    use parlang::{TypeError, TypeVar};
+    let error = TypeError::OccursCheckFailed(TypeVar(0), Type::Int);
+    assert_eq!(format!("{error}"), "Occurs check failed: t0 occurs in Int");
+}
+
+#[test]
+fn test_type_error_display_recursion() {
+    use parlang::TypeError;
+    let error = TypeError::RecursionRequiresAnnotation;
+    assert_eq!(format!("{error}"), "Recursive functions require type annotations");
+}
+
+#[test]
+fn test_recursion_requires_annotation() {
+    // rec is not fully supported in typechecker, should give an appropriate error
+    let expr = parse("rec f -> fun x -> f x").unwrap();
+    let result = typecheck(&expr);
+    assert!(result.is_err());
+    if let Err(e) = result {
+        use parlang::TypeError;
+        assert!(matches!(e, TypeError::RecursionRequiresAnnotation));
+    }
+}
+
+#[test]
+fn test_tuple_type_inference() {
+    // Tuples currently return type variables (simplified implementation)
+    let expr = parse("(1, 2)").unwrap();
+    let result = typecheck(&expr);
+    // Should succeed even if it's a simplified type
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_tuple_proj_type_inference() {
+    // Tuple projection currently returns type variables
+    let expr = parse("(1, 2).0").unwrap();
+    let result = typecheck(&expr);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_match_type_inference() {
+    // Match expressions currently return type variables
+    let expr = parse("match 1 with | 1 -> true | _ -> false").unwrap();
+    let result = typecheck(&expr);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_load_type_inference() {
+    // Load expressions currently return type variables
+    let expr = parse("load \"test.par\" in 42").unwrap();
+    let result = typecheck(&expr);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_seq_type_inference() {
+    // Sequential expressions currently return type variables
+    let expr = parse("let x = 1; 2").unwrap();
+    let result = typecheck(&expr);
+    assert!(result.is_ok());
+}
