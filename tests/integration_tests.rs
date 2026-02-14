@@ -1334,21 +1334,3 @@ fn test_char_comparison_chain() {
     assert_eq!(parse_and_eval(code), Ok(Value::Bool(true)));
 }
 
-
-#[test]
-fn test_debug_parse_match_char() {
-    let input = "match 'a' with | 'a' -> 1 | _ -> 2";
-    let parse_result = parse(input);
-    println!("Parse result for match char: {:?}", parse_result);
-    match parse_result {
-        Ok(ref expr) => {
-            let eval_result = eval(expr, &Environment::new());
-            println!("Eval result: {:?}", eval_result);
-            assert_eq!(eval_result, Ok(Value::Int(1)));
-        },
-        Err(e) => {
-            println!("Parse error: {}", e);
-            panic!("Failed to parse: {}", e);
-        }
-    }
-}
