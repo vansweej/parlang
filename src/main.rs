@@ -5,11 +5,12 @@
 /// - File execution mode for running .par files
 /// - AST dumping to DOT format for visualization
 use clap::{Parser, Subcommand};
-use parlang::{parse, eval, extract_bindings, dot, Environment};
+use parlang::{parse, eval, extract_bindings, dot, Environment, typecheck};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::fs;
 use std::process;
+use std::env;
 
 #[derive(Parser)]
 #[command(name = "parlang")]
@@ -96,6 +97,12 @@ fn main() {
 fn repl() {
     let mut env = Environment::new();
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
+    
+    // Check if type checking is enabled
+    let type_check_enabled = env::var("PARLANG_TYPECHECK").is_ok();
+    if type_check_enabled {
+        println!("Type checking enabled (PARLANG_TYPECHECK is set)");
+    }
 
     loop {
         // Accumulate multiline input
@@ -166,6 +173,17 @@ fn repl() {
 
             match parse(input) {
                 Ok(expr) => {
+                    // Type check if enabled
+                    if type_check_enabled {
+                        match typecheck(&expr) {
+                            Ok(ty) => println!("Type: {ty}"),
+                            Err(e) => {
+                                eprintln!("Type error: {e}");
+                                continue;
+                            }
+                        }
+                    }
+                    
                     match eval(&expr, &env) {
                         Ok(value) => {
                             println!("{value}");

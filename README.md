@@ -7,9 +7,11 @@ A small ML-alike functional language written in Rust, with a parser built using 
 ParLang is a simple functional programming language with:
 
 - **Basic Types**: Integers and booleans
+- **Type Inference**: Optional Hindley-Milner type system with automatic type inference
 - **Tuples**: Heterogeneous tuples with projection and pattern matching
 - **Variables**: Let bindings for creating local variables
 - **Functions**: First-class functions with closure support
+- **Polymorphism**: Let-polymorphism for generic functions
 - **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
 - **Pattern Matching**: Match expressions for cleaner multi-branch logic
@@ -189,6 +191,86 @@ let triple = fun x -> x * 3;
 0
 ```
 
+## Type System
+
+ParLang includes an optional Hindley-Milner type inference system that can catch type errors before runtime.
+
+### Enabling Type Checking
+
+Type checking is optional and can be enabled in the REPL by setting the `PARLANG_TYPECHECK` environment variable:
+
+```bash
+# Enable type checking for a single session
+PARLANG_TYPECHECK=1 cargo run
+
+# Or export it for all sessions
+export PARLANG_TYPECHECK=1
+cargo run
+```
+
+### Type Inference Examples
+
+When type checking is enabled, the REPL displays inferred types before evaluation:
+
+```
+> 42
+Type: Int
+42
+
+> true
+Type: Bool
+true
+
+> fun x -> x + 1
+Type: Int -> Int
+<function x>
+
+> let id = fun x -> x in id
+Type: t0 -> t0
+<function x>
+
+> let id = fun x -> x in id 42
+Type: Int
+42
+```
+
+### Polymorphic Functions
+
+The type system supports let-polymorphism, allowing functions to work with multiple types:
+
+```
+> let id = fun x -> x in let a = id 42 in let b = id true in b
+Type: Bool
+true
+```
+
+Here, `id` is used at both `Int` (for `id 42`) and `Bool` (for `id true`) types.
+
+### Type Errors
+
+Type errors are caught before evaluation:
+
+```
+> 1 + true
+Type error: Cannot unify types: Bool and Int
+
+> if 1 then 2 else 3
+Type error: Cannot unify types: Int and Bool
+
+> if true then 1 else false
+Type error: Cannot unify types: Int and Bool
+```
+
+### Type System Features
+
+- **Automatic Type Inference**: No type annotations required
+- **Polymorphic Types**: Functions can work with multiple types
+- **Let-Polymorphism**: Let-bound functions are generalized
+- **Sound Type System**: Well-typed programs won't have type errors at runtime
+- **Clear Error Messages**: Helpful messages when types don't match
+
+For detailed information about the type system, see **[Type System Documentation](docs/TYPE_SYSTEM.md)**.
+
 ## Installation
 
 ### Using Cargo
@@ -338,11 +420,14 @@ Comprehensive documentation is available in the `docs/` directory:
 ### 📚 Core Documentation
 - **[Architecture Guide](docs/ARCHITECTURE.md)** - System architecture, component interaction, and design patterns
 - **[Language Specification](docs/LANGUAGE_SPEC.md)** - Formal language specification with grammar and semantics
+- **[Type System](docs/TYPE_SYSTEM.md)** - Hindley-Milner type inference system documentation
 - **[Examples Guide](docs/EXAMPLES.md)** - Tutorial-style examples from basic to advanced
 
 ### 🔧 Module Documentation
 - **[AST Module](docs/MODULE_AST.md)** - Abstract syntax tree data structures
 - **[Parser Module](docs/MODULE_PARSER.md)** - Parser implementation using combinators
+- **[Types Module](docs/MODULE_TYPES.md)** - Type representations (Int, Bool, Fun, Var)
+- **[Type Checker Module](docs/MODULE_TYPECHECKER.md)** - Type inference algorithm implementation
 - **[Evaluator Module](docs/MODULE_EVAL.md)** - Expression evaluation and runtime
 - **[Main Module](docs/MODULE_MAIN.md)** - CLI and REPL interface
 - **[DOT Module](docs/MODULE_DOT.md)** - AST visualization in Graphviz DOT format
@@ -356,9 +441,11 @@ The language implementation consists of:
 
 1. **AST** (`src/ast.rs`): Abstract syntax tree definitions for expressions
 2. **Parser** (`src/parser.rs`): Parser built with the `combine` library
-3. **Evaluator** (`src/eval.rs`): Interpreter that evaluates expressions
-4. **DOT** (`src/dot.rs`): AST visualization in Graphviz DOT format
-5. **REPL/CLI** (`src/main.rs`): Command-line interface using clap
+3. **Types** (`src/types.rs`): Type representations for the type system
+4. **Type Checker** (`src/typechecker.rs`): Hindley-Milner type inference implementation
+5. **Evaluator** (`src/eval.rs`): Interpreter that evaluates expressions
+6. **DOT** (`src/dot.rs`): AST visualization in Graphviz DOT format
+7. **REPL/CLI** (`src/main.rs`): Command-line interface using clap
 
 For detailed architecture information, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
