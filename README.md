@@ -9,6 +9,7 @@ ParLang is a simple functional programming language with:
 - **Basic Types**: Integers and booleans
 - **Type Inference**: Optional Hindley-Milner type system with automatic type inference
 - **Type Aliases**: Define alternative names for types for better code documentation
+- **Generic Types**: Full support for parameterized types (Option Int, List Bool, Either A B)
 - **Sum Types**: Algebraic data types with constructors and pattern matching (Option, Either, List, etc.)
 - **Records**: Product types with named fields for structured data
 - **Tuples**: Heterogeneous tuples with projection and pattern matching
@@ -280,6 +281,53 @@ Sum types support:
 - Pattern matching to extract values
 
 See [docs/SUM_TYPES.md](docs/SUM_TYPES.md) for comprehensive documentation and examples.
+
+### Generic Types
+
+ParLang now has **full support for generic types** with proper type inference and type checking. Generic types allow you to write type-safe polymorphic data structures.
+
+**Type inference for generic types:**
+```
+# With PARLANG_TYPECHECK=1 enabled
+
+> type Option a = Some a | None in Some 42
+Type: Option Int
+Some(42)
+
+> type List a = Nil | Cons a (List a) in Cons 1 (Cons 2 Nil)
+Type: List Int
+Cons(1, Cons(2, Nil))
+
+> type Either a b = Left a | Right b in Left true
+Type: Either Bool t0
+Left(true)
+```
+
+**Key features:**
+- Type parameters are properly tracked and instantiated
+- Full type unification for generic types
+- Support for nested generics (e.g., `Option (List Int)`)
+- Type inference works seamlessly with constructors
+
+**Example with type checking:**
+```parlang
+type Result a b = Ok a | Err b in
+
+let divide = fun x -> fun y ->
+  if y == 0
+  then Err false
+  else Ok (x / y)
+in
+
+let result = divide 10 5 in
+match result with
+| Ok value -> value
+| Err _ -> 0
+# Type: Int
+# Result: 2
+```
+
+See [docs/GENERIC_TYPES.md](docs/GENERIC_TYPES.md) for comprehensive documentation and examples.
 
 ### Binary Operations
 ```
@@ -579,6 +627,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Architecture Guide](docs/ARCHITECTURE.md)** - System architecture, component interaction, and design patterns
 - **[Language Specification](docs/LANGUAGE_SPEC.md)** - Formal language specification with grammar and semantics
 - **[Type System](docs/TYPE_SYSTEM.md)** - Hindley-Milner type inference system documentation
+- **[Generic Types](docs/GENERIC_TYPES.md)** - Parameterized types and type inference for generic data structures
 - **[Examples Guide](docs/EXAMPLES.md)** - Tutorial-style examples from basic to advanced
 
 ### 🔧 Module Documentation
