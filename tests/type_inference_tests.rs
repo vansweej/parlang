@@ -43,7 +43,7 @@ fn test_complete_program_arithmetic() {
     for source in programs {
         let expr = parse(source).unwrap();
         let ty = typecheck(&expr).unwrap();
-        assert_eq!(ty, Type::Int, "Failed for program: {}", source);
+        assert_eq!(ty, Type::Int, "Failed for program: {source}");
     }
 }
 
@@ -61,7 +61,7 @@ fn test_complete_program_comparison() {
     for source in programs {
         let expr = parse(source).unwrap();
         let ty = typecheck(&expr).unwrap();
-        assert_eq!(ty, Type::Bool, "Failed for program: {}", source);
+        assert_eq!(ty, Type::Bool, "Failed for program: {source}");
     }
 }
 
@@ -161,12 +161,12 @@ fn test_type_preserving_evaluation() {
     for (source, expected_type) in programs {
         let expr = parse(source).unwrap();
         let ty = typecheck(&expr).unwrap();
-        assert_eq!(ty, expected_type, "Failed for program: {}", source);
+        assert_eq!(ty, expected_type, "Failed for program: {source}");
         
         // Also verify it evaluates without runtime errors
         use parlang::{eval, Environment};
         let result = eval(&expr, &Environment::new());
-        assert!(result.is_ok(), "Evaluation failed for program: {}", source);
+        assert!(result.is_ok(), "Evaluation failed for program: {source}");
     }
 }
 
@@ -213,7 +213,7 @@ fn test_identity_function_polymorphic() {
     for (source, expected_type) in programs {
         let expr = parse(source).unwrap();
         let ty = typecheck(&expr).unwrap();
-        assert_eq!(ty, expected_type, "Failed for program: {}", source);
+        assert_eq!(ty, expected_type, "Failed for program: {source}");
     }
 }
 
