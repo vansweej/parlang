@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 /// `ParLang`: A small ML-alike functional language written in Rust
 /// 
 /// This library provides:

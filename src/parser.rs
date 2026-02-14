@@ -751,7 +751,7 @@ parser! {
     {
         (
             string("ref").skip(spaces()),
-            primary(),
+            app_expr(),
         )
             .map(|(_, expr)| Expr::Ref(Box::new(expr)))
     }
@@ -997,7 +997,8 @@ parser! {
     where [Input: Stream<Token = char>]
     {
         // Parse assignment: ref_expr := value_expr
-        (cmp_expr().skip(spaces()), optional(string(":=").skip(spaces()).with(expr())))
+        // Right-associative to support chained assignments
+        (cmp_expr().skip(spaces()), optional(string(":=").skip(spaces()).with(cmp_expr())))
             .map(|(left, rest)| {
                 if let Some(right) = rest {
                     Expr::RefAssign(Box::new(left), Box::new(right))
