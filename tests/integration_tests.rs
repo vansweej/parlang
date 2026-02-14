@@ -1077,7 +1077,7 @@ fn test_tuple_with_function() {
 }
 
 #[test]
-fn test_tuple_function_projection_and_call() {
+fn test_tuple_function_projection_call_result() {
     let code = "let data = (42, fun x -> x * 2) in data.1 21";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(42)));
 }

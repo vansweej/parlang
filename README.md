@@ -7,6 +7,7 @@ A small ML-alike functional language written in Rust, with a parser built using 
 ParLang is a simple functional programming language with:
 
 - **Basic Types**: Integers and booleans
+- **Tuples**: Heterogeneous tuples with projection and pattern matching
 - **Variables**: Let bindings for creating local variables
 - **Functions**: First-class functions with closure support
 - **Recursion**: Named recursive functions with tail call optimization
@@ -92,6 +93,37 @@ let factorial = rec fact -> fun n ->
 ```
 
 Pattern matching evaluates patterns from top to bottom and executes the first matching arm. This is especially useful for replacing deeply nested if-then-else chains with more readable code.
+
+### Tuples
+
+Tuples group multiple values together and support projection and pattern matching.
+
+**Tuple creation:**
+```
+(1, 2, 3)                # Result: (1, 2, 3)
+(42, true)               # Mixed types: (42, true)
+()                       # Empty tuple (unit type)
+```
+
+**Tuple projection (zero-based indexing):**
+```
+(10, 20).0               # First element: 10
+(10, 20).1               # Second element: 20
+((1, 2), (3, 4)).0.1     # Chained projection: 2
+```
+
+**Tuple pattern matching:**
+```
+match (10, 20) with
+| (0, 0) -> 0
+| (x, y) -> x + y        # Result: 30
+```
+
+**Functions with tuples:**
+```
+let swap = fun p -> (p.1, p.0)
+in swap (5, 10)          # Result: (10, 5)
+```
 
 ### Binary Operations
 ```

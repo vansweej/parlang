@@ -1957,6 +1957,151 @@ cargo run -- examples/use_recursion.par
 
 ---
 
+## Tuples
+
+Tuples are first-class values that group multiple values together. They support heterogeneous types, projection, and pattern matching.
+
+### Basic Tuple Creation
+
+```parlang
+# Simple tuple
+(42, true)
+```
+**Output:** `(42, true)`
+
+```parlang
+# Empty tuple (unit type)
+()
+```
+**Output:** `()`
+
+```parlang
+# Nested tuples
+((1, 2), (3, 4))
+```
+**Output:** `((1, 2), (3, 4))`
+
+### Tuple Projection
+
+Access tuple elements using zero-based indexing:
+
+```parlang
+# Access first element
+(10, 20).0
+```
+**Output:** `10`
+
+```parlang
+# Access second element
+(10, 20).1
+```
+**Output:** `20`
+
+```parlang
+# Chained projection (left-associative)
+((1, 2), (3, 4)).0.1
+```
+**Output:** `2`
+
+### Tuples with Functions
+
+```parlang
+# Function returning a tuple
+let make_pair = fun x -> (x, x + 1)
+in make_pair 5
+```
+**Output:** `(5, 6)`
+
+```parlang
+# Swap function using tuples
+let swap = fun p -> (p.1, p.0)
+in swap (5, 10)
+```
+**Output:** `(10, 5)`
+
+```parlang
+# Tuple containing a function
+let data = (42, fun x -> x * 2)
+in data.1 21
+```
+**Output:** `42`
+
+### Pattern Matching with Tuples
+
+Destructure tuples in match expressions:
+
+```parlang
+# Basic tuple destructuring
+match (10, 20) with
+| (0, 0) -> 0
+| (x, y) -> x + y
+```
+**Output:** `30`
+
+```parlang
+# Tuple pattern with literal
+match (0, 5) with
+| (0, y) -> y
+| (x, y) -> x
+```
+**Output:** `5`
+
+```parlang
+# Tuple pattern with wildcard
+match (10, 20) with
+| (x, _) -> x
+```
+**Output:** `10`
+
+```parlang
+# Nested tuple pattern matching
+match ((1, 2), 3) with
+| ((a, b), c) -> a + b + c
+```
+**Output:** `6`
+
+### Practical Examples
+
+**Point operations:**
+
+```parlang
+let p1 = (0, 0) in
+let p2 = (3, 4) in
+let dx = p2.0 - p1.0 in
+let dy = p2.1 - p1.1 in
+dx * dx + dy * dy
+```
+**Output:** `25`
+
+**Fibonacci with tuple state:**
+
+```parlang
+let fib = rec fib -> fun n ->
+    if n == 0 then (0, 1)
+    else if n == 1 then (1, 1)
+    else
+        let prev = fib (n - 1) in
+        (prev.1, prev.0 + prev.1)
+in (fib 6).0
+```
+**Output:** `8`
+
+**Divmod using tuples and recursion:**
+
+```parlang
+let divmod = rec divmod -> fun p ->
+    match p with
+    | (n, d) ->
+        if n < d then (0, n)
+        else
+            let result = divmod (n - d, d) in
+            (result.0 + 1, result.1)
+in divmod (17, 5)
+```
+**Output:** `(3, 2)`
+
+---
+
 ## Summary
 
 ParLang is a minimalist functional language that teaches core functional programming concepts:
@@ -1967,6 +2112,8 @@ ParLang is a minimalist functional language that teaches core functional program
 - **Recursion**: Named recursive functions with tail call optimization
 - **Currying**: Multi-parameter functions via nested single-parameter functions
 - **Expression-oriented**: Everything is an expression that evaluates to a value
+- **Tuples**: Group multiple values together with projection and pattern matching
+- **Pattern matching**: Destructure values in match expressions
 
 These examples should give you a solid foundation for writing ParLang programs. Experiment with the patterns and build your own functions!
 

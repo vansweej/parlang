@@ -255,8 +255,9 @@ parser! {
                             }
                             Some(first) => {
                                 // Tuple with elements: (p1, p2, ...)
-                                // Note: We treat (p) as a tuple pattern, not a parenthesized pattern
-                                // This is different from expressions where (e) is parenthesized
+                                // Note: Unlike expressions where (e) is parenthesized, in patterns
+                                // we always create a tuple even for single elements like (p)
+                                // This is consistent with pattern matching semantics
                                 let mut patterns = vec![first];
                                 patterns.extend(rest);
                                 Pattern::Tuple(patterns)

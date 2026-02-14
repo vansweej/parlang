@@ -209,7 +209,9 @@ additive_expr ::= multiplicative_expr (('+' | '-') multiplicative_expr)*
 
 multiplicative_expr ::= application_expr (('*' | '/') application_expr)*
 
-application_expr ::= primary_expr+
+application_expr ::= projection_expr+
+
+projection_expr ::= primary_expr ('.' digit+)*
 
 primary_expr ::= atom
               | let_expr
@@ -223,7 +225,11 @@ primary_expr ::= atom
 atom ::= integer
        | boolean
        | identifier
-       | '(' expression ')'
+       | tuple_expr
+
+tuple_expr ::= '(' ')'                                    (* empty tuple *)
+             | '(' expression ')'                         (* parenthesized expr *)
+             | '(' expression (',' expression)+ ')'       (* tuple with 2+ elements *)
 
 (* Compound expressions *)
 let_expr ::= "let" identifier '=' expression "in" expression
@@ -240,6 +246,10 @@ pattern ::= integer
           | boolean
           | identifier
           | '_'
+          | tuple_pattern
+
+tuple_pattern ::= '(' ')'                                 (* empty tuple pattern *)
+                | '(' pattern (',' pattern)* ')'          (* tuple pattern *)
 
 rec_expr ::= "rec" identifier "->" expression
 
@@ -811,6 +821,126 @@ let add = fun x -> fun y -> x + y in let add5 = add 5 in add5 10
 
 **Result:** `15`
 
+#### 5.3.6 Tuples
+
+**Tuple Construction:**
+
+```parlang
+(1, 2, 3)
+```
+
+**Evaluation:**
+```
+∅ ⊢ 1 ⇓ Int(1)
+∅ ⊢ 2 ⇓ Int(2)
+∅ ⊢ 3 ⇓ Int(3)
+────────────────────────────────
+∅ ⊢ (1, 2, 3) ⇓ Tuple([Int(1), Int(2), Int(3)])
+```
+
+**Result:** `(1, 2, 3)`
+
+**Tuple Projection:**
+
+```parlang
+(10, 20).0
+```
+
+**Evaluation:**
+```
+∅ ⊢ (10, 20) ⇓ Tuple([Int(10), Int(20)])
+0 < 2 (bounds check)
+───────────────────────────────────────
+∅ ⊢ (10, 20).0 ⇓ Int(10)
+```
+
+**Result:** `10`
+
+**Chained Projection:**
+
+```parlang
+((1, 2), (3, 4)).0.1
+```
+
+**Evaluation:**
+```
+∅ ⊢ ((1, 2), (3, 4)) ⇓ Tuple([Tuple([Int(1), Int(2)]), Tuple([Int(3), Int(4)])])
+∅ ⊢ ((1, 2), (3, 4)).0 ⇓ Tuple([Int(1), Int(2)])
+∅ ⊢ ((1, 2), (3, 4)).0.1 ⇓ Int(2)
+```
+
+**Result:** `2`
+
+**Tuple Pattern Matching:**
+
+```parlang
+match (10, 20) with
+| (0, 0) -> 0
+| (x, y) -> x + y
+```
+
+**Evaluation:**
+```
+∅ ⊢ (10, 20) ⇓ Tuple([Int(10), Int(20)])
+Pattern (0, 0) does not match Tuple([Int(10), Int(20)])
+Pattern (x, y) matches: Γ₁ = [x ↦ Int(10), y ↦ Int(20)]
+Γ₁ ⊢ x + y ⇓ Int(30)
+──────────────────────────────────────────
+∅ ⊢ match (10, 20) with ... ⇓ Int(30)
+```
+
+**Result:** `30`
+
+### 5.4 Tuple Evaluation Rules
+
+#### 5.4.1 Tuple Construction
+
+```
+Γ ⊢ e₁ ⇓ v₁    Γ ⊢ e₂ ⇓ v₂    ...    Γ ⊢ eₙ ⇓ vₙ
+───────────────────────────────────────────────  [E-TUPLE]
+Γ ⊢ (e₁, e₂, ..., eₙ) ⇓ Tuple([v₁, v₂, ..., vₙ])
+```
+
+**Empty Tuple:**
+```
+─────────────────  [E-TUPLE-EMPTY]
+Γ ⊢ () ⇓ Tuple([])
+```
+
+#### 5.4.2 Tuple Projection
+
+```
+Γ ⊢ e ⇓ Tuple([v₀, v₁, ..., vₙ])    i < n
+──────────────────────────────────────────  [E-PROJ]
+Γ ⊢ e.i ⇓ vᵢ
+```
+
+**Error Cases:**
+- If `e` does not evaluate to a tuple: `TypeError("Tuple projection requires a tuple")`
+- If `i >= n`: `IndexOutOfBounds("Tuple index i out of bounds for tuple of size n")`
+
+#### 5.4.3 Tuple Pattern Matching
+
+```
+Γ ⊢ e ⇓ Tuple([v₁, v₂, ..., vₙ])
+match_pattern((p₁, p₂, ..., pₙ), Tuple([v₁, v₂, ..., vₙ]), Γ) = Γ'
+Γ' ⊢ e_result ⇓ v
+───────────────────────────────────────────────────────────────  [E-MATCH-TUPLE]
+Γ ⊢ match e with | (p₁, p₂, ..., pₙ) -> e_result ⇓ v
+```
+
+**Pattern Matching Algorithm:**
+```
+match_pattern((p₁, ..., pₙ), Tuple([v₁, ..., vₙ]), Γ):
+  1. Check length: n_patterns == n_values, else fail
+  2. For each (pᵢ, vᵢ):
+     - If pᵢ is literal: check vᵢ == pᵢ, else fail
+     - If pᵢ is variable x: extend Γ with x ↦ vᵢ
+     - If pᵢ is wildcard _: continue
+     - If pᵢ is tuple pattern: recurse
+  3. Return extended environment Γ'
+```
+
 ---
 
 ## 6. Operator Precedence and Associativity
@@ -821,6 +951,7 @@ Operators are listed from **highest** to **lowest** precedence:
 
 | Level | Operators | Associativity | Description |
 |-------|-----------|---------------|-------------|
+| 7 | `.` (tuple projection) | Left | `t.0.1` = `(t.0).1` |
 | 6 | Function application (juxtaposition) | Left | `f x y` = `(f x) y` |
 | 5 | `*` `/` | Left | Multiplicative |
 | 4 | `+` `-` | Left | Additive |
@@ -838,6 +969,7 @@ Binary operators at the same precedence level associate left-to-right:
 ```parlang
 a + b + c     ≡  (a + b) + c
 a * b * c     ≡  (a * b) * c
+t.0.1         ≡  (t.0).1
 f x y         ≡  (f x) y
 ```
 
