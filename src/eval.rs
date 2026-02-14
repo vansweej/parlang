@@ -285,7 +285,7 @@ fn is_tail_call_to(expr: &Expr, rec_name: &str) -> bool {
 /// - A binding value causes a type error or other evaluation error
 pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, EvalError> {
     match expr {
-        Expr::Let(name, value, body) => {
+        Expr::Let(name, _ty_ann, value, body) => {
             // Evaluate the value in the current environment
             let val = eval(value, env)?;
             // Extend the environment with this binding
@@ -311,7 +311,7 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
         Expr::Seq(bindings, body) => {
             // Process each binding in the sequence
             let mut current_env = env.clone();
-            for (name, value) in bindings {
+            for (name, _ty_ann, value) in bindings {
                 let val = eval(value, &current_env)?;
                 current_env = current_env.extend(name.clone(), val);
             }
@@ -465,13 +465,13 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             }
         }
         
-        Expr::Let(name, value, body) => {
+        Expr::Let(name, _ty_ann, value, body) => {
             let val = eval(value, env)?;
             let new_env = env.extend(name.clone(), val);
             eval(body, &new_env)
         }
         
-        Expr::Fun(param, body) => Ok(Value::Closure(
+        Expr::Fun(param, _ty_ann, body) => Ok(Value::Closure(
             param.clone(),
             (**body).clone(),
             env.clone(),
@@ -529,7 +529,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
         Expr::Seq(bindings, body) => {
             // Process each binding in sequence, extending the environment
             let mut current_env = env.clone();
-            for (name, value) in bindings {
+            for (name, _ty_ann, value) in bindings {
                 let val = eval(value, &current_env)?;
                 current_env = current_env.extend(name.clone(), val);
             }
@@ -541,7 +541,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             // Parse the body which should be a function (fun param -> expr)
             // The recursive function can reference itself by name within its body
             match body.as_ref() {
-                Expr::Fun(param, fun_body) => {
+                Expr::Fun(param, _ty_ann, fun_body) => {
                     // Create a recursive closure that captures the function name
                     Ok(Value::RecClosure(
                         name.clone(),
@@ -763,6 +763,7 @@ mod tests {
         let env = Environment::new();
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(42)),
             Box::new(Expr::Var("x".to_string())),
         );
@@ -787,6 +788,7 @@ mod tests {
         let expr = Expr::App(
             Box::new(Expr::Fun(
                 "x".to_string(),
+                None,
                 Box::new(Expr::BinOp(
                     BinOp::Add,
                     Box::new(Expr::Var("x".to_string())),
@@ -1073,6 +1075,7 @@ mod tests {
         let env = Environment::new();
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(42)),
             Box::new(Expr::Var("x".to_string())),
         );
@@ -1085,6 +1088,7 @@ mod tests {
         // let x = 10 in x + 32
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(10)),
             Box::new(Expr::BinOp(
                 BinOp::Add,
@@ -1101,9 +1105,11 @@ mod tests {
         // let x = 1 in let y = 2 in x + y
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(1)),
             Box::new(Expr::Let(
                 "y".to_string(),
+                None,
                 Box::new(Expr::Int(2)),
                 Box::new(Expr::BinOp(
                     BinOp::Add,
@@ -1121,9 +1127,11 @@ mod tests {
         // let x = 1 in let x = 2 in x
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(1)),
             Box::new(Expr::Let(
                 "x".to_string(),
+                None,
                 Box::new(Expr::Int(2)),
                 Box::new(Expr::Var("x".to_string())),
             )),
@@ -1135,7 +1143,7 @@ mod tests {
     #[test]
     fn test_eval_fun_creates_closure() {
         let env = Environment::new();
-        let expr = Expr::Fun("x".to_string(), Box::new(Expr::Var("x".to_string())));
+        let expr = Expr::Fun("x".to_string(), None, Box::new(Expr::Var("x".to_string())));
         let result = eval(&expr, &env);
         assert!(matches!(result, Ok(Value::Closure(_, _, _))));
     }
@@ -1147,6 +1155,7 @@ mod tests {
         let expr = Expr::App(
             Box::new(Expr::Fun(
                 "x".to_string(),
+                None,
                 Box::new(Expr::Var("x".to_string())),
             )),
             Box::new(Expr::Int(42)),
@@ -1161,6 +1170,7 @@ mod tests {
         let expr = Expr::App(
             Box::new(Expr::Fun(
                 "x".to_string(),
+                None,
                 Box::new(Expr::BinOp(
                     BinOp::Add,
                     Box::new(Expr::Var("x".to_string())),
@@ -1180,8 +1190,10 @@ mod tests {
             Box::new(Expr::App(
                 Box::new(Expr::Fun(
                     "x".to_string(),
+                    None,
                     Box::new(Expr::Fun(
                         "y".to_string(),
+                        None,
                         Box::new(Expr::BinOp(
                             BinOp::Add,
                             Box::new(Expr::Var("x".to_string())),
@@ -1202,10 +1214,12 @@ mod tests {
         // let x = 10 in (fun y -> x + y) 32
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(10)),
             Box::new(Expr::App(
                 Box::new(Expr::Fun(
                     "y".to_string(),
+                    None,
                     Box::new(Expr::BinOp(
                         BinOp::Add,
                         Box::new(Expr::Var("x".to_string())),
@@ -1353,8 +1367,10 @@ mod tests {
         // let double = fun x -> x + x in double 21
         let expr = Expr::Let(
             "double".to_string(),
+            None,
             Box::new(Expr::Fun(
                 "x".to_string(),
+                None,
                 Box::new(Expr::BinOp(
                     BinOp::Add,
                     Box::new(Expr::Var("x".to_string())),
@@ -1375,10 +1391,13 @@ mod tests {
         // let add = fun x -> fun y -> x + y in let add5 = add 5 in add5 10
         let expr = Expr::Let(
             "add".to_string(),
+            None,
             Box::new(Expr::Fun(
                 "x".to_string(),
+                None,
                 Box::new(Expr::Fun(
                     "y".to_string(),
+                    None,
                     Box::new(Expr::BinOp(
                         BinOp::Add,
                         Box::new(Expr::Var("x".to_string())),
@@ -1388,6 +1407,7 @@ mod tests {
             )),
             Box::new(Expr::Let(
                 "add5".to_string(),
+                None,
                 Box::new(Expr::App(
                     Box::new(Expr::Var("add".to_string())),
                     Box::new(Expr::Int(5)),
@@ -1643,6 +1663,7 @@ mod tests {
     fn test_extract_bindings_single() {
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(42)),
             Box::new(Expr::Int(0)),
         );
@@ -1655,9 +1676,11 @@ mod tests {
     fn test_extract_bindings_nested() {
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(1)),
             Box::new(Expr::Let(
                 "y".to_string(),
+                None,
                 Box::new(Expr::Int(2)),
                 Box::new(Expr::Int(0)),
             )),
@@ -1672,8 +1695,10 @@ mod tests {
     fn test_extract_bindings_with_functions() {
         let expr = Expr::Let(
             "double".to_string(),
+            None,
             Box::new(Expr::Fun(
                 "x".to_string(),
+                None,
                 Box::new(Expr::BinOp(
                     BinOp::Mul,
                     Box::new(Expr::Var("x".to_string())),
@@ -1698,7 +1723,7 @@ mod tests {
     #[test]
     fn test_eval_seq_single() {
         let env = Environment::new();
-        let bindings = vec![("x".to_string(), Expr::Int(42))];
+        let bindings = vec![("x".to_string(), None, Expr::Int(42))];
         let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
         assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
     }
@@ -1707,8 +1732,8 @@ mod tests {
     fn test_eval_seq_multiple() {
         let env = Environment::new();
         let bindings = vec![
-            ("x".to_string(), Expr::Int(10)),
-            ("y".to_string(), Expr::Int(32)),
+            ("x".to_string(), None, Expr::Int(10)),
+            ("y".to_string(), None, Expr::Int(32)),
         ];
         let expr = Expr::Seq(
             bindings,
@@ -1726,8 +1751,10 @@ mod tests {
         let env = Environment::new();
         let bindings = vec![(
             "double".to_string(),
+            None,
             Expr::Fun(
                 "x".to_string(),
+                None,
                 Box::new(Expr::BinOp(
                     BinOp::Mul,
                     Box::new(Expr::Var("x".to_string())),
@@ -1750,9 +1777,10 @@ mod tests {
         let env = Environment::new();
         // let x = 10; let y = x + 5; y
         let bindings = vec![
-            ("x".to_string(), Expr::Int(10)),
+            ("x".to_string(), None, Expr::Int(10)),
             (
                 "y".to_string(),
+                None,
                 Expr::BinOp(
                     BinOp::Add,
                     Box::new(Expr::Var("x".to_string())),
@@ -1767,8 +1795,8 @@ mod tests {
     #[test]
     fn test_extract_bindings_seq() {
         let bindings = vec![
-            ("x".to_string(), Expr::Int(1)),
-            ("y".to_string(), Expr::Int(2)),
+            ("x".to_string(), None, Expr::Int(1)),
+            ("y".to_string(), None, Expr::Int(2)),
         ];
         let expr = Expr::Seq(bindings, Box::new(Expr::Int(0)));
         let env = Environment::new();

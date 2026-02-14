@@ -75,10 +75,12 @@ pub enum Expr {
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     
     /// Let binding: let x = e1 in e2
-    Let(String, Box<Expr>, Box<Expr>),
+    /// Optional type annotation for the variable
+    Let(String, Option<TypeAnnotation>, Box<Expr>, Box<Expr>),
     
     /// Function definition: fun x -> e
-    Fun(String, Box<Expr>),
+    /// Optional type annotation for the parameter
+    Fun(String, Option<TypeAnnotation>, Box<Expr>),
     
     /// Function application: f e
     App(Box<Expr>, Box<Expr>),
@@ -87,8 +89,8 @@ pub enum Expr {
     Load(String, Box<Expr>),
     
     /// Sequential let bindings: let x = e1; let y = e2; expr
-    /// Vector of (name, value) pairs, followed by a body expression
-    Seq(Vec<(String, Expr)>, Box<Expr>),
+    /// Vector of (name, optional type annotation, value) triples, followed by a body expression
+    Seq(Vec<(String, Option<TypeAnnotation>, Expr)>, Box<Expr>),
     
     /// Recursive function definition: rec name -> body
     /// The function can reference itself by name within its body
@@ -159,19 +161,33 @@ impl fmt::Display for Expr {
             Expr::If(cond, then_branch, else_branch) => {
                 write!(f, "(if {cond} then {then_branch} else {else_branch})")
             }
-            Expr::Let(name, value, body) => {
-                write!(f, "(let {name} = {value} in {body})")
+            Expr::Let(name, ty_ann, value, body) => {
+                if let Some(ty) = ty_ann {
+                    write!(f, "(let {name} : {ty} = {value} in {body})")
+                } else {
+                    write!(f, "(let {name} = {value} in {body})")
+                }
             }
-            Expr::Fun(param, body) => write!(f, "(fun {param} -> {body})"),
+            Expr::Fun(param, ty_ann, body) => {
+                if let Some(ty) = ty_ann {
+                    write!(f, "(fun {param} : {ty} -> {body})")
+                } else {
+                    write!(f, "(fun {param} -> {body})")
+                }
+            }
             Expr::App(func, arg) => write!(f, "({func} {arg})"),
             Expr::Load(filepath, body) => write!(f, "(load \"{filepath}\" in {body})"),
             Expr::Seq(bindings, body) => {
                 write!(f, "(")?;
-                for (i, (name, value)) in bindings.iter().enumerate() {
+                for (i, (name, ty_ann, value)) in bindings.iter().enumerate() {
                     if i > 0 {
                         write!(f, "; ")?;
                     }
-                    write!(f, "let {name} = {value}")?;
+                    if let Some(ty) = ty_ann {
+                        write!(f, "let {name} : {ty} = {value}")?;
+                    } else {
+                        write!(f, "let {name} = {value}")?;
+                    }
                 }
                 write!(f, "; {body})")
             }
@@ -398,6 +414,7 @@ mod tests {
     fn test_expr_let() {
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(42)),
             Box::new(Expr::Var("x".to_string())),
         );
@@ -405,6 +422,7 @@ mod tests {
             expr,
             Expr::Let(
                 "x".to_string(),
+                None,
                 Box::new(Expr::Int(42)),
                 Box::new(Expr::Var("x".to_string())),
             )
@@ -413,10 +431,10 @@ mod tests {
 
     #[test]
     fn test_expr_fun() {
-        let expr = Expr::Fun("x".to_string(), Box::new(Expr::Var("x".to_string())));
+        let expr = Expr::Fun("x".to_string(), None, Box::new(Expr::Var("x".to_string())));
         assert_eq!(
             expr,
-            Expr::Fun("x".to_string(), Box::new(Expr::Var("x".to_string())))
+            Expr::Fun("x".to_string(), None, Box::new(Expr::Var("x".to_string())))
         );
     }
 
@@ -453,8 +471,8 @@ mod tests {
     #[test]
     fn test_expr_seq() {
         let bindings = vec![
-            ("x".to_string(), Expr::Int(42)),
-            ("y".to_string(), Expr::Int(10)),
+            ("x".to_string(), None, Expr::Int(42)),
+            ("y".to_string(), None, Expr::Int(10)),
         ];
         let expr = Expr::Seq(bindings.clone(), Box::new(Expr::Var("x".to_string())));
         assert_eq!(
@@ -535,6 +553,7 @@ mod tests {
     fn test_display_let() {
         let expr = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(42)),
             Box::new(Expr::Var("x".to_string())),
         );
@@ -543,7 +562,7 @@ mod tests {
 
     #[test]
     fn test_display_fun() {
-        let expr = Expr::Fun("x".to_string(), Box::new(Expr::Var("x".to_string())));
+        let expr = Expr::Fun("x".to_string(), None, Box::new(Expr::Var("x".to_string())));
         assert_eq!(format!("{expr}"), "(fun x -> x)");
     }
 
@@ -568,8 +587,8 @@ mod tests {
     #[test]
     fn test_display_seq() {
         let bindings = vec![
-            ("x".to_string(), Expr::Int(42)),
-            ("y".to_string(), Expr::Int(10)),
+            ("x".to_string(), None, Expr::Int(42)),
+            ("y".to_string(), None, Expr::Int(10)),
         ];
         let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
         assert_eq!(format!("{expr}"), "(let x = 42; let y = 10; x)");
@@ -641,8 +660,10 @@ mod tests {
         // let f = fun x -> x + 1 in f 41
         let expr = Expr::Let(
             "f".to_string(),
+            None,
             Box::new(Expr::Fun(
                 "x".to_string(),
+                None,
                 Box::new(Expr::BinOp(
                     BinOp::Add,
                     Box::new(Expr::Var("x".to_string())),
@@ -675,6 +696,7 @@ mod tests {
             "factorial".to_string(),
             Box::new(Expr::Fun(
                 "n".to_string(),
+                None,
                 Box::new(Expr::Var("n".to_string())),
             )),
         );

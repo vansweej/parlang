@@ -206,10 +206,14 @@ parser! {
         (
             string("fun").skip(spaces()),
             identifier().skip(spaces()),
+            optional(
+                token(':').skip(spaces())
+                    .with(type_annotation().skip(spaces()))
+            ),
             string("->").skip(spaces()),
             expr(),
         )
-            .map(|(_, param, _, body)| Expr::Fun(param, Box::new(body)))
+            .map(|(_, param, ty_ann, _, body)| Expr::Fun(param, ty_ann, Box::new(body)))
     }
 }
 
@@ -417,13 +421,17 @@ parser! {
         (
             string("let").skip(spaces()),
             identifier().skip(spaces()),
+            optional(
+                token(':').skip(spaces())
+                    .with(type_annotation().skip(spaces()))
+            ),
             token('=').skip(spaces()),
             expr().skip(spaces()),
             string("in").skip(spaces()),
             expr(),
         )
-            .map(|(_, name, _, value, _, body)| {
-                Expr::Let(name, Box::new(value), Box::new(body))
+            .map(|(_, name, ty_ann, _, value, _, body)| {
+                Expr::Let(name, ty_ann, Box::new(value), Box::new(body))
             })
     }
 }
@@ -782,18 +790,22 @@ parser! {
             many(attempt((
                 string("let").skip(spaces()),
                 identifier().skip(spaces()),
+                optional(
+                    token(':').skip(spaces())
+                        .with(type_annotation().skip(spaces()))
+                ),
                 token('=').skip(spaces()),
                 expr().skip(spaces()),
                 token(';').skip(spaces()),
-            ))).map(|bindings: Vec<(_, String, _, Expr, _)>| {
+            ))).map(|bindings: Vec<(_, String, Option<TypeAnnotation>, _, Expr, _)>| {
                 bindings
                     .into_iter()
-                    .map(|(_, name, _, value, _)| (name, value))
-                    .collect::<Vec<(String, Expr)>>()
+                    .map(|(_, name, ty_ann, _, value, _)| (name, ty_ann, value))
+                    .collect::<Vec<(String, Option<TypeAnnotation>, Expr)>>()
             }),
             optional(expr()).skip(spaces())
         )
-            .map(|((), bindings, body): ((), Vec<(String, Expr)>, Option<Expr>)| {
+            .map(|((), bindings, body): ((), Vec<(String, Option<TypeAnnotation>, Expr)>, Option<Expr>)| {
                 let body_expr = body.unwrap_or(Expr::Int(0));
                 if bindings.is_empty() {
                     body_expr
@@ -860,6 +872,7 @@ mod tests {
     fn test_parse_let() {
         let expected = Expr::Let(
             "x".to_string(),
+            None,
             Box::new(Expr::Int(42)),
             Box::new(Expr::Var("x".to_string())),
         );
@@ -878,7 +891,7 @@ mod tests {
 
     #[test]
     fn test_parse_fun() {
-        let expected = Expr::Fun("x".to_string(), Box::new(Expr::Var("x".to_string())));
+        let expected = Expr::Fun("x".to_string(), None, Box::new(Expr::Var("x".to_string())));
         assert_eq!(parse("fun x -> x"), Ok(expected));
     }
 
@@ -1125,8 +1138,8 @@ mod tests {
         // fun x -> fun y -> x + y
         let result = parse("fun x -> fun y -> x + y");
         assert!(result.is_ok());
-        if let Ok(Expr::Fun(_, body)) = result {
-            assert!(matches!(*body, Expr::Fun(_, _)));
+        if let Ok(Expr::Fun(_, _, body)) = result {
+            assert!(matches!(*body, Expr::Fun(_, _, _)));
         }
     }
 
@@ -1223,7 +1236,7 @@ mod tests {
         if let Ok(Expr::Seq(bindings, body)) = result {
             assert_eq!(bindings.len(), 1);
             assert_eq!(bindings[0].0, "x");
-            assert_eq!(bindings[0].1, Expr::Int(42));
+            assert_eq!(bindings[0].2, Expr::Int(42));
             assert_eq!(*body, Expr::Var("x".to_string()));
         } else {
             panic!("Expected Seq expression");
@@ -1251,7 +1264,7 @@ mod tests {
         if let Ok(Expr::Seq(bindings, body)) = result {
             assert_eq!(bindings.len(), 1);
             assert_eq!(bindings[0].0, "double");
-            assert!(matches!(bindings[0].1, Expr::Fun(_, _)));
+            assert!(matches!(bindings[0].2, Expr::Fun(_, _, _)));
             assert!(matches!(*body, Expr::App(_, _)));
         } else {
             panic!("Expected Seq expression");
