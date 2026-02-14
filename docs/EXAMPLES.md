@@ -1381,6 +1381,201 @@ in x + y
 
 ---
 
+## Recursion
+
+ParLang supports recursive functions using the `rec` keyword. Recursive functions can reference themselves by name, enabling iterative algorithms and elegant solutions to problems that naturally involve repetition.
+
+### Basic Recursion
+
+**Factorial Function:**
+```parlang
+rec factorial -> fun n ->
+    if n == 0
+    then 1
+    else n * factorial (n - 1)
+```
+
+**Usage:**
+```parlang
+(rec factorial -> fun n ->
+    if n == 0
+    then 1
+    else n * factorial (n - 1)
+) 5
+```
+
+**Result:** `120`
+
+**Explanation:**
+- `rec factorial` creates a recursive function named `factorial`
+- The function can call itself using the name `factorial`
+- Base case: when `n == 0`, return `1`
+- Recursive case: multiply `n` by `factorial (n - 1)`
+
+### Named Recursive Functions with Let
+
+You can bind recursive functions to names for reuse:
+
+```parlang
+let factorial = rec f -> fun n ->
+    if n == 0
+    then 1
+    else n * f (n - 1)
+in factorial 10
+```
+
+**Result:** `3628800`
+
+### Fibonacci Sequence
+
+```parlang
+let fib = rec fibonacci -> fun n ->
+    if n == 0
+    then 0
+    else if n == 1
+    then 1
+    else fibonacci (n - 1) + fibonacci (n - 2)
+in fib 10
+```
+
+**Result:** `55`
+
+**Explanation:**
+- Base cases: `fib(0) = 0`, `fib(1) = 1`
+- Recursive case: sum of previous two Fibonacci numbers
+
+### Tail Recursion with Accumulator
+
+**Sum from 1 to N (tail recursive):**
+```parlang
+let sum_to_n = rec helper -> fun acc -> fun n ->
+    if n == 0
+    then acc
+    else helper (acc + n) (n - 1)
+in sum_to_n 0 100
+```
+
+**Result:** `5050`
+
+**Explanation:**
+- Uses an accumulator (`acc`) to maintain running sum
+- Tail recursive: the recursive call is the last operation
+- Tail call optimization prevents stack overflow for large N
+
+### Greatest Common Divisor (GCD)
+
+```parlang
+let gcd = rec gcd_helper -> fun a -> fun b ->
+    if b == 0
+    then a
+    else gcd_helper b (a - (a / b) * b)
+in gcd 48 18
+```
+
+**Result:** `6`
+
+**Explanation:**
+- Implements Euclidean algorithm
+- Tail recursive for efficiency
+- Uses modulo operation via division and multiplication
+
+### Checking Even Numbers
+
+```parlang
+let is_even = rec check -> fun n ->
+    if n == 0
+    then true
+    else if n == 1
+    then false
+    else check (n - 2)
+in is_even 42
+```
+
+**Result:** `true`
+
+**Explanation:**
+- Recursively subtracts 2 until reaching base case
+- Base cases: 0 is even, 1 is odd
+
+### Power of 2
+
+```parlang
+let power_of_2 = rec pow -> fun n ->
+    if n == 0
+    then 1
+    else 2 * pow (n - 1)
+in power_of_2 8
+```
+
+**Result:** `256`
+
+### Countdown to Zero
+
+```parlang
+let countdown = rec count -> fun n ->
+    if n == 0
+    then 0
+    else count (n - 1)
+in countdown 1000
+```
+
+**Result:** `0`
+
+**Note:** Demonstrates that recursion can handle deep call stacks when tail-optimized.
+
+### Recursive Functions in Libraries
+
+Create a library file `recursion.par`:
+
+```parlang
+let factorial = rec f -> fun n ->
+    if n == 0 then 1 else n * f (n - 1);
+let fibonacci = rec fib -> fun n ->
+    if n == 0 then 0
+    else if n == 1 then 1
+    else fib (n - 1) + fib (n - 2);
+0
+```
+
+Use the library:
+
+```parlang
+load "examples/recursion.par"
+in let f10 = factorial 10
+in let fib10 = fibonacci 10
+in fib10
+```
+
+**Result:** `55`
+
+### Tail Call Optimization (TCO)
+
+ParLang implements tail call optimization for recursive functions. When the recursive call is in tail position (the last operation before returning), the evaluator uses iteration instead of recursion, preventing stack overflow.
+
+**Tail-recursive (optimized):**
+```parlang
+rec helper -> fun acc -> fun n ->
+    if n == 0
+    then acc
+    else helper (acc + n) (n - 1)
+```
+
+The recursive call `helper (acc + n) (n - 1)` is in tail position, so TCO applies.
+
+**Not tail-recursive:**
+```parlang
+rec sum -> fun n ->
+    if n == 0
+    then 0
+    else n + sum (n - 1)
+```
+
+The addition `n + sum (n - 1)` happens *after* the recursive call returns, so this is not tail-recursive.
+
+**Best Practice:** When possible, use accumulator parameters to make recursive functions tail-recursive for better performance with large inputs.
+
+---
+
 ## Example Files
 
 The `examples/` directory contains practical ParLang programs:
@@ -1525,6 +1720,100 @@ cargo run -- examples/use_stdlib.par
 
 ---
 
+### factorial.par
+
+Demonstrates basic recursive factorial function:
+
+```parlang
+let factorial = rec f -> fun n ->
+    if n == 0
+    then 1
+    else n * f (n - 1)
+in factorial 10
+```
+
+**Output:** `3628800`
+
+**Concepts demonstrated:**
+- Recursive function definition
+- Self-referencing functions
+- Base case and recursive case
+
+**To run:**
+```bash
+cargo run -- examples/factorial.par
+```
+
+---
+
+### recursion.par
+
+Library of common recursive functions:
+
+```parlang
+let factorial = rec f -> fun n ->
+    if n == 0
+    then 1
+    else n * f (n - 1);
+
+let fibonacci = rec fib -> fun n ->
+    if n == 0
+    then 0
+    else if n == 1
+    then 1
+    else fib (n - 1) + fib (n - 2);
+
+let sum_to_n = rec sum_helper -> fun acc -> fun n ->
+    if n == 0
+    then acc
+    else sum_helper (acc + n) (n - 1);
+
+let gcd = rec gcd_helper -> fun a -> fun b ->
+    if b == 0
+    then a
+    else gcd_helper b (a - (a / b) * b);
+
+0
+```
+
+**Concepts demonstrated:**
+- Multiple recursive function definitions
+- Tail recursion with accumulator
+- Library structure for reusable recursive functions
+
+**To run as library:** Use with `load "examples/recursion.par" in ...`
+
+---
+
+### use_recursion.par
+
+Demonstrates loading and using recursive functions from a library:
+
+```parlang
+load "examples/recursion.par"
+in let f5 = factorial 5
+in let f10 = factorial 10
+in let fib10 = fibonacci 10
+in let sum100 = sum_to_n 0 100
+in let gcd_result = gcd 48 18
+in let pow8 = power_of_2 8
+in pow8
+```
+
+**Output:** `256`
+
+**Concepts demonstrated:**
+- Loading recursive function libraries
+- Reusing recursive functions
+- Combining multiple recursive operations
+
+**To run:**
+```bash
+cargo run -- examples/use_recursion.par
+```
+
+---
+
 ## Summary
 
 ParLang is a minimalist functional language that teaches core functional programming concepts:
@@ -1532,6 +1821,7 @@ ParLang is a minimalist functional language that teaches core functional program
 - **Immutability**: All bindings are immutable
 - **First-class functions**: Functions are values
 - **Closures**: Functions capture their environment
+- **Recursion**: Named recursive functions with tail call optimization
 - **Currying**: Multi-parameter functions via nested single-parameter functions
 - **Expression-oriented**: Everything is an expression that evaluates to a value
 
