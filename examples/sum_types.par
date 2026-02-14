@@ -6,4 +6,3 @@ let sum = rec sum -> fun list ->
   | Cons head tail -> head + sum tail
 in
 sum myList
-

@@ -319,7 +319,7 @@ parser! {
             attempt((
                 raw_identifier().then(|name| {
                     if name == "in" {
-                        combine::unexpected("keyword").map(move |()| name.clone()).right()
+                        combine::unexpected("keyword").map(|()| String::new()).right()
                     } else {
                         combine::value(name).left()
                     }
@@ -336,7 +336,7 @@ parser! {
             raw_identifier().then(|name| {
                 // Reject "in" keyword which could be confused with type annotation
                 if name == "in" {
-                    combine::unexpected("keyword").map(move |()| TypeAnnotation::Var(name.clone())).right()
+                    combine::unexpected("keyword").map(|()| TypeAnnotation::Var(String::new())).right()
                 } else {
                     let result = if name.chars().next().unwrap().is_uppercase() {
                         TypeAnnotation::Concrete(name)
