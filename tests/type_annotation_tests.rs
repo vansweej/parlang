@@ -48,13 +48,6 @@ fn test_parse_fun_with_bool_annotation() {
 }
 
 #[test]
-fn test_parse_fun_with_function_type_annotation() {
-    // For function type annotations, we need different syntax
-    // This is a complex case that may require parser improvements
-    // For now, skip this test
-}
-
-#[test]
 fn test_parse_let_with_type_annotation() {
     // let x : Int = 42 in x
     let result = parse("let x : Int = 42 in x");
