@@ -1,6 +1,6 @@
 /// Parser for the `ParLang` language using the combine parser combinator library
 /// This implements a parser for ML-alike functional language syntax
-use crate::ast::{BinOp, Expr, Literal, Pattern};
+use crate::ast::{BinOp, Expr, Literal, Pattern, TypeAnnotation};
 use combine::parser::char::{alpha_num, letter, spaces, string};
 use combine::{
     attempt, between, choice, many, many1, optional, parser, token, EasyParser, Parser,
@@ -99,6 +99,29 @@ where
     identifier().map(Expr::Var)
 }
 
+/// Parse a constructor name (starts with uppercase)
+fn constructor_name<Input>() -> impl Parser<Input, Output = String>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    (
+        combine::satisfy(|c: char| c.is_uppercase()),
+        many::<String, _, _>(alpha_num().or(token('_'))),
+    )
+        .map(|(first, rest): (char, String)| format!("{first}{rest}"))
+        .skip(combine::not_followed_by(alpha_num().or(token('_'))))
+}
+
+/// Parse a constructor as an expression (without arguments)
+fn constructor<Input>() -> impl Parser<Input, Output = Expr>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    constructor_name().map(|name| Expr::Constructor(name, vec![]))
+}
+
 /// Parse a tuple or parenthesized expression
 /// This handles:
 /// - () -> empty tuple
@@ -169,6 +192,7 @@ parser! {
             attempt(bool_literal()),
             attempt(int()),
             attempt(record()),
+            attempt(constructor()),  // Try constructor before variable
             attempt(variable()),
             attempt(tuple_or_paren()),
         ))
@@ -258,6 +282,98 @@ parser! {
         )
             .map(|(_, name, _, ty_expr, _, body)| {
                 Expr::TypeAlias(name, ty_expr, Box::new(body))
+            })
+    }
+}
+
+// Parse type annotations for sum type definitions
+parser! {
+    fn type_annotation[Input]()(Input) -> TypeAnnotation
+    where [Input: Stream<Token = char>]
+    {
+        // Parse function types: a -> b
+        (
+            type_annotation_atom().skip(spaces()),
+            optional(
+                string("->").skip(spaces())
+                    .with(type_annotation())
+            ),
+        )
+            .map(|(arg, ret_opt)| {
+                match ret_opt {
+                    None => arg,
+                    Some(ret) => TypeAnnotation::Fun(Box::new(arg), Box::new(ret)),
+                }
+            })
+    }
+}
+
+// Parse atomic type annotation (concrete type, type variable, or applied type)
+parser! {
+    fn type_annotation_atom[Input]()(Input) -> TypeAnnotation
+    where [Input: Stream<Token = char>]
+    {
+        choice((
+            // Try applied type first: List a, Option Int
+            attempt((
+                raw_identifier().skip(spaces()),
+                many1(type_annotation_atom().skip(spaces()))
+            ).map(|(name, args)| TypeAnnotation::App(name, args))),
+            // Parenthesized type annotation
+            attempt(between(
+                token('(').skip(spaces()),
+                token(')').skip(spaces()),
+                type_annotation()
+            )),
+            // Simple identifier: Int, Bool, a, b
+            raw_identifier().map(|name| {
+                // Distinguish between concrete types (capitalized) and type variables
+                if name.chars().next().unwrap().is_uppercase() {
+                    TypeAnnotation::Concrete(name)
+                } else {
+                    TypeAnnotation::Var(name)
+                }
+            }),
+        ))
+    }
+}
+
+// Parse type definitions: type Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
+parser! {
+    fn type_def_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        (
+            string("type").skip(spaces()),
+            raw_identifier().skip(spaces()),  // type name
+            many(attempt(combine::satisfy(|c: char| c.is_lowercase() || c == '_')
+                .and(many::<String, _, _>(alpha_num().or(token('_'))))
+                .map(|(first, rest)| format!("{}{}", first, rest))
+                .skip(spaces()))),  // type parameters
+            token('=').skip(spaces()),
+            // Constructors separated by |
+            combine::sep_by1(
+                (
+                    // Constructor name (must start with uppercase)
+                    combine::satisfy(|c: char| c.is_uppercase())
+                        .and(many::<String, _, _>(alpha_num().or(token('_'))))
+                        .map(|(first, rest)| format!("{}{}", first, rest))
+                        .skip(spaces()),
+                    // Constructor argument types
+                    many(attempt(type_annotation_atom().skip(spaces())))
+                ),
+                token('|').skip(spaces())
+            ),
+            string("in").skip(spaces()),
+            expr()
+        )
+            .map(|(_, name, type_params, _, constructors, _, body)| {
+                Expr::TypeDef {
+                    name,
+                    type_params,
+                    constructors,
+                    body: Box::new(body),
+                }
             })
     }
 }
@@ -381,7 +497,60 @@ parser! {
                         Pattern::Literal(Literal::Int(value))
                     })
             }),
+            // Constructor pattern: Some x, Cons head tail, None
+            attempt((
+                constructor_name().skip(spaces()),
+                many(attempt(pattern_atom().skip(spaces())))
+            ).map(|(name, patterns)| Pattern::Constructor(name, patterns))),
             // Variable pattern: x, n, acc (any identifier)
+            identifier().map(Pattern::Var),
+        ))
+    }
+}
+
+// Parse atomic patterns for use in constructor patterns
+// This prevents infinite recursion by not allowing full pattern expressions
+parser! {
+    fn pattern_atom[Input]()(Input) -> Pattern
+    where [Input: Stream<Token = char>]
+    {
+        choice((
+            // Wildcard
+            attempt(token('_').skip(combine::not_followed_by(alpha_num().or(token('_')))).map(|_| Pattern::Wildcard)),
+            // Boolean literals
+            attempt(string("true").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(true)))),
+            attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
+            // Integer literals
+            attempt({
+                let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
+                (optional(token('-')), number)
+                    .map(|(sign, n)| {
+                        let value = if sign.is_some() { -n } else { n };
+                        Pattern::Literal(Literal::Int(value))
+                    })
+            }),
+            // Tuple pattern
+            attempt(between(
+                token('(').skip(spaces()),
+                token(')'),
+                (
+                    optional(pattern().skip(spaces())),
+                    many(token(',').skip(spaces()).with(pattern().skip(spaces()))),
+                )
+                    .map(|(first_opt, rest): (Option<Pattern>, Vec<Pattern>)| {
+                        match first_opt {
+                            None => Pattern::Tuple(vec![]),
+                            Some(first) => {
+                                let mut patterns = vec![first];
+                                patterns.extend(rest);
+                                Pattern::Tuple(patterns)
+                            }
+                        }
+                    }),
+            )),
+            // Nested constructor pattern (without arguments for simplicity in atoms)
+            attempt(constructor_name().map(|name| Pattern::Constructor(name, vec![]))),
+            // Variable
             identifier().map(Pattern::Var),
         ))
     }
@@ -418,6 +587,7 @@ parser! {
     where [Input: Stream<Token = char>]
     {
         choice((
+            attempt(type_def_expr()),  // Try type def before type alias
             attempt(type_alias_expr()),
             attempt(let_expr()),
             attempt(load_expr()),
@@ -469,8 +639,22 @@ parser! {
     {
         (proj_expr().skip(spaces()), many(proj_expr().skip(spaces())))
             .map(|(func, args): (Expr, Vec<Expr>)| {
-                args.into_iter()
-                    .fold(func, |f, arg| Expr::App(Box::new(f), Box::new(arg)))
+                // Special handling for constructor applications
+                // If func is a constructor, combine it with all arguments
+                if let Expr::Constructor(name, mut ctor_args) = func {
+                    // If the constructor already has arguments (shouldn't happen in our parser),
+                    // extend them. Otherwise, just use the provided args.
+                    if ctor_args.is_empty() {
+                        Expr::Constructor(name, args)
+                    } else {
+                        ctor_args.extend(args);
+                        Expr::Constructor(name, ctor_args)
+                    }
+                } else {
+                    // Regular function application
+                    args.into_iter()
+                        .fold(func, |f, arg| Expr::App(Box::new(f), Box::new(arg)))
+                }
             })
     }
 }
