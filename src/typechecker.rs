@@ -1066,7 +1066,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 return Ok((Type::Unit, HashMap::new()));
             }
             // For non-empty tuples, return a type variable for now
-            // A full implementation would need tuple types
+            // (full tuple type implementation is planned)
             Ok((env.fresh_var(), HashMap::new()))
         }
 
