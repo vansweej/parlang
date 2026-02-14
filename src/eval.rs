@@ -1,6 +1,5 @@
-/// Evaluator/Interpreter for the ParLang language
-/// This module implements the runtime evaluation of ParLang expressions
-
+/// Evaluator/Interpreter for the `ParLang` language
+/// This module implements the runtime evaluation of `ParLang` expressions
 use crate::ast::{BinOp, Expr, Literal, Pattern};
 use std::collections::HashMap;
 use std::fmt;
@@ -22,17 +21,17 @@ pub enum Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Value::Int(n) => write!(f, "{}", n),
-            Value::Bool(b) => write!(f, "{}", b),
-            Value::Closure(param, _, _) => write!(f, "<function {}>", param),
-            Value::RecClosure(name, _, _, _) => write!(f, "<recursive function {}>", name),
+            Value::Int(n) => write!(f, "{n}"),
+            Value::Bool(b) => write!(f, "{b}"),
+            Value::Closure(param, _, _) => write!(f, "<function {param}>"),
+            Value::RecClosure(name, _, _, _) => write!(f, "<recursive function {name}>"),
             Value::Tuple(values) => {
                 write!(f, "(")?;
                 for (i, val) in values.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", val)?;
+                    write!(f, "{val}")?;
                 }
                 write!(f, ")")
             }
@@ -47,6 +46,7 @@ pub struct Environment {
 }
 
 impl Environment {
+    #[must_use]
     pub fn new() -> Self {
         Environment {
             bindings: HashMap::new(),
@@ -61,12 +61,14 @@ impl Environment {
         self.bindings.get(name)
     }
 
+    #[must_use]
     pub fn extend(&self, name: String, value: Value) -> Self {
         let mut new_env = self.clone();
         new_env.bind(name, value);
         new_env
     }
 
+    #[must_use]
     pub fn merge(&self, other: &Environment) -> Self {
         let mut new_env = self.clone();
         for (name, value) in &other.bindings {
@@ -95,11 +97,11 @@ pub enum EvalError {
 impl fmt::Display for EvalError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            EvalError::UnboundVariable(name) => write!(f, "Unbound variable: {}", name),
-            EvalError::TypeError(msg) => write!(f, "Type error: {}", msg),
+            EvalError::UnboundVariable(name) => write!(f, "Unbound variable: {name}"),
+            EvalError::TypeError(msg) => write!(f, "Type error: {msg}"),
             EvalError::DivisionByZero => write!(f, "Division by zero"),
-            EvalError::LoadError(msg) => write!(f, "Load error: {}", msg),
-            EvalError::IndexOutOfBounds(msg) => write!(f, "Index out of bounds: {}", msg),
+            EvalError::LoadError(msg) => write!(f, "Load error: {msg}"),
+            EvalError::IndexOutOfBounds(msg) => write!(f, "Index out of bounds: {msg}"),
         }
     }
 }
@@ -152,11 +154,9 @@ fn eval_with_tco(
                 match cond_val {
                     Value::Bool(true) => {
                         current_expr = (**then_branch).clone();
-                        continue;
                     }
                     Value::Bool(false) => {
                         current_expr = (**else_branch).clone();
-                        continue;
                     }
                     _ => return Err(EvalError::TypeError(
                         "if condition must evaluate to a boolean".to_string(),
@@ -170,7 +170,7 @@ fn eval_with_tco(
 }
 
 /// Check if an expression is ultimately a call to the recursive function
-/// Handles nested applications like: (rec_name arg1) arg2
+/// Handles nested applications like: (`rec_name` arg1) arg2
 fn is_tail_call_to(expr: &Expr, rec_name: &str) -> bool {
     match expr {
         Expr::Var(name) => name == rec_name,
@@ -182,6 +182,13 @@ fn is_tail_call_to(expr: &Expr, rec_name: &str) -> bool {
 /// Extract bindings from nested let expressions
 /// This walks through the AST and extracts all top-level let bindings.
 /// Used by the REPL to persist function definitions and library loads across evaluations.
+/// 
+/// # Errors
+/// 
+/// Returns an error if:
+/// - Evaluation of a let binding value fails
+/// - Loading a library file fails (file not found or parse error)
+/// - A binding value causes a type error or other evaluation error
 pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, EvalError> {
     match expr {
         Expr::Let(name, value, body) => {
@@ -196,9 +203,9 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
             // Handle nested load expressions
             // Read and parse the file
             let content = fs::read_to_string(Path::new(filepath))
-                .map_err(|e| EvalError::LoadError(format!("Failed to read file '{}': {}", filepath, e)))?;
+                .map_err(|e| EvalError::LoadError(format!("Failed to read file '{filepath}': {e}")))?;
             let lib_expr = crate::parser::parse(&content)
-                .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{}': {}", filepath, e)))?;
+                .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}")))?;
             
             // Extract bindings from the loaded library
             let lib_env = extract_bindings(&lib_expr, &Environment::new())?;
@@ -267,6 +274,16 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
 }
 
 /// Evaluate an expression in an environment
+/// 
+/// # Errors
+/// 
+/// Returns an error if:
+/// - A variable is unbound (not found in the environment)
+/// - A type error occurs (e.g., applying a non-function, or arithmetic on non-integers)
+/// - Division by zero is attempted
+/// - A pattern match fails (no pattern matches the scrutinee)
+/// - Loading a library file fails
+/// - A tuple projection index is out of bounds
 pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
     match expr {
         Expr::Int(n) => Ok(Value::Int(*n)),
@@ -339,11 +356,11 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
         Expr::Load(filepath, body) => {
             // Read the file contents
             let content = fs::read_to_string(Path::new(filepath))
-                .map_err(|e| EvalError::LoadError(format!("Failed to read file '{}': {}", filepath, e)))?;
+                .map_err(|e| EvalError::LoadError(format!("Failed to read file '{filepath}': {e}")))?;
             
             // Parse the file contents
             let lib_expr = crate::parser::parse(&content)
-                .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{}': {}", filepath, e)))?;
+                .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}")))?;
             
             // Extract bindings from the library file
             let lib_env = extract_bindings(&lib_expr, &Environment::new())?;
@@ -465,8 +482,7 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Neq, Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a != b)),
         
         _ => Err(EvalError::TypeError(format!(
-            "Type error in binary operation: {:?}",
-            op
+            "Type error in binary operation: {op:?}"
         ))),
     }
 }
@@ -1027,7 +1043,7 @@ mod tests {
 
     #[test]
     fn test_environment_default() {
-        let env: Environment = Default::default();
+        let env = Environment::default();
         assert_eq!(env.lookup("x"), None);
     }
 
@@ -1048,26 +1064,26 @@ mod tests {
     fn test_value_display_closure() {
         let env = Environment::new();
         let closure = Value::Closure("x".to_string(), Expr::Var("x".to_string()), env);
-        assert_eq!(format!("{}", closure), "<function x>");
+        assert_eq!(format!("{closure}"), "<function x>");
     }
 
     // Test EvalError Display implementation
     #[test]
     fn test_eval_error_display_unbound_var() {
         let err = EvalError::UnboundVariable("x".to_string());
-        assert_eq!(format!("{}", err), "Unbound variable: x");
+        assert_eq!(format!("{err}"), "Unbound variable: x");
     }
 
     #[test]
     fn test_eval_error_display_type_error() {
         let err = EvalError::TypeError("test error".to_string());
-        assert_eq!(format!("{}", err), "Type error: test error");
+        assert_eq!(format!("{err}"), "Type error: test error");
     }
 
     #[test]
     fn test_eval_error_display_division_by_zero() {
         let err = EvalError::DivisionByZero;
-        assert_eq!(format!("{}", err), "Division by zero");
+        assert_eq!(format!("{err}"), "Division by zero");
     }
 
     // Test Value Clone and PartialEq
@@ -1431,7 +1447,7 @@ mod tests {
     #[test]
     fn test_eval_error_display_load_error() {
         let err = EvalError::LoadError("test load error".to_string());
-        assert_eq!(format!("{}", err), "Load error: test load error");
+        assert_eq!(format!("{err}"), "Load error: test load error");
     }
 
     // Test Seq evaluation
@@ -1732,13 +1748,13 @@ mod tests {
     #[test]
     fn test_value_display_tuple() {
         let val = Value::Tuple(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
-        assert_eq!(format!("{}", val), "(1, 2, 3)");
+        assert_eq!(format!("{val}"), "(1, 2, 3)");
     }
 
     #[test]
     fn test_value_display_tuple_empty() {
         let val = Value::Tuple(vec![]);
-        assert_eq!(format!("{}", val), "()");
+        assert_eq!(format!("{val}"), "()");
     }
 
     #[test]
@@ -1747,7 +1763,7 @@ mod tests {
             Value::Tuple(vec![Value::Int(1), Value::Int(2)]),
             Value::Int(3),
         ]);
-        assert_eq!(format!("{}", val), "((1, 2), 3)");
+        assert_eq!(format!("{val}"), "((1, 2), 3)");
     }
 }
 

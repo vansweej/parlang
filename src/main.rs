@@ -1,10 +1,9 @@
-/// ParLang: A small ML-alike functional language interpreter
+/// `ParLang`: A small ML-alike functional language interpreter
 /// 
 /// This executable provides:
 /// - REPL mode for interactive evaluation
 /// - File execution mode for running .par files
 /// - AST dumping to DOT format for visualization
-
 use clap::{Parser, Subcommand};
 use parlang::{parse, eval, extract_bindings, dot, Environment};
 use rustyline::error::ReadlineError;
@@ -57,11 +56,11 @@ fn main() {
                         // Dump AST if requested
                         if let Some(dot_file) = &cli.dump_ast {
                             match dot::write_ast_to_dot_file(&expr, dot_file) {
-                                Ok(_) => {
-                                    eprintln!("AST dumped to: {}", dot_file);
+                                Ok(()) => {
+                                    eprintln!("AST dumped to: {dot_file}");
                                 }
                                 Err(e) => {
-                                    eprintln!("Failed to write DOT file '{}': {}", dot_file, e);
+                                    eprintln!("Failed to write DOT file '{dot_file}': {e}");
                                     process::exit(1);
                                 }
                             }
@@ -70,21 +69,21 @@ fn main() {
                         // Execute the program
                         let env = Environment::new();
                         match eval(&expr, &env).map_err(|e| e.to_string()) {
-                            Ok(value) => println!("{}", value),
+                            Ok(value) => println!("{value}"),
                             Err(e) => {
-                                eprintln!("Error: {}", e);
+                                eprintln!("Error: {e}");
                                 process::exit(1);
                             }
                         }
                     }
                     Err(e) => {
-                        eprintln!("Parse error: {}", e);
+                        eprintln!("Parse error: {e}");
                         process::exit(1);
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Failed to read file '{}': {}", filename, e);
+                eprintln!("Failed to read file '{filename}': {e}");
                 process::exit(1);
             }
         }
@@ -125,7 +124,7 @@ fn repl() {
                     // Add the line to history if it's the first line
                     if is_first_line {
                         if let Err(e) = rl.add_history_entry(line.as_str()) {
-                            eprintln!("Warning: Failed to add entry to history: {}", e);
+                            eprintln!("Warning: Failed to add entry to history: {e}");
                         }
                     }
                     
@@ -154,7 +153,7 @@ fn repl() {
                     return;
                 }
                 Err(err) => {
-                    eprintln!("Error reading input: {}", err);
+                    eprintln!("Error reading input: {err}");
                     return;
                 }
             }
@@ -169,7 +168,7 @@ fn repl() {
                 Ok(expr) => {
                     match eval(&expr, &env) {
                         Ok(value) => {
-                            println!("{}", value);
+                            println!("{value}");
                             // Extract bindings from the expression and merge into environment
                             match extract_bindings(&expr, &env) {
                                 Ok(new_env) => {
@@ -177,14 +176,14 @@ fn repl() {
                                 }
                                 Err(e) => {
                                     // If binding extraction fails, report it but continue with the old environment
-                                    eprintln!("Warning: Failed to persist bindings: {}", e);
+                                    eprintln!("Warning: Failed to persist bindings: {e}");
                                 }
                             }
                         }
-                        Err(e) => eprintln!("Evaluation error: {}", e),
+                        Err(e) => eprintln!("Evaluation error: {e}"),
                     }
                 },
-                Err(e) => eprintln!("Parse error: {}", e),
+                Err(e) => eprintln!("Parse error: {e}"),
             }
         }
     }

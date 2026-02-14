@@ -1,6 +1,5 @@
-/// Parser for the ParLang language using the combine parser combinator library
+/// Parser for the `ParLang` language using the combine parser combinator library
 /// This implements a parser for ML-alike functional language syntax
-
 use crate::ast::{BinOp, Expr, Literal, Pattern};
 use combine::parser::char::{alpha_num, letter, spaces, string};
 use combine::{
@@ -14,6 +13,12 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
+    // Parse digits and convert to i64. The unwrap is safe here because:
+    // 1. combine's digit() parser ensures we only have '0'-'9' characters
+    // 2. many1 ensures we have at least one digit
+    // 3. A string of valid digits will always parse to i64 successfully
+    // Note: Very large numbers (> i64::MAX) will be caught by parse() and could panic,
+    // but this is acceptable for a toy language implementation
     let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
     
     (optional(token('-')), number)
@@ -61,7 +66,7 @@ where
         letter(),
         many1(alpha_num().or(token('_'))).or(combine::value(String::new())),
     )
-        .map(|(first, rest): (char, String)| format!("{}{}", first, rest))
+        .map(|(first, rest): (char, String)| format!("{first}{rest}"))
         .skip(combine::not_followed_by(alpha_num().or(token('_'))))
 }
 
@@ -78,7 +83,7 @@ where
             "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with"
         ) {
             // Use a parser that will never succeed to reject keywords
-            combine::unexpected("keyword").map(move |_: ()| name.clone()).right()
+            combine::unexpected("keyword").map(move |()| name.clone()).right()
         } else {
             combine::value(name).left()
         }
@@ -227,8 +232,7 @@ parser! {
         )
             .map(|(_, filepath, body_opt)| {
                 let body = body_opt
-                    .map(|(_, b)| b)
-                    .unwrap_or(Expr::Int(0));
+                    .map_or(Expr::Int(0), |(_, b)| b);
                 Expr::Load(filepath, Box::new(body))
             })
     }
@@ -272,6 +276,10 @@ parser! {
             attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
             // Integer literal pattern: 0, 1, 42, -10
             attempt({
+                // The unwrap is safe here because:
+                // 1. combine's digit() parser ensures we only have '0'-'9' characters
+                // 2. many1 ensures we have at least one digit
+                // 3. A string of valid digits will always parse to i64 successfully
                 let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
                 (optional(token('-')), number)
                     .map(|(sign, n)| {
@@ -333,6 +341,10 @@ parser! {
     {
         (
             primary().skip(spaces()),
+            // The unwrap is safe here because:
+            // 1. combine's digit() parser ensures we only have '0'-'9' characters
+            // 2. many1 ensures we have at least one digit
+            // 3. A string of valid digits will always parse to usize successfully for valid tuple indices
             many(token('.').with(many1(combine::parser::char::digit()).map(|s: String| s.parse::<usize>().unwrap())))
         )
             .map(|(base, indices): (Expr, Vec<usize>)| {
@@ -450,7 +462,7 @@ parser! {
             }),
             optional(expr()).skip(spaces())
         )
-            .map(|(_, bindings, body): (_, Vec<(String, Expr)>, Option<Expr>)| {
+            .map(|((), bindings, body): ((), Vec<(String, Expr)>, Option<Expr>)| {
                 let body_expr = body.unwrap_or(Expr::Int(0));
                 if bindings.is_empty() {
                     body_expr
@@ -462,16 +474,22 @@ parser! {
 }
 
 /// Parse a string into an expression
+/// 
+/// # Errors
+/// 
+/// Returns an error if:
+/// - The input contains invalid syntax
+/// - There is unexpected input after a valid expression
 pub fn parse(input: &str) -> Result<Expr, String> {
     match program().easy_parse(input) {
         Ok((expr, rest)) => {
             if rest.is_empty() {
                 Ok(expr)
             } else {
-                Err(format!("Unexpected input after expression: '{}'", rest))
+                Err(format!("Unexpected input after expression: '{rest}'"))
             }
         }
-        Err(err) => Err(format!("Parse error: {}", err)),
+        Err(err) => Err(format!("Parse error: {err}")),
     }
 }
 
