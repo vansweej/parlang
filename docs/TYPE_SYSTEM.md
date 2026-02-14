@@ -117,6 +117,8 @@ true
 **Important Notes:**
 - Float and Int are separate types and cannot be mixed in arithmetic operations
 - Floating point comparisons may have precision issues due to the nature of IEEE 754
+- Direct equality comparison (`==`, `!=`) of floats can produce unexpected results due to rounding errors
+- For comparing floats, consider using a tolerance-based approach in your code
 - Division by zero returns an error
 
 **Examples:**
