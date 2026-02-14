@@ -4,6 +4,7 @@
 /// - AST definitions for the language
 /// - Parser using the combine parser combinator library
 /// - Evaluator/interpreter for executing programs
+/// - Optional Hindley-Milner type inference system
 /// 
 /// # Example
 /// 
@@ -16,12 +17,27 @@
 /// let result = eval(&expr, &env).expect("Evaluation error");
 /// println!("Result: {}", result); // prints "Result: 43"
 /// ```
+/// 
+/// # Type Checking Example
+/// 
+/// ```
+/// use parlang::{parse, typecheck};
+/// 
+/// let program = "fun x -> x + 1";
+/// let expr = parse(program).expect("Parse error");
+/// let ty = typecheck(&expr).expect("Type error");
+/// println!("Type: {}", ty); // prints "Type: Int -> Int"
+/// ```
 pub mod ast;
 pub mod parser;
 pub mod eval;
 pub mod dot;
+pub mod types;
+pub mod typechecker;
 
 // Re-export commonly used types and functions
 pub use ast::{Expr, BinOp};
 pub use parser::parse;
 pub use eval::{eval, extract_bindings, Value, Environment, EvalError};
+pub use types::{Type, TypeScheme, TypeVar};
+pub use typechecker::{typecheck, TypeError, TypeEnv};
