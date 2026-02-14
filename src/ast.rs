@@ -24,6 +24,19 @@ pub enum Pattern {
     Tuple(Vec<Pattern>),
 }
 
+/// Type expressions for type aliases
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypeExpr {
+    /// Integer type: Int
+    Int,
+    /// Boolean type: Bool
+    Bool,
+    /// Function type: T1 -> T2
+    Fun(Box<TypeExpr>, Box<TypeExpr>),
+    /// Type alias reference: Name
+    Alias(String),
+}
+
 /// Expression types in the language
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -71,6 +84,10 @@ pub enum Expr {
     
     /// Tuple projection: e.0, e.1, e.2, ...
     TupleProj(Box<Expr>, usize),
+    
+    /// Type alias definition: type Name = TypeExpr in body
+    /// Defines a type alias that can be used in the body expression
+    TypeAlias(String, TypeExpr, Box<Expr>),
 }
 
 /// Binary operators
@@ -133,6 +150,26 @@ impl fmt::Display for Expr {
                 write!(f, ")")
             }
             Expr::TupleProj(tuple, index) => write!(f, "{tuple}.{index}"),
+            Expr::TypeAlias(name, ty_expr, body) => {
+                write!(f, "(type {name} = {ty_expr} in {body})")
+            }
+        }
+    }
+}
+
+impl fmt::Display for TypeExpr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TypeExpr::Int => write!(f, "Int"),
+            TypeExpr::Bool => write!(f, "Bool"),
+            TypeExpr::Fun(arg, ret) => {
+                // Add parentheses around function arguments if they are also functions
+                match arg.as_ref() {
+                    TypeExpr::Fun(_, _) => write!(f, "({arg}) -> {ret}"),
+                    _ => write!(f, "{arg} -> {ret}"),
+                }
+            }
+            TypeExpr::Alias(name) => write!(f, "{name}"),
         }
     }
 }
@@ -789,5 +826,108 @@ mod tests {
             1,
         );
         assert_eq!(format!("{expr}"), "((1, 2), 3).0.1");
+    }
+
+    // Test TypeExpr construction and equality
+    #[test]
+    fn test_type_expr_int() {
+        let ty = TypeExpr::Int;
+        assert_eq!(ty, TypeExpr::Int);
+    }
+
+    #[test]
+    fn test_type_expr_bool() {
+        let ty = TypeExpr::Bool;
+        assert_eq!(ty, TypeExpr::Bool);
+    }
+
+    #[test]
+    fn test_type_expr_fun() {
+        let ty = TypeExpr::Fun(Box::new(TypeExpr::Int), Box::new(TypeExpr::Bool));
+        assert_eq!(
+            ty,
+            TypeExpr::Fun(Box::new(TypeExpr::Int), Box::new(TypeExpr::Bool))
+        );
+    }
+
+    #[test]
+    fn test_type_expr_alias() {
+        let ty = TypeExpr::Alias("MyType".to_string());
+        assert_eq!(ty, TypeExpr::Alias("MyType".to_string()));
+    }
+
+    // Test TypeExpr Display
+    #[test]
+    fn test_display_type_expr_int() {
+        assert_eq!(format!("{}", TypeExpr::Int), "Int");
+    }
+
+    #[test]
+    fn test_display_type_expr_bool() {
+        assert_eq!(format!("{}", TypeExpr::Bool), "Bool");
+    }
+
+    #[test]
+    fn test_display_type_expr_simple_fun() {
+        let ty = TypeExpr::Fun(Box::new(TypeExpr::Int), Box::new(TypeExpr::Bool));
+        assert_eq!(format!("{ty}"), "Int -> Bool");
+    }
+
+    #[test]
+    fn test_display_type_expr_fun_with_fun_arg() {
+        // (Int -> Bool) -> Bool
+        let ty = TypeExpr::Fun(
+            Box::new(TypeExpr::Fun(
+                Box::new(TypeExpr::Int),
+                Box::new(TypeExpr::Bool),
+            )),
+            Box::new(TypeExpr::Bool),
+        );
+        assert_eq!(format!("{ty}"), "(Int -> Bool) -> Bool");
+    }
+
+    #[test]
+    fn test_display_type_expr_alias() {
+        let ty = TypeExpr::Alias("MyFunc".to_string());
+        assert_eq!(format!("{ty}"), "MyFunc");
+    }
+
+    // Test TypeAlias expression
+    #[test]
+    fn test_expr_type_alias() {
+        let expr = Expr::TypeAlias(
+            "MyInt".to_string(),
+            TypeExpr::Int,
+            Box::new(Expr::Var("x".to_string())),
+        );
+        assert_eq!(
+            expr,
+            Expr::TypeAlias(
+                "MyInt".to_string(),
+                TypeExpr::Int,
+                Box::new(Expr::Var("x".to_string())),
+            )
+        );
+    }
+
+    #[test]
+    fn test_display_type_alias() {
+        let expr = Expr::TypeAlias(
+            "MyFunc".to_string(),
+            TypeExpr::Fun(Box::new(TypeExpr::Int), Box::new(TypeExpr::Int)),
+            Box::new(Expr::Int(42)),
+        );
+        assert_eq!(format!("{expr}"), "(type MyFunc = Int -> Int in 42)");
+    }
+
+    #[test]
+    fn test_type_alias_clone() {
+        let expr = Expr::TypeAlias(
+            "MyInt".to_string(),
+            TypeExpr::Int,
+            Box::new(Expr::Int(42)),
+        );
+        let cloned = expr.clone();
+        assert_eq!(expr, cloned);
     }
 }

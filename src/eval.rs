@@ -224,7 +224,11 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
             // Continue extracting from the body
             extract_bindings(body, &current_env)
         }
-        // If we reach anything other than a Let, Load, or Seq, we're done extracting
+        Expr::TypeAlias(_name, _ty_expr, body) => {
+            // Type aliases don't create runtime bindings, just pass through to the body
+            extract_bindings(body, env)
+        }
+        // If we reach anything other than a Let, Load, Seq, or TypeAlias, we're done extracting
         // Return the accumulated environment
         _ => Ok(env.clone()),
     }
@@ -451,6 +455,12 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     "Tuple projection requires a tuple".to_string(),
                 )),
             }
+        }
+        
+        Expr::TypeAlias(_name, _ty_expr, body) => {
+            // Type aliases are transparent at runtime - they're only used during type checking
+            // We simply evaluate the body in the current environment
+            eval(body, env)
         }
     }
 }

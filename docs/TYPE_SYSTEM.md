@@ -43,6 +43,88 @@ fun x -> fun y -> x + y
 
 This function takes an integer and returns a function that takes another integer and returns an integer.
 
+## Type Aliases
+
+Type aliases allow you to define alternative names for existing types, making code more readable and self-documenting.
+
+### Syntax
+
+```parlang
+type AliasName = TypeExpression in expression
+```
+
+### Examples
+
+**Simple type alias:**
+```parlang
+> type MyInt = Int in 42
+Type: Int
+42
+```
+
+**Function type alias:**
+```parlang
+> type IntFunc = Int -> Int in fun x -> x + 1
+Type: Int -> Int
+<function x>
+```
+
+**Complex function type alias:**
+```parlang
+> type Predicate = Int -> Bool in fun x -> x > 0
+Type: Int -> Bool
+<function x>
+```
+
+**Higher-order function type alias:**
+```parlang
+> type Transform = (Int -> Int) -> Int in fun f -> f 42
+Type: (Int -> Int) -> Int
+<function f>
+```
+
+### Scoping
+
+Type aliases are scoped to the expression that follows them:
+
+```parlang
+type MyInt = Int in
+  let x = 10 in
+  x + 32
+# Result: 42
+```
+
+### Nested Type Aliases
+
+You can define multiple type aliases by nesting them:
+
+```parlang
+type IntFunc = Int -> Int in
+type BoolFunc = Bool -> Bool in
+  let f = fun x -> x + 1 in
+  f 41
+# Result: 42
+```
+
+### Transparency
+
+Type aliases are transparent - they don't create new types, just alternative names:
+
+```parlang
+> type MyInt = Int in type YourInt = Int in 42
+Type: Int
+42
+```
+
+Both `MyInt` and `YourInt` are just names for `Int` - they're interchangeable.
+
+### Usage Notes
+
+- Type aliases are evaluated at type-checking time, not runtime
+- They help document the intent of your code without changing semantics
+- Useful for documenting function signatures and complex types
+- Type aliases have no runtime overhead
+
 ## Type Inference
 
 Types are inferred automatically without annotations. The type checker uses Algorithm W, a variation of the Hindley-Milner algorithm.
@@ -157,6 +239,7 @@ The type system supports:
 - Let bindings: `let x = expr1 in expr2`
 - Functions: `fun x -> expr`
 - Function application: `f x`
+- Type aliases: `type Name = Type in expr`
 
 ## Limitations
 

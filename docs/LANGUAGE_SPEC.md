@@ -64,12 +64,12 @@ The lexical structure consists of the following token categories:
 Keywords are reserved identifiers with special syntactic meaning:
 
 ```
-let     in      if      then    else    fun     true    false   load    rec     match   with
+let     in      if      then    else    fun     true    false   load    rec     match   with    type
 ```
 
 **Formal Definition:**
 ```
-keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with"
+keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with" | "type"
 ```
 
 #### 2.2.2 Identifiers
@@ -220,6 +220,7 @@ primary_expr ::= atom
               | match_expr
               | rec_expr
               | fun_expr
+              | type_alias_expr
 
 (* Atomic expressions *)
 atom ::= integer
@@ -254,6 +255,16 @@ tuple_pattern ::= '(' ')'                                 (* empty tuple pattern
 rec_expr ::= "rec" identifier "->" expression
 
 fun_expr ::= "fun" identifier "->" expression
+
+type_alias_expr ::= "type" identifier '=' type_expr "in" expression
+
+(* Type expressions *)
+type_expr ::= type_atom ("->" type_expr)?
+
+type_atom ::= "Int"
+            | "Bool"
+            | identifier                (* type alias reference *)
+            | '(' type_expr ')'         (* parenthesized type *)
 
 (* Operators *)
 comparison_op ::= "==" | "!=" | "<=" | ">=" | '<' | '>'
@@ -573,6 +584,46 @@ x * y
 ```
 
 **Note:** This is syntactic sugar for nested let-in expressions but with cleaner syntax when defining multiple bindings at the program level.
+
+#### 5.2.7.1 Type Aliases
+
+```
+Γ ⊢ e ⇓ v
+────────────────────────────────────  [E-TYPE-ALIAS]
+Γ ⊢ type T = τ in e ⇓ v
+```
+
+**Semantics:**
+1. Type aliases are transparent at runtime - they don't affect evaluation
+2. The type `τ` is recorded for type checking purposes only
+3. The body expression `e` is evaluated in the current environment
+4. Type aliases have **no runtime overhead** - they are purely a type-level construct
+
+**Scoping:** The type alias `T` is visible only in the expression `e`.
+
+**Example:**
+```
+∅ ⊢ type MyInt = Int in 42 ⇓ Int(42)
+
+∅ ⊢ type IntFunc = Int -> Int in fun x -> x + 1 ⇓ Closure(...)
+
+∅ ⊢ type A = Int in type B = Bool in 10 ⇓ Int(10)
+```
+
+**Type-Level Behavior:**
+While type aliases don't affect runtime evaluation, they are used during type checking:
+- `type MyInt = Int` defines `MyInt` as an alias for `Int`
+- References to `MyInt` in type expressions resolve to `Int`
+- Type aliases can be nested and shadowed like let bindings
+
+**Transparency:**
+```parlang
+# These two expressions are semantically identical:
+42                          # evaluates to Int(42)
+type MyInt = Int in 42      # evaluates to Int(42)
+
+# The type alias is stripped during evaluation
+```
 
 #### 5.2.8 Function Definition
 
