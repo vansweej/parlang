@@ -9,13 +9,14 @@ ParLang is a simple functional programming language with:
 - **Basic Types**: Integers and booleans
 - **Type Inference**: Optional Hindley-Milner type system with automatic type inference
 - **Type Aliases**: Define alternative names for types for better code documentation
+- **Records**: Product types with named fields for structured data
 - **Tuples**: Heterogeneous tuples with projection and pattern matching
 - **Variables**: Let bindings for creating local variables
 - **Functions**: First-class functions with closure support
 - **Polymorphism**: Let-polymorphism for generic functions
 - **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
-- **Pattern Matching**: Match expressions for cleaner multi-branch logic
+- **Pattern Matching**: Match expressions for cleaner multi-branch logic (supports records, tuples, literals)
 - **Binary Operations**: Arithmetic (`+`, `-`, `*`, `/`) and comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`)
 - **Function Application**: Call functions with arguments
 - **Currying**: Functions naturally support partial application
@@ -127,6 +128,62 @@ match (10, 20) with
 let swap = fun p -> (p.1, p.0)
 in swap (5, 10)          # Result: (10, 5)
 ```
+
+### Records
+
+Records are product types with named fields, providing structured data with type-safe field access.
+
+**Record creation:**
+```
+{ name: 42, age: 30 }                 # Simple record
+{ active: true, verbose: false }      # Boolean fields
+{}                                    # Empty record
+```
+
+**Field access:**
+```
+let person = { name: 42, age: 30 }
+in person.age                          # Result: 30
+
+# Nested field access
+let person = { address: { city: 100 } }
+in person.address.city                 # Result: 100
+```
+
+**Record pattern matching (full):**
+```
+let person = { name: 42, age: 30 }
+in match person with
+| { name: n, age: a } -> n + a         # Result: 72
+```
+
+**Partial pattern matching:**
+```
+let person = { name: 42, age: 30, city: 100 }
+in match person with
+| { name: n } -> n                     # Result: 42 (ignores age, city)
+```
+
+**Functions with records:**
+```
+let getAge = fun p -> p.age
+in let person = { name: 42, age: 25 }
+in getAge person                       # Result: 25
+
+# Function returning a record
+let makePerson = fun n -> fun a -> { name: n, age: a }
+in makePerson 42 30                    # Result: { name: 42, age: 30 }
+```
+
+**Record updates (functional style):**
+```
+# Records are immutable - create new record to "update"
+let person = { name: 42, age: 30 }
+in let olderPerson = { name: person.name, age: person.age + 1 }
+in olderPerson                         # Result: { name: 42, age: 31 }
+```
+
+Records support polymorphic field access - a function like `fun p -> p.age` works with any record that has an `age` field. See [docs/RECORDS.md](docs/RECORDS.md) for comprehensive documentation and advanced examples.
 
 ### Type Aliases
 

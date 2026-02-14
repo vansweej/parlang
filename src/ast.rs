@@ -22,6 +22,9 @@ pub enum Pattern {
     Wildcard,
     /// Tuple pattern: (p1, p2, p3)
     Tuple(Vec<Pattern>),
+    /// Record pattern: { field1: pattern1, field2: pattern2, ... }
+    /// Can be partial (only match some fields)
+    Record(Vec<(String, Pattern)>),
 }
 
 /// Type expressions for type aliases
@@ -88,6 +91,14 @@ pub enum Expr {
     /// Type alias definition: type Name = TypeExpr in body
     /// Defines a type alias that can be used in the body expression
     TypeAlias(String, TypeExpr, Box<Expr>),
+    
+    /// Record construction: { field1: expr1, field2: expr2, ... }
+    /// Vec maintains insertion order for display purposes
+    Record(Vec<(String, Expr)>),
+    
+    /// Field access: expr.field
+    /// Accesses a named field from a record
+    FieldAccess(Box<Expr>, String),
 }
 
 /// Binary operators
@@ -153,6 +164,19 @@ impl fmt::Display for Expr {
             Expr::TypeAlias(name, ty_expr, body) => {
                 write!(f, "(type {name} = {ty_expr} in {body})")
             }
+            Expr::Record(fields) => {
+                write!(f, "{{")?;
+                for (i, (name, expr)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {expr}")?;
+                }
+                write!(f, "}}")
+            }
+            Expr::FieldAccess(record, field) => {
+                write!(f, "{record}.{field}")
+            }
         }
     }
 }
@@ -198,6 +222,16 @@ impl fmt::Display for Pattern {
                     write!(f, "{pat}")?;
                 }
                 write!(f, ")")
+            }
+            Pattern::Record(fields) => {
+                write!(f, "{{")?;
+                for (i, (name, pattern)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {pattern}")?;
+                }
+                write!(f, "}}")
             }
         }
     }
@@ -929,5 +963,262 @@ mod tests {
         );
         let cloned = expr.clone();
         assert_eq!(expr, cloned);
+    }
+
+    // Test Record expression
+    #[test]
+    fn test_expr_record_empty() {
+        let expr = Expr::Record(vec![]);
+        assert_eq!(expr, Expr::Record(vec![]));
+    }
+
+    #[test]
+    fn test_expr_record_single_field() {
+        let expr = Expr::Record(vec![("name".to_string(), Expr::Int(42))]);
+        assert_eq!(
+            expr,
+            Expr::Record(vec![("name".to_string(), Expr::Int(42))])
+        );
+    }
+
+    #[test]
+    fn test_expr_record_multiple_fields() {
+        let fields = vec![
+            ("name".to_string(), Expr::Int(42)),
+            ("age".to_string(), Expr::Int(30)),
+        ];
+        let expr = Expr::Record(fields.clone());
+        assert_eq!(expr, Expr::Record(fields));
+    }
+
+    #[test]
+    fn test_expr_record_nested() {
+        let inner_record = Expr::Record(vec![("x".to_string(), Expr::Int(10))]);
+        let outer_record = Expr::Record(vec![
+            ("inner".to_string(), inner_record.clone()),
+            ("y".to_string(), Expr::Int(20)),
+        ]);
+        assert_eq!(
+            outer_record,
+            Expr::Record(vec![
+                ("inner".to_string(), inner_record),
+                ("y".to_string(), Expr::Int(20)),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_display_record_empty() {
+        let expr = Expr::Record(vec![]);
+        assert_eq!(format!("{expr}"), "{}");
+    }
+
+    #[test]
+    fn test_display_record_single_field() {
+        let expr = Expr::Record(vec![("name".to_string(), Expr::Int(42))]);
+        assert_eq!(format!("{expr}"), "{name: 42}");
+    }
+
+    #[test]
+    fn test_display_record_multiple_fields() {
+        let expr = Expr::Record(vec![
+            ("name".to_string(), Expr::Int(42)),
+            ("age".to_string(), Expr::Int(30)),
+        ]);
+        assert_eq!(format!("{expr}"), "{name: 42, age: 30}");
+    }
+
+    #[test]
+    fn test_display_record_mixed_types() {
+        let expr = Expr::Record(vec![
+            ("name".to_string(), Expr::Int(42)),
+            ("active".to_string(), Expr::Bool(true)),
+            ("count".to_string(), Expr::Var("x".to_string())),
+        ]);
+        assert_eq!(format!("{expr}"), "{name: 42, active: true, count: x}");
+    }
+
+    // Test FieldAccess expression
+    #[test]
+    fn test_expr_field_access() {
+        let expr = Expr::FieldAccess(
+            Box::new(Expr::Var("person".to_string())),
+            "name".to_string(),
+        );
+        assert_eq!(
+            expr,
+            Expr::FieldAccess(
+                Box::new(Expr::Var("person".to_string())),
+                "name".to_string(),
+            )
+        );
+    }
+
+    #[test]
+    fn test_expr_field_access_nested() {
+        let expr = Expr::FieldAccess(
+            Box::new(Expr::FieldAccess(
+                Box::new(Expr::Var("person".to_string())),
+                "address".to_string(),
+            )),
+            "city".to_string(),
+        );
+        assert_eq!(
+            expr,
+            Expr::FieldAccess(
+                Box::new(Expr::FieldAccess(
+                    Box::new(Expr::Var("person".to_string())),
+                    "address".to_string(),
+                )),
+                "city".to_string(),
+            )
+        );
+    }
+
+    #[test]
+    fn test_display_field_access() {
+        let expr = Expr::FieldAccess(
+            Box::new(Expr::Var("person".to_string())),
+            "name".to_string(),
+        );
+        assert_eq!(format!("{expr}"), "person.name");
+    }
+
+    #[test]
+    fn test_display_field_access_nested() {
+        let expr = Expr::FieldAccess(
+            Box::new(Expr::FieldAccess(
+                Box::new(Expr::Var("person".to_string())),
+                "address".to_string(),
+            )),
+            "city".to_string(),
+        );
+        assert_eq!(format!("{expr}"), "person.address.city");
+    }
+
+    #[test]
+    fn test_display_field_access_on_record() {
+        let record = Expr::Record(vec![("name".to_string(), Expr::Int(42))]);
+        let expr = Expr::FieldAccess(Box::new(record), "name".to_string());
+        assert_eq!(format!("{expr}"), "{name: 42}.name");
+    }
+
+    // Test Pattern::Record
+    #[test]
+    fn test_pattern_record_empty() {
+        let pat = Pattern::Record(vec![]);
+        assert_eq!(pat, Pattern::Record(vec![]));
+    }
+
+    #[test]
+    fn test_pattern_record_single_field() {
+        let pat = Pattern::Record(vec![("name".to_string(), Pattern::Var("n".to_string()))]);
+        assert_eq!(
+            pat,
+            Pattern::Record(vec![("name".to_string(), Pattern::Var("n".to_string()))])
+        );
+    }
+
+    #[test]
+    fn test_pattern_record_multiple_fields() {
+        let pat = Pattern::Record(vec![
+            ("name".to_string(), Pattern::Var("n".to_string())),
+            ("age".to_string(), Pattern::Var("a".to_string())),
+        ]);
+        assert_eq!(
+            pat,
+            Pattern::Record(vec![
+                ("name".to_string(), Pattern::Var("n".to_string())),
+                ("age".to_string(), Pattern::Var("a".to_string())),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_pattern_record_with_wildcard() {
+        let pat = Pattern::Record(vec![
+            ("name".to_string(), Pattern::Var("n".to_string())),
+            ("age".to_string(), Pattern::Wildcard),
+        ]);
+        assert_eq!(
+            pat,
+            Pattern::Record(vec![
+                ("name".to_string(), Pattern::Var("n".to_string())),
+                ("age".to_string(), Pattern::Wildcard),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_pattern_record_nested() {
+        let inner_pat = Pattern::Record(vec![("x".to_string(), Pattern::Var("n".to_string()))]);
+        let outer_pat = Pattern::Record(vec![("inner".to_string(), inner_pat.clone())]);
+        assert_eq!(
+            outer_pat,
+            Pattern::Record(vec![("inner".to_string(), inner_pat)])
+        );
+    }
+
+    #[test]
+    fn test_display_pattern_record_empty() {
+        let pat = Pattern::Record(vec![]);
+        assert_eq!(format!("{pat}"), "{}");
+    }
+
+    #[test]
+    fn test_display_pattern_record_single_field() {
+        let pat = Pattern::Record(vec![("name".to_string(), Pattern::Var("n".to_string()))]);
+        assert_eq!(format!("{pat}"), "{name: n}");
+    }
+
+    #[test]
+    fn test_display_pattern_record_multiple_fields() {
+        let pat = Pattern::Record(vec![
+            ("name".to_string(), Pattern::Var("n".to_string())),
+            ("age".to_string(), Pattern::Var("a".to_string())),
+        ]);
+        assert_eq!(format!("{pat}"), "{name: n, age: a}");
+    }
+
+    #[test]
+    fn test_display_pattern_record_with_wildcard() {
+        let pat = Pattern::Record(vec![
+            ("name".to_string(), Pattern::Var("n".to_string())),
+            ("age".to_string(), Pattern::Wildcard),
+        ]);
+        assert_eq!(format!("{pat}"), "{name: n, age: _}");
+    }
+
+    #[test]
+    fn test_display_pattern_record_with_literal() {
+        let pat = Pattern::Record(vec![
+            ("status".to_string(), Pattern::Literal(Literal::Int(1))),
+            ("name".to_string(), Pattern::Var("n".to_string())),
+        ]);
+        assert_eq!(format!("{pat}"), "{status: 1, name: n}");
+    }
+
+    #[test]
+    fn test_record_clone() {
+        let expr = Expr::Record(vec![("name".to_string(), Expr::Int(42))]);
+        let cloned = expr.clone();
+        assert_eq!(expr, cloned);
+    }
+
+    #[test]
+    fn test_field_access_clone() {
+        let expr = Expr::FieldAccess(
+            Box::new(Expr::Var("person".to_string())),
+            "name".to_string(),
+        );
+        let cloned = expr.clone();
+        assert_eq!(expr, cloned);
+    }
+
+    #[test]
+    fn test_pattern_record_clone() {
+        let pat = Pattern::Record(vec![("name".to_string(), Pattern::Var("n".to_string()))]);
+        let cloned = pat.clone();
+        assert_eq!(pat, cloned);
     }
 }

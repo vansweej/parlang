@@ -187,6 +187,21 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             output.push_str(&format!("  {node_id} -> {type_id} [label=\"type\"];\n"));
             output.push_str(&format!("  {node_id} -> {body_id} [label=\"body\"];\n"));
         }
+        Expr::Record(fields) => {
+            output.push_str(&format!("  {node_id} [label=\"Record\"];\n"));
+            for (i, (name, expr)) in fields.iter().enumerate() {
+                let field_id = gen.next();
+                output.push_str(&format!("  {} [label=\"Field\\n{}\"];\n", field_id, escape_label(name)));
+                let expr_id = expr_to_dot(expr, output, gen);
+                output.push_str(&format!("  {node_id} -> {field_id} [label=\"field {i}\"];\n"));
+                output.push_str(&format!("  {field_id} -> {expr_id} [label=\"value\"];\n"));
+            }
+        }
+        Expr::FieldAccess(record, field) => {
+            output.push_str(&format!("  {} [label=\"FieldAccess\\n{}\"];\n", node_id, escape_label(field)));
+            let record_id = expr_to_dot(record, output, gen);
+            output.push_str(&format!("  {node_id} -> {record_id} [label=\"record\"];\n"));
+        }
     }
     
     node_id
@@ -239,6 +254,16 @@ fn pattern_to_dot(pattern: &Pattern, output: &mut String, gen: &mut NodeIdGenera
             for (i, pat) in patterns.iter().enumerate() {
                 let pat_id = pattern_to_dot(pat, output, gen);
                 output.push_str(&format!("  {node_id} -> {pat_id} [label=\"elem {i}\"];\n"));
+            }
+        }
+        Pattern::Record(fields) => {
+            output.push_str(&format!("  {node_id} [label=\"RecordPattern\"];\n"));
+            for (i, (name, pat)) in fields.iter().enumerate() {
+                let field_id = gen.next();
+                output.push_str(&format!("  {} [label=\"Field\\n{}\"];\n", field_id, escape_label(name)));
+                let pat_id = pattern_to_dot(pat, output, gen);
+                output.push_str(&format!("  {node_id} -> {field_id} [label=\"field {i}\"];\n"));
+                output.push_str(&format!("  {field_id} -> {pat_id} [label=\"pattern\"];\n"));
             }
         }
     }
