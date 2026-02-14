@@ -83,7 +83,7 @@ where
             "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with"
         ) {
             // Use a parser that will never succeed to reject keywords
-            combine::unexpected("keyword").map(move |_| name.clone()).right()
+            combine::unexpected("keyword").map(move |()| name.clone()).right()
         } else {
             combine::value(name).left()
         }
