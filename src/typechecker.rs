@@ -141,6 +141,16 @@ fn apply_subst_with_visited(
             Box::new(apply_subst_with_visited(subst, arg, visited)),
             Box::new(apply_subst_with_visited(subst, ret, visited)),
         ),
+        Type::Record(fields) => {
+            let mut new_fields = HashMap::new();
+            for (name, ty) in fields {
+                new_fields.insert(
+                    name.clone(),
+                    apply_subst_with_visited(subst, ty, visited),
+                );
+            }
+            Type::Record(new_fields)
+        }
     }
 }
 
@@ -158,6 +168,13 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
             set.extend(free_type_vars(ret));
             set
         }
+        Type::Record(fields) => {
+            let mut set = HashSet::new();
+            for ty in fields.values() {
+                set.extend(free_type_vars(ty));
+            }
+            set
+        }
     }
 }
 
@@ -168,6 +185,12 @@ pub enum TypeError {
     UnificationError(Type, Type),
     OccursCheckFailed(TypeVar, Type),
     RecursionRequiresAnnotation,
+    /// Field not found in record type: field name, available fields
+    FieldNotFound(String, Vec<String>),
+    /// Expected record type but got something else
+    RecordExpected(String),
+    /// Record type field mismatch during unification
+    RecordFieldMismatch,
 }
 
 impl fmt::Display for TypeError {
@@ -184,6 +207,15 @@ impl fmt::Display for TypeError {
             }
             TypeError::RecursionRequiresAnnotation => {
                 write!(f, "Recursive functions require type annotations")
+            }
+            TypeError::FieldNotFound(field, available) => {
+                write!(f, "Field '{field}' not found. Available fields: {available:?}")
+            }
+            TypeError::RecordExpected(got) => {
+                write!(f, "Expected record type, got {got}")
+            }
+            TypeError::RecordFieldMismatch => {
+                write!(f, "Record types have different fields")
             }
         }
     }
@@ -204,6 +236,31 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
             let r2_subst = apply_subst(&s1, r2);
             let s2 = unify(&r1_subst, &r2_subst)?;
             Ok(compose_subst(&s2, &s1))
+        }
+
+        (Type::Record(fields1), Type::Record(fields2)) => {
+            // Both records must have the same fields
+            if fields1.len() != fields2.len() {
+                return Err(TypeError::RecordFieldMismatch);
+            }
+            
+            let mut subst = HashMap::new();
+            
+            for (name, ty1) in fields1 {
+                match fields2.get(name) {
+                    Some(ty2) => {
+                        let ty1 = apply_subst(&subst, ty1);
+                        let ty2 = apply_subst(&subst, ty2);
+                        let s = unify(&ty1, &ty2)?;
+                        subst = compose_subst(&s, &subst);
+                    }
+                    None => {
+                        return Err(TypeError::RecordFieldMismatch);
+                    }
+                }
+            }
+            
+            Ok(subst)
         }
 
         _ => Err(TypeError::UnificationError(t1.clone(), t2.clone())),
@@ -421,16 +478,67 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             infer(body, &mut new_env)
         }
         
-        Expr::Record(_fields) => {
-            // For now, return a type variable for records
-            // Full implementation will add proper record types
-            Ok((env.fresh_var(), HashMap::new()))
+        Expr::Record(fields) => {
+            // Infer types for all field expressions
+            let mut field_types = HashMap::new();
+            let mut subst = HashMap::new();
+            
+            for (name, expr) in fields {
+                let (ty, s) = infer(expr, env)?;
+                
+                // Apply accumulated substitution to the type
+                let ty = apply_subst(&subst, &ty);
+                
+                // Compose substitutions
+                subst = compose_subst(&s, &subst);
+                
+                // Apply substitution to environment for next field
+                apply_subst_env(&s, env);
+                
+                field_types.insert(name.clone(), ty);
+            }
+            
+            Ok((Type::Record(field_types), subst))
         }
         
-        Expr::FieldAccess(_record, _field) => {
-            // For now, return a type variable for field access
-            // Full implementation will check record has the field
-            Ok((env.fresh_var(), HashMap::new()))
+        Expr::FieldAccess(record_expr, field_name) => {
+            // Infer the type of the record expression
+            let (record_ty, s1) = infer(record_expr, env)?;
+            
+            // Apply substitution to get concrete record type
+            let record_ty = apply_subst(&s1, &record_ty);
+            
+            match record_ty {
+                Type::Record(fields) => {
+                    // Look up the field type
+                    match fields.get(field_name) {
+                        Some(field_ty) => Ok((field_ty.clone(), s1)),
+                        None => {
+                            let available: Vec<String> = fields.keys().cloned().collect();
+                            Err(TypeError::FieldNotFound(field_name.clone(), available))
+                        }
+                    }
+                }
+                Type::Var(_) => {
+                    // Polymorphic record - create a fresh type variable for the field
+                    // This is a simplified approach; full row polymorphism would be more complex
+                    let field_ty = env.fresh_var();
+                    
+                    // Create a record type with at least this field
+                    let mut fields = HashMap::new();
+                    fields.insert(field_name.clone(), field_ty.clone());
+                    let record_with_field = Type::Record(fields);
+                    
+                    // Unify with the record type
+                    let s2 = unify(&record_ty, &record_with_field)?;
+                    let subst = compose_subst(&s2, &s1);
+                    
+                    Ok((field_ty, subst))
+                }
+                _ => {
+                    Err(TypeError::RecordExpected(format!("{record_ty}")))
+                }
+            }
         }
     }
 }

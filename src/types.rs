@@ -2,7 +2,7 @@
 use std::fmt;
 
 /// Type representations for the type system
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     /// Integer type
     Int,
@@ -12,6 +12,9 @@ pub enum Type {
     Fun(Box<Type>, Box<Type>),
     /// Type variable (for polymorphism): α, β, γ
     Var(TypeVar),
+    /// Record type: { field1: Type1, field2: Type2, ... }
+    /// Uses HashMap for O(1) field lookup during type checking
+    Record(std::collections::HashMap<String, Type>),
 }
 
 /// Type variable identifier
@@ -40,6 +43,20 @@ impl fmt::Display for Type {
                 }
             }
             Type::Var(var) => write!(f, "t{}", var.0),
+            Type::Record(fields) => {
+                write!(f, "{{")?;
+                // Sort fields by name for consistent display
+                let mut sorted: Vec<_> = fields.iter().collect();
+                sorted.sort_by_key(|(name, _)| *name);
+                
+                for (i, (name, ty)) in sorted.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {ty}")?;
+                }
+                write!(f, "}}")
+            }
         }
     }
 }
@@ -177,5 +194,88 @@ mod tests {
             ),
         };
         assert_eq!(format!("{scheme}"), "forall t0, t1. t0 -> t1");
+    }
+
+    // Test Record type
+    #[test]
+    fn test_type_record_empty() {
+        let ty = Type::Record(std::collections::HashMap::new());
+        assert_eq!(ty, Type::Record(std::collections::HashMap::new()));
+    }
+
+    #[test]
+    fn test_type_record_single_field() {
+        let mut fields = std::collections::HashMap::new();
+        fields.insert("name".to_string(), Type::Int);
+        let ty = Type::Record(fields.clone());
+        assert_eq!(ty, Type::Record(fields));
+    }
+
+    #[test]
+    fn test_type_record_multiple_fields() {
+        let mut fields = std::collections::HashMap::new();
+        fields.insert("name".to_string(), Type::Int);
+        fields.insert("age".to_string(), Type::Int);
+        let ty = Type::Record(fields.clone());
+        assert_eq!(ty, Type::Record(fields));
+    }
+
+    #[test]
+    fn test_type_record_nested() {
+        let mut inner_fields = std::collections::HashMap::new();
+        inner_fields.insert("city".to_string(), Type::Int);
+        
+        let mut outer_fields = std::collections::HashMap::new();
+        outer_fields.insert("address".to_string(), Type::Record(inner_fields.clone()));
+        outer_fields.insert("name".to_string(), Type::Int);
+        
+        let ty = Type::Record(outer_fields.clone());
+        assert_eq!(ty, Type::Record(outer_fields));
+    }
+
+    #[test]
+    fn test_display_record_empty() {
+        let ty = Type::Record(std::collections::HashMap::new());
+        assert_eq!(format!("{ty}"), "{}");
+    }
+
+    #[test]
+    fn test_display_record_single_field() {
+        let mut fields = std::collections::HashMap::new();
+        fields.insert("name".to_string(), Type::Int);
+        let ty = Type::Record(fields);
+        assert_eq!(format!("{ty}"), "{name: Int}");
+    }
+
+    #[test]
+    fn test_display_record_multiple_fields() {
+        let mut fields = std::collections::HashMap::new();
+        fields.insert("name".to_string(), Type::Int);
+        fields.insert("age".to_string(), Type::Bool);
+        let ty = Type::Record(fields);
+        // Fields are sorted alphabetically
+        assert_eq!(format!("{ty}"), "{age: Bool, name: Int}");
+    }
+
+    #[test]
+    fn test_display_record_nested() {
+        let mut inner_fields = std::collections::HashMap::new();
+        inner_fields.insert("city".to_string(), Type::Int);
+        
+        let mut outer_fields = std::collections::HashMap::new();
+        outer_fields.insert("address".to_string(), Type::Record(inner_fields));
+        outer_fields.insert("name".to_string(), Type::Int);
+        
+        let ty = Type::Record(outer_fields);
+        assert_eq!(format!("{ty}"), "{address: {city: Int}, name: Int}");
+    }
+
+    #[test]
+    fn test_record_type_clone() {
+        let mut fields = std::collections::HashMap::new();
+        fields.insert("name".to_string(), Type::Int);
+        let ty = Type::Record(fields);
+        let cloned = ty.clone();
+        assert_eq!(ty, cloned);
     }
 }
