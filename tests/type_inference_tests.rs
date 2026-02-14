@@ -367,6 +367,9 @@ fn test_rec_curried_function() {
     let result = typecheck(&expr);
     // This actually fails with occurs check because f's type would be infinite
     assert!(result.is_err(), "Curried recursive function creates infinite type");
+    if let Err(e) = result {
+        assert!(matches!(e, parlang::TypeError::OccursCheckFailed(_, _)));
+    }
 }
 
 #[test]
@@ -393,6 +396,9 @@ fn test_rec_type_error_inconsistent() {
     let result = typecheck(&expr);
     // This should fail because if branches have different types
     assert!(result.is_err(), "Should fail: inconsistent return types in if branches");
+    if let Err(e) = result {
+        assert!(matches!(e, parlang::TypeError::UnificationError(_, _)));
+    }
 }
 
 #[test]
@@ -402,6 +408,9 @@ fn test_rec_type_error_wrong_argument() {
     let expr = parse("rec f -> fun n -> if n == 0 then 1 else f true").unwrap();
     let result = typecheck(&expr);
     assert!(result.is_err(), "Should fail: recursive function called with wrong type");
+    if let Err(e) = result {
+        assert!(matches!(e, parlang::TypeError::UnificationError(_, _)));
+    }
 }
 
 #[test]
