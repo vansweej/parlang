@@ -1,6 +1,6 @@
 [package]
 name = "parlang"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["parlang contributors"]
 description = "A small ML-alike functional language written in Rust"
