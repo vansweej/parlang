@@ -296,7 +296,8 @@ fn test_tuple_projection_out_of_bounds() {
 #[test]
 fn test_tuple_projection_on_non_tuple() {
     // Test error when projecting on non-tuple value
-    let code = "42.0";
+    // Use a space between the integer and the dot to force tuple projection
+    let code = "let x = 42 in x.0";
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env);

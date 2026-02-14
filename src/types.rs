@@ -10,6 +10,8 @@ pub enum Type {
     Bool,
     /// Character type
     Char,
+    /// Floating point type
+    Float,
     /// Function type: T1 -> T2
     Fun(Box<Type>, Box<Type>),
     /// Type variable (for polymorphism): α, β, γ
@@ -56,6 +58,7 @@ impl fmt::Display for Type {
             Type::Int => write!(f, "Int"),
             Type::Bool => write!(f, "Bool"),
             Type::Char => write!(f, "Char"),
+            Type::Float => write!(f, "Float"),
             Type::Fun(arg, ret) => {
                 // Add parentheses around function arguments if they are also functions
                 match arg.as_ref() {
@@ -143,7 +146,10 @@ mod tests {
     fn test_type_equality() {
         assert_eq!(Type::Int, Type::Int);
         assert_eq!(Type::Bool, Type::Bool);
+        assert_eq!(Type::Float, Type::Float);
         assert_ne!(Type::Int, Type::Bool);
+        assert_ne!(Type::Int, Type::Float);
+        assert_ne!(Type::Float, Type::Bool);
     }
 
     #[test]
@@ -188,6 +194,11 @@ mod tests {
     #[test]
     fn test_display_bool() {
         assert_eq!(format!("{}", Type::Bool), "Bool");
+    }
+
+    #[test]
+    fn test_display_float() {
+        assert_eq!(format!("{}", Type::Float), "Float");
     }
 
     #[test]

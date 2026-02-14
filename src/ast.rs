@@ -130,6 +130,9 @@ pub enum Expr {
     /// Character literal: 'a', 'Z', '\n'
     Char(char),
     
+    /// Floating point literal: 3.14, -2.5, 0.0
+    Float(f64),
+    
     /// Variable reference: x, y, foo
     Var(String),
     
@@ -233,6 +236,7 @@ impl fmt::Display for Expr {
                 }
                 write!(f, "'")
             }
+            Expr::Float(fl) => write!(f, "{fl}"),
             Expr::Var(name) => write!(f, "{name}"),
             Expr::BinOp(op, left, right) => write!(f, "({left} {op} {right})"),
             Expr::If(cond, then_branch, else_branch) => {

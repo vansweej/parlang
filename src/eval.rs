@@ -13,6 +13,7 @@ pub enum Value {
     Int(i64),
     Bool(bool),
     Char(char),
+    Float(f64),
     Closure(String, Expr, Environment),
     /// Recursive closure: function name, parameter name, body, environment
     RecClosure(String, String, Expr, Environment),
@@ -34,6 +35,7 @@ impl fmt::Display for Value {
         match self {
             Value::Int(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
+            Value::Float(fl) => write!(f, "{fl}"),
             Value::Char(c) => {
                 write!(f, "'")?;
                 match c {
@@ -518,6 +520,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
         Expr::Int(n) => Ok(Value::Int(*n)),
         Expr::Bool(b) => Ok(Value::Bool(*b)),
         Expr::Char(c) => Ok(Value::Char(*c)),
+        Expr::Float(f) => Ok(Value::Float(*f)),
         
         Expr::Var(name) => env
             .lookup(name)
@@ -776,7 +779,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
 /// Evaluate a binary operation
 fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> {
     match (op, left, right) {
-        // Arithmetic operations with overflow checking
+        // Arithmetic operations with overflow checking for Int
         (BinOp::Add, Value::Int(a), Value::Int(b)) => {
             a.checked_add(b)
                 .map(Value::Int)
@@ -802,6 +805,18 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
             }
         }
         
+        // Arithmetic operations for Float
+        (BinOp::Add, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+        (BinOp::Sub, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
+        (BinOp::Mul, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
+        (BinOp::Div, Value::Float(a), Value::Float(b)) => {
+            if b == 0.0 {
+                Err(EvalError::DivisionByZero)
+            } else {
+                Ok(Value::Float(a / b))
+            }
+        }
+        
         // Comparison operations for Int
         (BinOp::Eq, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a == b)),
         (BinOp::Neq, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a != b)),
@@ -809,6 +824,14 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Le, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a <= b)),
         (BinOp::Gt, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a > b)),
         (BinOp::Ge, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a >= b)),
+        
+        // Comparison operations for Float
+        (BinOp::Eq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a == b)),
+        (BinOp::Neq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a != b)),
+        (BinOp::Lt, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
+        (BinOp::Le, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
+        (BinOp::Gt, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a > b)),
+        (BinOp::Ge, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a >= b)),
         
         // Comparison operations for Bool
         (BinOp::Eq, Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
