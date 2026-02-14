@@ -12,17 +12,18 @@ A comprehensive guide to programming in ParLang, from basic concepts to advanced
 4. [Comparison Operations](#comparison-operations)
 5. [Variables and Let Bindings](#variables-and-let-bindings)
 6. [Conditional Expressions](#conditional-expressions)
-7. [Functions](#functions)
-8. [Function Application](#function-application)
-9. [Closures](#closures)
-10. [Currying and Partial Application](#currying-and-partial-application)
-11. [Loading Libraries](#loading-libraries)
-12. [Advanced Patterns](#advanced-patterns)
-13. [Common Patterns and Idioms](#common-patterns-and-idioms)
-14. [Real-World Use Cases](#real-world-use-cases)
-15. [Best Practices](#best-practices)
-16. [Common Mistakes to Avoid](#common-mistakes-to-avoid)
-17. [Example Files](#example-files)
+7. [Pattern Matching](#pattern-matching)
+8. [Functions](#functions)
+9. [Function Application](#function-application)
+10. [Closures](#closures)
+11. [Currying and Partial Application](#currying-and-partial-application)
+12. [Loading Libraries](#loading-libraries)
+13. [Advanced Patterns](#advanced-patterns)
+14. [Common Patterns and Idioms](#common-patterns-and-idioms)
+15. [Real-World Use Cases](#real-world-use-cases)
+16. [Best Practices](#best-practices)
+17. [Common Mistakes to Avoid](#common-mistakes-to-avoid)
+18. [Example Files](#example-files)
 
 ---
 
@@ -482,6 +483,148 @@ in if x < 10
 **Output:** `1`
 
 **Note:** See the [conditional.par](../examples/conditional.par) example file for more patterns.
+
+---
+
+## Pattern Matching
+
+Pattern matching provides a cleaner alternative to nested if-then-else chains. It evaluates patterns from top to bottom and executes the first matching arm.
+
+### Basic Pattern Matching
+
+```parlang
+match 0 with
+| 0 -> 1
+| n -> n
+```
+**Output:** `1`
+
+**Explanation:**
+1. The scrutinee expression `0` is evaluated
+2. Pattern `0` (literal) matches the value
+3. Result expression `1` is evaluated and returned
+
+### Pattern Matching with Variables
+
+```parlang
+match 42 with
+| 0 -> 1
+| n -> n
+```
+**Output:** `42`
+
+**Explanation:**
+1. The scrutinee expression `42` is evaluated
+2. Pattern `0` doesn't match
+3. Pattern `n` (variable) matches and binds `n = 42`
+4. Result expression `n` evaluates to `42`
+
+### Wildcard Pattern
+
+```parlang
+match 100 with
+| 0 -> 1
+| _ -> 999
+```
+**Output:** `999`
+
+**Explanation:**
+- The wildcard pattern `_` matches any value without binding it to a variable
+- Useful as a catch-all pattern at the end of a match expression
+
+### Pattern Matching with Booleans
+
+```parlang
+match true with
+| true -> 1
+| false -> 0
+```
+**Output:** `1`
+
+### Multiple Arms
+
+```parlang
+match 2 with
+| 0 -> 10
+| 1 -> 20
+| 2 -> 30
+| _ -> 40
+```
+**Output:** `30`
+
+**Explanation:** Patterns are tried in order. The first matching pattern determines the result.
+
+### Pattern Matching in Functions
+
+```parlang
+let abs = fun n -> match n with
+| 0 -> 0
+| n -> if n < 0 then 0 - n else n
+in abs (-5)
+```
+**Output:** `5`
+
+### Factorial with Pattern Matching
+
+Instead of nested if-then-else:
+```parlang
+let factorial = rec f -> fun n ->
+    if n == 0
+    then 1
+    else n * f (n - 1)
+in factorial 5
+```
+
+Use pattern matching:
+```parlang
+let factorial = rec fact -> fun n ->
+    match n with
+    | 0 -> 1
+    | n -> n * fact (n - 1)
+in factorial 5
+```
+**Output:** `120`
+
+### Fibonacci with Pattern Matching
+
+```parlang
+let fib = rec f -> fun n ->
+    match n with
+    | 0 -> 0
+    | 1 -> 1
+    | n -> f (n - 1) + f (n - 2)
+in fib 7
+```
+**Output:** `13`
+
+### Replacing Nested If-Then-Else
+
+**Before (nested conditionals):**
+```parlang
+let category = fun n ->
+    if n == 0 then 0
+    else if n == 1 then 1
+    else if n == 2 then 2
+    else 999
+```
+
+**After (pattern matching):**
+```parlang
+let category = fun n ->
+    match n with
+    | 0 -> 0
+    | 1 -> 1
+    | 2 -> 2
+    | _ -> 999
+```
+
+**Benefits:**
+- More readable and maintainable
+- Clearer intent - explicitly matching values
+- Easier to add or modify cases
+- Less error-prone than nested if-then-else chains
+
+**Note:** See the [pattern_matching.par](../examples/pattern_matching.par) example file for more patterns.
 
 ---
 

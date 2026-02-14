@@ -64,12 +64,12 @@ The lexical structure consists of the following token categories:
 Keywords are reserved identifiers with special syntactic meaning:
 
 ```
-let     in      if      then    else    fun     true    false   load    rec
+let     in      if      then    else    fun     true    false   load    rec     match   with
 ```
 
 **Formal Definition:**
 ```
-keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec"
+keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with"
 ```
 
 #### 2.2.2 Identifiers
@@ -215,6 +215,7 @@ primary_expr ::= atom
               | let_expr
               | load_expr
               | if_expr
+              | match_expr
               | rec_expr
               | fun_expr
 
@@ -230,6 +231,15 @@ let_expr ::= "let" identifier '=' expression "in" expression
 load_expr ::= "load" string_literal "in" expression
 
 if_expr ::= "if" expression "then" expression "else" expression
+
+match_expr ::= "match" expression "with" match_arm+
+
+match_arm ::= '|' pattern "->" expression
+
+pattern ::= integer
+          | boolean
+          | identifier
+          | '_'
 
 rec_expr ::= "rec" identifier "->" expression
 
@@ -456,7 +466,50 @@ If `x ∉ Γ`, evaluation raises `UnboundVariable(x)`.
 ∅ ⊢ if false then 1 else 2 ⇓ Int(2)
 ```
 
-#### 5.2.5 Let Bindings
+#### 5.2.5 Pattern Matching
+
+Pattern matching provides structured branching based on value inspection. Patterns are matched sequentially from top to bottom.
+
+```
+Γ ⊢ e ⇓ v    match(p₁, v) = Some(Γ')    Γ' ⊢ e₁ ⇓ v₁
+─────────────────────────────────────────────────────  [E-MATCH-FIRST]
+Γ ⊢ match e with | p₁ -> e₁ | ... ⇓ v₁
+
+Γ ⊢ e ⇓ v    match(p₁, v) = None    
+Γ ⊢ match e with | p₂ -> e₂ | ... ⇓ v'
+──────────────────────────────────────────────────  [E-MATCH-NEXT]
+Γ ⊢ match e with | p₁ -> e₁ | p₂ -> e₂ | ... ⇓ v'
+```
+
+**Pattern Matching Rules:**
+
+```
+match(n, Int(n)) = Some(Γ)                    [MATCH-INT-LIT]
+
+match(b, Bool(b)) = Some(Γ)                   [MATCH-BOOL-LIT]
+
+match(x, v) = Some(Γ[x ↦ v])                  [MATCH-VAR]
+
+match(_, v) = Some(Γ)                         [MATCH-WILDCARD]
+```
+
+**Properties:**
+- Patterns are tried in order from top to bottom
+- First matching pattern determines the result
+- Variable patterns bind the matched value to a name
+- Wildcard pattern `_` matches any value without binding
+- Literal patterns match exact values (integers and booleans)
+- If no pattern matches, a runtime error occurs
+
+**Examples:**
+```
+∅ ⊢ match 0 with | 0 -> 1 | n -> n ⇓ Int(1)
+∅ ⊢ match 42 with | 0 -> 1 | n -> n ⇓ Int(42)
+∅ ⊢ match true with | true -> 1 | false -> 0 ⇓ Int(1)
+∅ ⊢ match 5 with | 0 -> 10 | _ -> 20 ⇓ Int(20)
+```
+
+#### 5.2.6 Let Bindings
 
 ```
 Γ ⊢ e₁ ⇓ v₁    Γ[x ↦ v₁] ⊢ e₂ ⇓ v₂
@@ -481,7 +534,7 @@ If `x ∉ Γ`, evaluation raises `UnboundVariable(x)`.
 ∅ ⊢ let x = 5 in let x = 10 in x ⇓ Int(10)  (shadowing)
 ```
 
-#### 5.2.5b Sequential Let Bindings
+#### 5.2.7 Sequential Let Bindings
 
 ```
 Γ ⊢ e₁ ⇓ v₁    Γ[x₁ ↦ v₁] ⊢ e₂ ⇓ v₂    ...    Γ[x₁ ↦ v₁, ..., xₙ ↦ vₙ] ⊢ e ⇓ v
@@ -511,7 +564,7 @@ x * y
 
 **Note:** This is syntactic sugar for nested let-in expressions but with cleaner syntax when defining multiple bindings at the program level.
 
-#### 5.2.6 Function Definition
+#### 5.2.8 Function Definition
 
 ```
 ──────────────────────────────────────  [E-FUN]
@@ -530,7 +583,7 @@ x * y
 [y ↦ Int(5)] ⊢ fun x -> x + y ⇓ Closure(x, x + y, [y ↦ Int(5)])
 ```
 
-#### 5.2.7 Function Application
+#### 5.2.9 Function Application
 
 ```
 Γ ⊢ e₁ ⇓ Closure(x, body, Γ')    Γ ⊢ e₂ ⇓ v₂    Γ'[x ↦ v₂] ⊢ body ⇓ v
@@ -558,7 +611,7 @@ x * y
 ∅ ⊢ (fun x -> fun y -> x + y) 3 4 ⇓ Int(7)  (currying)
 ```
 
-#### 5.2.7b Recursive Functions
+#### 5.2.10 Recursive Functions
 
 ```
 body = fun param -> expr
@@ -610,7 +663,7 @@ When the function body is a direct tail call to itself (i.e., the last operation
 - **Currying support**: Recursive functions can be curried like regular functions
 - **Lexical scoping**: Recursive closures capture their definition environment
 
-#### 5.2.8 Load Expression
+#### 5.2.11 Load Expression
 
 ```
 file_contents(filepath) = source
