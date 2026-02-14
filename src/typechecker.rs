@@ -354,10 +354,9 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             Err(TypeError::RecursionRequiresAnnotation)
         }
 
-        Expr::Tuple(elements) => {
+        Expr::Tuple(_elements) => {
             // For now, return a type variable for tuples
             // A full implementation would need tuple types
-            let _ = elements;
             Ok((env.fresh_var(), HashMap::new()))
         }
 
