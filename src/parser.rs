@@ -797,7 +797,7 @@ parser! {
                             0 => Expr::TupleProj(Box::new(expr), index),
                             1 => Expr::FieldAccess(Box::new(expr), field),
                             2 => Expr::ArrayIndex(Box::new(expr), Box::new(index_expr.unwrap())),
-                            _ => expr,
+                            _ => unreachable!("Invalid projection type: {}", proj_type),
                         }
                     })
             })

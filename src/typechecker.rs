@@ -1313,7 +1313,9 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             
             // Array must be Array type
             let elem_ty = env.fresh_var();
-            let size_var = 0; // We don't know the size at this point, use 0 as placeholder
+            // Array size is not validated during type inference - it's a runtime property
+            // We use 0 as a placeholder since the actual size will be checked at runtime
+            let size_var = 0;
             let expected_arr_ty = Type::Array(Box::new(elem_ty.clone()), size_var);
             
             // We need special handling for array unification because size may differ
