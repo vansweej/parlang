@@ -1,0 +1,9 @@
+load "examples/recursion.par"
+in let f5 = factorial 5
+in let f10 = factorial 10
+in let fib10 = fibonacci 10
+in let sum100 = sum_to_n 0 100
+in let gcd_result = gcd 48 18
+in let even_check = is_even 42
+in let pow8 = power_of_2 8
+in pow8
