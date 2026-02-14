@@ -1,7 +1,7 @@
 /// Evaluator/Interpreter for the ParLang language
 /// This module implements the runtime evaluation of ParLang expressions
 
-use crate::ast::{BinOp, Expr};
+use crate::ast::{BinOp, Expr, Literal, Pattern};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
@@ -192,6 +192,28 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
     }
 }
 
+/// Match a pattern against a value, returning an extended environment if successful
+fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<Environment> {
+    match pattern {
+        Pattern::Wildcard => {
+            // Wildcard matches anything without binding
+            Some(env.clone())
+        }
+        Pattern::Literal(lit) => {
+            // Literal pattern must match exactly
+            match (lit, value) {
+                (Literal::Int(n1), Value::Int(n2)) if n1 == n2 => Some(env.clone()),
+                (Literal::Bool(b1), Value::Bool(b2)) if b1 == b2 => Some(env.clone()),
+                _ => None,
+            }
+        }
+        Pattern::Var(name) => {
+            // Variable pattern binds the value to the name
+            Some(env.extend(name.clone(), value.clone()))
+        }
+    }
+}
+
 /// Evaluate an expression in an environment
 pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
     match expr {
@@ -309,6 +331,24 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     "rec expression body must be a function".to_string(),
                 )),
             }
+        }
+        
+        Expr::Match(scrutinee, arms) => {
+            // Evaluate the scrutinee expression
+            let val = eval(scrutinee, env)?;
+            
+            // Try to match against each pattern arm in order
+            for (pattern, result_expr) in arms {
+                if let Some(new_env) = match_pattern(pattern, &val, env) {
+                    // Pattern matched, evaluate the result expression with the extended environment
+                    return eval(result_expr, &new_env);
+                }
+            }
+            
+            // No pattern matched
+            Err(EvalError::TypeError(
+                "No pattern matched in match expression".to_string(),
+            ))
         }
     }
 }

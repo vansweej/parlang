@@ -805,3 +805,159 @@ fn test_rec_non_recursive_function() {
     let result = parse_and_eval("(rec f -> fun x -> x + 1) 41");
     assert_eq!(result, Ok(Value::Int(42)));
 }
+
+// Pattern matching tests
+#[test]
+fn test_match_literal_int() {
+    let code = "match 0 with | 0 -> 1 | n -> n";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(1)));
+}
+
+#[test]
+fn test_match_literal_bool() {
+    let code = "match true with | true -> 1 | false -> 0";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(1)));
+}
+
+#[test]
+fn test_match_variable_pattern() {
+    let code = "match 42 with | 0 -> 1 | n -> n";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(42)));
+}
+
+#[test]
+fn test_match_wildcard_pattern() {
+    let code = "match 100 with | 0 -> 1 | _ -> 999";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(999)));
+}
+
+#[test]
+fn test_match_multiple_arms() {
+    let code = "match 2 with | 0 -> 10 | 1 -> 20 | 2 -> 30 | _ -> 40";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(30)));
+}
+
+#[test]
+fn test_match_with_expr() {
+    let code = "match 1 + 1 with | 0 -> 10 | 2 -> 20 | _ -> 30";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(20)));
+}
+
+#[test]
+fn test_match_in_function() {
+    let code = r#"
+        let abs = fun n -> match n with | 0 -> 0 | n -> if n < 0 then 0 - n else n
+        in abs (-5)
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(5)));
+}
+
+#[test]
+fn test_match_factorial() {
+    let code = r#"
+        let factorial = rec fact -> fun n ->
+            match n with
+            | 0 -> 1
+            | n -> n * fact (n - 1)
+        in factorial 5
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(120)));
+}
+
+#[test]
+fn test_match_fibonacci() {
+    let code = r#"
+        let fib = rec f -> fun n ->
+            match n with
+            | 0 -> 0
+            | 1 -> 1
+            | n -> f (n - 1) + f (n - 2)
+        in fib 7
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(13)));
+}
+
+#[test]
+fn test_match_nested() {
+    let code = r#"
+        match 1 with
+        | 0 -> 10
+        | 1 -> match 2 with | 2 -> 20 | _ -> 30
+        | _ -> 40
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(20)));
+}
+
+#[test]
+fn test_match_negative_literal() {
+    let code = "match -1 with | -1 -> 100 | 0 -> 0 | _ -> 1";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(100)));
+}
+
+#[test]
+fn test_match_bool_false() {
+    let code = "match false with | true -> 1 | false -> 0";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(0)));
+}
+
+#[test]
+fn test_match_pattern_order_matters() {
+    // First matching pattern wins
+    let code = "match 5 with | n -> 100 | 5 -> 200";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(100)));
+}
+
+#[test]
+fn test_match_variable_binding() {
+    let code = "match 42 with | x -> x + 1";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(43)));
+}
+
+#[test]
+fn test_match_with_let() {
+    let code = r#"
+        let x = 5
+        in match x with
+        | 0 -> 1
+        | 5 -> 42
+        | _ -> 0
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(42)));
+}
+
+#[test]
+fn test_match_error_no_match() {
+    // If no pattern matches, should return an error
+    let code = "match 100 with | 0 -> 1 | 1 -> 2";
+    let result = parse_and_eval(code);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("No pattern matched"));
+}
+
+#[test]
+fn test_match_replaces_nested_if() {
+    // Demonstrate match replacing nested if-then-else
+    // This would work with strings, but we only have ints and bools
+    // So we use a numeric example
+    let if_code = r#"
+        let category = fun n ->
+            if n == 0 then 0
+            else if n == 1 then 1
+            else if n == 2 then 2
+            else 999
+        in category 1
+    "#;
+    
+    let match_code = r#"
+        let category = fun n ->
+            match n with
+            | 0 -> 0
+            | 1 -> 1
+            | 2 -> 2
+            | _ -> 999
+        in category 1
+    "#;
+    
+    assert_eq!(parse_and_eval(if_code), parse_and_eval(match_code));
+    assert_eq!(parse_and_eval(match_code), Ok(Value::Int(1)));
+}

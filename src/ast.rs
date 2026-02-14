@@ -3,6 +3,26 @@
 
 use std::fmt;
 
+/// Literal values for pattern matching
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Literal {
+    /// Integer literal
+    Int(i64),
+    /// Boolean literal
+    Bool(bool),
+}
+
+/// Pattern for pattern matching
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    /// Literal pattern: 0, 1, true, false
+    Literal(Literal),
+    /// Variable pattern: binds the value to a name (x, n, acc)
+    Var(String),
+    /// Wildcard pattern: _ (matches anything without binding)
+    Wildcard,
+}
+
 /// Expression types in the language
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -40,6 +60,10 @@ pub enum Expr {
     /// Recursive function definition: rec name -> body
     /// The function can reference itself by name within its body
     Rec(String, Box<Expr>),
+    
+    /// Pattern matching: match e with | p1 -> e1 | p2 -> e2 | ...
+    /// (scrutinee expression, vector of (pattern, result expression) arms)
+    Match(Box<Expr>, Vec<(Pattern, Expr)>),
 }
 
 /// Binary operators
@@ -84,6 +108,32 @@ impl fmt::Display for Expr {
                 write!(f, "; {})", body)
             }
             Expr::Rec(name, body) => write!(f, "(rec {} -> {})", name, body),
+            Expr::Match(scrutinee, arms) => {
+                write!(f, "(match {} with", scrutinee)?;
+                for (pattern, result) in arms {
+                    write!(f, " | {} -> {}", pattern, result)?;
+                }
+                write!(f, ")")
+            }
+        }
+    }
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Literal::Int(n) => write!(f, "{}", n),
+            Literal::Bool(b) => write!(f, "{}", b),
+        }
+    }
+}
+
+impl fmt::Display for Pattern {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Pattern::Literal(lit) => write!(f, "{}", lit),
+            Pattern::Var(name) => write!(f, "{}", name),
+            Pattern::Wildcard => write!(f, "_"),
         }
     }
 }
@@ -451,5 +501,102 @@ mod tests {
             )),
         );
         assert_eq!(format!("{}", expr), "(rec factorial -> (fun n -> n))");
+    }
+
+    // Test Literal construction and equality
+    #[test]
+    fn test_literal_int() {
+        let lit = Literal::Int(42);
+        assert_eq!(lit, Literal::Int(42));
+        assert_ne!(lit, Literal::Int(43));
+    }
+
+    #[test]
+    fn test_literal_bool() {
+        let lit_true = Literal::Bool(true);
+        let lit_false = Literal::Bool(false);
+        assert_eq!(lit_true, Literal::Bool(true));
+        assert_eq!(lit_false, Literal::Bool(false));
+        assert_ne!(lit_true, lit_false);
+    }
+
+    // Test Pattern construction and equality
+    #[test]
+    fn test_pattern_literal() {
+        let pat = Pattern::Literal(Literal::Int(42));
+        assert_eq!(pat, Pattern::Literal(Literal::Int(42)));
+    }
+
+    #[test]
+    fn test_pattern_var() {
+        let pat = Pattern::Var("x".to_string());
+        assert_eq!(pat, Pattern::Var("x".to_string()));
+        assert_ne!(pat, Pattern::Var("y".to_string()));
+    }
+
+    #[test]
+    fn test_pattern_wildcard() {
+        let pat = Pattern::Wildcard;
+        assert_eq!(pat, Pattern::Wildcard);
+    }
+
+    // Test Display for Literal
+    #[test]
+    fn test_display_literal_int() {
+        assert_eq!(format!("{}", Literal::Int(42)), "42");
+        assert_eq!(format!("{}", Literal::Int(-10)), "-10");
+    }
+
+    #[test]
+    fn test_display_literal_bool() {
+        assert_eq!(format!("{}", Literal::Bool(true)), "true");
+        assert_eq!(format!("{}", Literal::Bool(false)), "false");
+    }
+
+    // Test Display for Pattern
+    #[test]
+    fn test_display_pattern_literal() {
+        let pat = Pattern::Literal(Literal::Int(42));
+        assert_eq!(format!("{}", pat), "42");
+    }
+
+    #[test]
+    fn test_display_pattern_var() {
+        let pat = Pattern::Var("x".to_string());
+        assert_eq!(format!("{}", pat), "x");
+    }
+
+    #[test]
+    fn test_display_pattern_wildcard() {
+        let pat = Pattern::Wildcard;
+        assert_eq!(format!("{}", pat), "_");
+    }
+
+    // Test Match expression
+    #[test]
+    fn test_expr_match() {
+        let arms = vec![
+            (Pattern::Literal(Literal::Int(0)), Expr::Int(1)),
+            (Pattern::Var("n".to_string()), Expr::Var("n".to_string())),
+        ];
+        let expr = Expr::Match(Box::new(Expr::Var("x".to_string())), arms.clone());
+        assert_eq!(
+            expr,
+            Expr::Match(Box::new(Expr::Var("x".to_string())), arms)
+        );
+    }
+
+    #[test]
+    fn test_display_match() {
+        let arms = vec![
+            (Pattern::Literal(Literal::Int(0)), Expr::Int(1)),
+            (Pattern::Var("n".to_string()), Expr::Var("n".to_string())),
+            (Pattern::Wildcard, Expr::Int(42)),
+        ];
+        let expr = Expr::Match(Box::new(Expr::Var("x".to_string())), arms);
+        assert_eq!(
+            format!("{}", expr),
+            "(match x with | 0 -> 1 | n -> n | _ -> 42)"
+        );
     }
 }
