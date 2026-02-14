@@ -71,9 +71,9 @@ match n with
 **Wildcard pattern:**
 ```
 match value with
-| 0 -> "zero"
-| 1 -> "one"
-| _ -> "other"   # Underscore matches anything
+| 0 -> 10
+| 1 -> 20
+| _ -> 999   # Underscore matches anything
 ```
 
 **Pattern matching with booleans:**
