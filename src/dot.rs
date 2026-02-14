@@ -202,6 +202,27 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             let record_id = expr_to_dot(record, output, gen);
             output.push_str(&format!("  {node_id} -> {record_id} [label=\"record\"];\n"));
         }
+        Expr::TypeDef { name, type_params, constructors, body } => {
+            let params_str = type_params.join(" ");
+            output.push_str(&format!("  {} [label=\"TypeDef\\n{}\\n{}\"];\n", node_id, escape_label(name), escape_label(&params_str)));
+            
+            // Add constructor nodes
+            for (ctor_name, _ctor_types) in constructors {
+                let ctor_id = gen.next();
+                output.push_str(&format!("  {} [label=\"Constructor\\n{}\"];\n", ctor_id, escape_label(ctor_name)));
+                output.push_str(&format!("  {node_id} -> {ctor_id} [label=\"ctor\"];\n"));
+            }
+            
+            let body_id = expr_to_dot(body, output, gen);
+            output.push_str(&format!("  {node_id} -> {body_id} [label=\"body\"];\n"));
+        }
+        Expr::Constructor(name, args) => {
+            output.push_str(&format!("  {} [label=\"Constructor\\n{}\"];\n", node_id, escape_label(name)));
+            for (i, arg) in args.iter().enumerate() {
+                let arg_id = expr_to_dot(arg, output, gen);
+                output.push_str(&format!("  {node_id} -> {arg_id} [label=\"arg{}\"];\n", i));
+            }
+        }
     }
     
     node_id
@@ -264,6 +285,13 @@ fn pattern_to_dot(pattern: &Pattern, output: &mut String, gen: &mut NodeIdGenera
                 let pat_id = pattern_to_dot(pat, output, gen);
                 output.push_str(&format!("  {node_id} -> {field_id} [label=\"field {i}\"];\n"));
                 output.push_str(&format!("  {field_id} -> {pat_id} [label=\"pattern\"];\n"));
+            }
+        }
+        Pattern::Constructor(name, patterns) => {
+            output.push_str(&format!("  {} [label=\"ConstructorPattern\\n{}\"];\n", node_id, escape_label(name)));
+            for (i, pat) in patterns.iter().enumerate() {
+                let pat_id = pattern_to_dot(pat, output, gen);
+                output.push_str(&format!("  {node_id} -> {pat_id} [label=\"arg {i}\"];\n"));
             }
         }
     }

@@ -540,6 +540,20 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 }
             }
         }
+        
+        Expr::TypeDef { name: _, type_params: _, constructors: _, body } => {
+            // For now, type checking for sum types is simplified
+            // We just type check the body and ignore the type definition
+            // A complete implementation would register constructors and their types
+            infer(body, env)
+        }
+        
+        Expr::Constructor(_name, _args) => {
+            // For now, we return a fresh type variable for constructors
+            // A complete implementation would look up the constructor type
+            // and check argument types
+            Ok((env.fresh_var(), HashMap::new()))
+        }
     }
 }
 
