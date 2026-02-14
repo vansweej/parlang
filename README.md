@@ -8,6 +8,7 @@ ParLang is a simple functional programming language with:
 
 - **Basic Types**: Integers, booleans, characters, and floating point numbers
 - **Arrays**: Fixed-size, homogeneous arrays with zero-based indexing (designed for FFI)
+- **Reference Types**: Mutable references for controlled mutation (`ref`, `!`, `:=`)
 - **Type Inference**: Optional Hindley-Milner type system with automatic type inference
 - **Type Aliases**: Define alternative names for types for better code documentation
 - **Generic Types**: Full support for parameterized types (Option Int, List Bool, Either A B)
@@ -233,6 +234,67 @@ Type: Array[Int, 3]
 - Efficient for FFI and fixed-size data structures
 
 For more details, see [Arrays Documentation](docs/ARRAYS.md).
+
+### References (Pointers)
+
+References provide mutable containers for values, enabling controlled mutation in an otherwise functional language.
+
+**Creating references:**
+```
+ref 42                              # Create a reference to 42
+ref true                            # Create a reference to a boolean
+```
+
+**Dereferencing (reading):**
+```
+let r = ref 10 in
+!r                                  # Read the value: 10
+```
+
+**Assignment (writing):**
+```
+let r = ref 5 in
+let dummy = r := 10 in              # Update to 10 (returns unit)
+!r                                  # Read the updated value: 10
+```
+
+**References in functions:**
+```
+let counter = ref 0 in
+let increment = fun x -> counter := !counter + 1 in
+let dummy1 = increment 0 in
+let dummy2 = increment 0 in
+let dummy3 = increment 0 in
+!counter                            # Result: 3
+```
+
+**Reference aliasing:**
+```
+let r = ref 5 in
+let alias = r in
+let dummy = r := 10 in
+!alias                              # Result: 10 (both refer to same location)
+```
+
+**Reference type:**
+When type checking is enabled, references have type `Ref T` where `T` is the type of the contained value:
+```
+> ref 42
+Type: Ref Int
+<ref #0: 42>
+
+> let r = ref 10 in r := 20
+Type: ()
+()
+```
+
+**Key features:**
+- Type-safe mutation with `Ref T` types
+- Interior mutability for closures
+- Reference aliasing support
+- Automatic memory management
+
+For more details, see [References Documentation](docs/REFERENCES.md).
 
 ### Records
 
@@ -756,6 +818,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Generic Types](docs/GENERIC_TYPES.md)** - Parameterized types and type inference for generic data structures
 - **[Sum Types](docs/SUM_TYPES.md)** - Algebraic data types with pattern matching
 - **[Arrays](docs/ARRAYS.md)** - Fixed-size arrays with indexing for FFI and structured data
+- **[References](docs/REFERENCES.md)** - Mutable references for controlled mutation
 - **[Exhaustiveness Checking](docs/EXHAUSTIVENESS_CHECKING.md)** - Automatic checking for complete pattern matches
 - **[Examples Guide](docs/EXAMPLES.md)** - Tutorial-style examples from basic to advanced
 - **[Security & Performance](docs/SECURITY.md)** - Security considerations and performance best practices

@@ -823,8 +823,8 @@ parser! {
     {
         choice((
             // Parse dereference: !expr
-            (token('!').skip(spaces()), proj_expr().skip(spaces()))
-                .map(|(_, expr)| Expr::Deref(Box::new(expr))),
+            attempt((token('!').skip(spaces()), proj_expr().skip(spaces()))
+                .map(|(_, expr)| Expr::Deref(Box::new(expr)))),
             // Otherwise just parse projection expression
             proj_expr()
         ))
