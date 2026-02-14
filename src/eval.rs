@@ -94,6 +94,9 @@ impl std::error::Error for EvalError {}
 
 /// Evaluate an expression with tail call optimization for recursive functions
 /// This function uses iteration instead of recursion for tail-recursive calls
+/// 
+/// Note: This implementation clones the body and environment on each iteration.
+/// A future optimization could use Rc/Arc to reduce allocations for deep recursion.
 fn eval_with_tco(
     body: &Expr,
     initial_env: &Environment,
@@ -1033,7 +1036,6 @@ mod tests {
     #[test]
     fn test_load_simple_library() {
         use std::fs;
-        use std::io::Write;
         
         // Create a temporary library file
         let lib_content = "let double = fun x -> x * 2 in 0";

@@ -798,3 +798,10 @@ fn test_rec_error_non_function_body() {
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("must be a function"));
 }
+
+#[test]
+fn test_rec_non_recursive_function() {
+    // A recursive function that doesn't actually recurse (valid but non-recursive)
+    let result = parse_and_eval("(rec f -> fun x -> x + 1) 41");
+    assert_eq!(result, Ok(Value::Int(42)));
+}
