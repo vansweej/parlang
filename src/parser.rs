@@ -1,7 +1,7 @@
 /// Parser for the ParLang language using the combine parser combinator library
 /// This implements a parser for ML-alike functional language syntax
 
-use crate::ast::{BinOp, Expr};
+use crate::ast::{BinOp, Expr, Literal, Pattern};
 use combine::parser::char::{alpha_num, letter, spaces, string};
 use combine::{
     attempt, between, choice, many, many1, optional, parser, token, EasyParser, Parser,
@@ -75,7 +75,7 @@ where
         // Reject keywords by returning a failing parser
         if matches!(
             name.as_str(),
-            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec"
+            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with"
         ) {
             // Use a parser that will never succeed to reject keywords
             combine::unexpected("keyword").map(move |_: ()| name.clone()).right()
@@ -197,6 +197,58 @@ parser! {
     }
 }
 
+/// Parse a pattern for pattern matching
+fn pattern<Input>() -> impl Parser<Input, Output = Pattern>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    choice((
+        // Wildcard pattern: _
+        attempt(token('_').skip(combine::not_followed_by(alpha_num().or(token('_')))).map(|_| Pattern::Wildcard)),
+        // Boolean literal pattern: true, false
+        attempt(string("true").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(true)))),
+        attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
+        // Integer literal pattern: 0, 1, 42, -10
+        attempt({
+            let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
+            (optional(token('-')), number)
+                .map(|(sign, n)| {
+                    let value = if sign.is_some() { -n } else { n };
+                    Pattern::Literal(Literal::Int(value))
+                })
+        }),
+        // Variable pattern: x, n, acc (any identifier)
+        identifier().map(Pattern::Var),
+    ))
+}
+
+parser! {
+    fn match_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        (
+            string("match").skip(spaces()),
+            expr().skip(spaces()),
+            string("with").skip(spaces()),
+            // Parse arms: many1 of (| pattern -> expr)
+            many1((
+                token('|').skip(spaces()),
+                pattern().skip(spaces()),
+                string("->").skip(spaces()),
+                expr().skip(spaces()),
+            ))
+        )
+            .map(|(_, scrutinee, _, arms): (_, Expr, _, Vec<(char, Pattern, _, Expr)>)| {
+                let parsed_arms: Vec<(Pattern, Expr)> = arms
+                    .into_iter()
+                    .map(|(_, pat, _, result)| (pat, result))
+                    .collect();
+                Expr::Match(Box::new(scrutinee), parsed_arms)
+            })
+    }
+}
+
 parser! {
     fn primary[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -205,6 +257,7 @@ parser! {
             attempt(let_expr()),
             attempt(load_expr()),
             attempt(if_expr()),
+            attempt(match_expr()),
             attempt(rec_expr()),
             attempt(fun_expr()),
             attempt(atom()),
@@ -867,5 +920,68 @@ mod tests {
         // 1 + 2 - 3 * 4 / 5
         let result = parse("1 + 2 - 3 * 4 / 5");
         assert!(result.is_ok());
+    }
+
+    // Test pattern matching
+    #[test]
+    fn test_parse_match_simple() {
+        let result = parse("match x with | 0 -> 1 | n -> n");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            match expr {
+                Expr::Match(_, arms) => {
+                    assert_eq!(arms.len(), 2);
+                }
+                _ => panic!("Expected Match expression"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_match_with_wildcard() {
+        let result = parse("match x with | 0 -> 1 | _ -> 2");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_match_with_bool() {
+        let result = parse("match x with | true -> 1 | false -> 0");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_match_multiple_arms() {
+        let result = parse("match n with | 0 -> 1 | 1 -> 1 | 2 -> 2 | n -> n");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_match_nested_expr() {
+        let result = parse("match n with | 0 -> 1 | n -> n * 2");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_match_in_function() {
+        let result = parse("fun n -> match n with | 0 -> 1 | n -> n");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_match_negative_literal() {
+        let result = parse("match n with | -1 -> 0 | 0 -> 1 | n -> n");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_error_match_without_arms() {
+        let result = parse("match x with");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_error_match_without_with() {
+        let result = parse("match x | 0 -> 1");
+        assert!(result.is_err());
     }
 }

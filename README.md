@@ -11,6 +11,7 @@ ParLang is a simple functional programming language with:
 - **Functions**: First-class functions with closure support
 - **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
+- **Pattern Matching**: Match expressions for cleaner multi-branch logic
 - **Binary Operations**: Arithmetic (`+`, `-`, `*`, `/`) and comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`)
 - **Function Application**: Call functions with arguments
 - **Currying**: Functions naturally support partial application
@@ -54,6 +55,43 @@ fun x -> x + 1                         # Anonymous function
 if true then 1 else 2                  # Result: 1
 if 5 > 3 then 100 else 0               # Result: 100
 ```
+
+### Pattern Matching
+
+Pattern matching provides a cleaner way to handle multiple conditions, avoiding deeply nested if-then-else statements.
+
+**Basic pattern matching:**
+```
+match n with
+| 0 -> 1
+| 1 -> 1
+| n -> n * 2     # Variable pattern binds n and can use it in the result
+```
+
+**Wildcard pattern:**
+```
+match value with
+| 0 -> 10
+| 1 -> 20
+| _ -> 999   # Underscore matches anything
+```
+
+**Pattern matching with booleans:**
+```
+match flag with
+| true -> 1
+| false -> 0
+```
+
+**Pattern matching in recursive functions:**
+```
+let factorial = rec fact -> fun n ->
+    match n with
+    | 0 -> 1
+    | n -> n * fact (n - 1)
+```
+
+Pattern matching evaluates patterns from top to bottom and executes the first matching arm. This is especially useful for replacing deeply nested if-then-else chains with more readable code.
 
 ### Binary Operations
 ```
@@ -206,6 +244,7 @@ See the `examples/` directory for sample programs:
 
 - `simple.par` - Basic let bindings and function application
 - `conditional.par` - Conditional expressions
+- `pattern_matching.par` - Pattern matching examples (factorial, fibonacci, etc.)
 - `currying.par` - Currying and partial application
 - `factorial.par` - Recursive factorial function
 - `recursion.par` - Library of recursive functions (factorial, fibonacci, gcd, etc.)
