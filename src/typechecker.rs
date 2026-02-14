@@ -764,7 +764,7 @@ fn resolve_type_annotation(ty_ann: &crate::ast::TypeAnnotation, env: &mut TypeEn
             let ret_ty = resolve_type_annotation(ret, env)?;
             Ok(Type::Fun(Box::new(arg_ty), Box::new(ret_ty)))
         }
-        crate::ast::TypeAnnotation::App(name, args) => {
+        crate::ast::TypeAnnotation::App(name, _args) => {
             // For now, we don't support applied types in annotations
             // This would require tracking type constructors
             Err(TypeError::UnboundVariable(format!("Applied type not yet supported in annotations: {}", name)))

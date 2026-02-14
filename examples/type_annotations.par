@@ -1,0 +1,7 @@
+let x : Int = 42;
+let y : Int = 10;
+let z : Int = x + y;
+let isActive : Bool = true;
+let count : Int = 100;
+
+z
