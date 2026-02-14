@@ -690,6 +690,26 @@ For detailed architecture information, see [docs/ARCHITECTURE.md](docs/ARCHITECT
 cargo test
 ```
 
+### Code Coverage
+
+To generate code coverage reports, use [cargo-tarpaulin](https://github.com/xd009642/tarpaulin):
+
+```bash
+# Install tarpaulin (if not already installed)
+cargo install cargo-tarpaulin
+
+# Run tests with coverage
+cargo tarpaulin
+
+# Generate HTML report
+cargo tarpaulin --out Html
+
+# Generate detailed coverage with line-by-line details
+cargo tarpaulin --out Html --output-dir coverage
+```
+
+The project currently achieves over 84% code coverage across all modules.
+
 ## License
 
 MIT
