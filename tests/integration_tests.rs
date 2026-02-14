@@ -931,7 +931,7 @@ fn test_match_error_no_match() {
     let code = "match 100 with | 0 -> 1 | 1 -> 2";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("No pattern matched"));
+    assert!(result.unwrap_err().contains("Pattern match is non-exhaustive"));
 }
 
 #[test]
@@ -1145,7 +1145,7 @@ fn test_match_tuple_wrong_pattern_size() {
     let code = "match (1, 2) with | (x, y, z) -> x";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("No pattern matched"));
+    assert!(result.unwrap_err().contains("Pattern match is non-exhaustive"));
 }
 
 #[test]
@@ -1153,7 +1153,7 @@ fn test_match_tuple_wrong_literal() {
     let code = "match (1, 2) with | (0, 0) -> 0";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("No pattern matched"));
+    assert!(result.unwrap_err().contains("Pattern match is non-exhaustive"));
 }
 
 // Complex realistic examples

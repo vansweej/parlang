@@ -686,11 +686,16 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Architecture Guide](docs/ARCHITECTURE.md)** - System architecture, component interaction, and design patterns
 - **[Language Specification](docs/LANGUAGE_SPEC.md)** - Formal language specification with grammar and semantics
 - **[Type System](docs/TYPE_SYSTEM.md)** - Hindley-Milner type inference system documentation
+- **[Type Inference](docs/TYPE_INFERENCE.md)** - Deep dive into the type inference algorithm (Algorithm W)
 - **[Type Annotations](docs/TYPE_ANNOTATIONS.md)** - Explicit type annotations for better documentation and error detection
 - **[Generic Types](docs/GENERIC_TYPES.md)** - Parameterized types and type inference for generic data structures
 - **[Sum Types](docs/SUM_TYPES.md)** - Algebraic data types with pattern matching
 - **[Exhaustiveness Checking](docs/EXHAUSTIVENESS_CHECKING.md)** - Automatic checking for complete pattern matches
 - **[Examples Guide](docs/EXAMPLES.md)** - Tutorial-style examples from basic to advanced
+- **[Security & Performance](docs/SECURITY.md)** - Security considerations and performance best practices
+- **[Error Handling](docs/ERROR_HANDLING.md)** - Error types, patterns, and debugging strategies
+- **[Test Guidelines](docs/TEST_GUIDELINES.md)** - Testing standards, patterns, and best practices
+- **[Contributing Guide](CONTRIBUTING.md)** - Guidelines for contributing to ParLang
 
 ### 🔧 Module Documentation
 - **[AST Module](docs/MODULE_AST.md)** - Abstract syntax tree data structures

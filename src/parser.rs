@@ -1,11 +1,19 @@
 /// Parser for the `ParLang` language using the combine parser combinator library
 /// This implements a parser for ML-alike functional language syntax
 use crate::ast::{BinOp, Expr, Literal, Pattern, TypeAnnotation};
+use combine::error::StreamError;
 use combine::parser::char::{alpha_num, letter, spaces, string};
+use combine::stream::StreamErrorFor;
 use combine::{
     attempt, between, choice, many, many1, optional, parser, token, EasyParser, Parser,
     ParseError, Stream,
 };
+
+/// Helper function to check if a string starts with an uppercase ASCII character.
+/// Used to distinguish concrete types (Int, Bool) from type variables (a, b).
+fn starts_with_uppercase(s: &str) -> bool {
+    s.as_bytes().first().map_or(false, |c| c.is_ascii_uppercase())
+}
 
 /// Parse an integer literal
 fn int<Input>() -> impl Parser<Input, Output = Expr>
@@ -13,13 +21,11 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    // Parse digits and convert to i64. The unwrap is safe here because:
-    // 1. combine's digit() parser ensures we only have '0'-'9' characters
-    // 2. many1 ensures we have at least one digit
-    // 3. A string of valid digits will always parse to i64 successfully
-    // Note: Very large numbers (> i64::MAX) will be caught by parse() and could panic,
-    // but this is acceptable for a toy language implementation
-    let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
+    // Parse digits and convert to i64
+    let number = many1(combine::parser::char::digit()).and_then(|s: String| {
+        s.parse::<i64>()
+            .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("integer overflow"))
+    });
     
     (optional(token('-')), number)
         .map(|(sign, n)| {
@@ -342,7 +348,8 @@ parser! {
                 if name == "in" {
                     combine::unexpected("keyword").map(|()| TypeAnnotation::Var(String::new())).right()
                 } else {
-                    let result = if name.chars().next().unwrap().is_uppercase() {
+                    // Check if first character is uppercase to distinguish concrete types from type variables
+                    let result = if starts_with_uppercase(&name) {
                         TypeAnnotation::Concrete(name)
                     } else {
                         TypeAnnotation::Var(name)
@@ -526,11 +533,11 @@ parser! {
             attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
             // Integer literal pattern: 0, 1, 42, -10
             attempt({
-                // The unwrap is safe here because:
-                // 1. combine's digit() parser ensures we only have '0'-'9' characters
-                // 2. many1 ensures we have at least one digit
-                // 3. A string of valid digits will always parse to i64 successfully
-                let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
+                // Parse integer literal in pattern
+                let number = many1(combine::parser::char::digit()).and_then(|s: String| {
+                    s.parse::<i64>()
+                        .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("integer overflow"))
+                });
                 (optional(token('-')), number)
                     .map(|(sign, n)| {
                         let value = if sign.is_some() { -n } else { n };
@@ -562,7 +569,10 @@ parser! {
             attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
             // Integer literals
             attempt({
-                let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
+                let number = many1(combine::parser::char::digit()).and_then(|s: String| {
+                    s.parse::<i64>()
+                        .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("integer overflow"))
+                });
                 (optional(token('-')), number)
                     .map(|(sign, n)| {
                         let value = if sign.is_some() { -n } else { n };
@@ -655,12 +665,10 @@ parser! {
             // Parse projections: either .number (tuple) or .identifier (record field)
             many(token('.').with(choice((
                 // Try to parse a number first (tuple projection)
-                attempt(many1(combine::parser::char::digit()).map(|s: String| {
-                    // The unwrap is safe here because:
-                    // 1. combine's digit() parser ensures we only have '0'-'9' characters
-                    // 2. many1 ensures we have at least one digit
-                    // 3. A string of valid digits will always parse to usize successfully
-                    (true, s.parse::<usize>().unwrap(), String::new())
+                attempt(many1(combine::parser::char::digit()).and_then(|s: String| {
+                    s.parse::<usize>()
+                        .map(|n| (true, n, String::new()))
+                        .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("index overflow"))
                 })),
                 // Otherwise parse an identifier (field access)
                 identifier().map(|name| (false, 0, name))
@@ -705,6 +713,21 @@ parser! {
     }
 }
 
+/// Parse multiplication and division expressions.
+///
+/// This parser implements left-associative binary operations with equal precedence:
+/// - `*` (multiplication)
+/// - `/` (division)
+///
+/// # Precedence
+/// Higher precedence than addition/subtraction, lower than function application.
+///
+/// # Associativity
+/// Left-associative: `a * b * c` parses as `(a * b) * c`
+///
+/// # Examples
+/// - `2 * 3` -> `BinOp(Mul, 2, 3)`
+/// - `10 / 2 / 5` -> `BinOp(Div, BinOp(Div, 10, 2), 5)` = `1`
 parser! {
     fn mul_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -727,6 +750,21 @@ parser! {
     }
 }
 
+/// Parse addition and subtraction expressions.
+///
+/// This parser implements left-associative binary operations with equal precedence:
+/// - `+` (addition)
+/// - `-` (subtraction)
+///
+/// # Precedence
+/// Lower precedence than multiplication/division, higher than comparisons.
+///
+/// # Associativity
+/// Left-associative: `a + b - c` parses as `(a + b) - c`
+///
+/// # Examples
+/// - `1 + 2` -> `BinOp(Add, 1, 2)`
+/// - `10 - 3 + 2` -> `BinOp(Add, BinOp(Sub, 10, 3), 2)` = `9`
 parser! {
     fn add_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -749,6 +787,27 @@ parser! {
     }
 }
 
+/// Parse comparison expressions.
+///
+/// This parser implements comparison operations:
+/// - `==` (equality)
+/// - `!=` (inequality)
+/// - `<` (less than)
+/// - `<=` (less than or equal)
+/// - `>` (greater than)
+/// - `>=` (greater than or equal)
+///
+/// # Precedence
+/// Lowest precedence - comparisons are evaluated last.
+///
+/// # Associativity
+/// Non-associative: comparison operators cannot be chained.
+/// `1 < 2 < 3` is not allowed (unlike in Python).
+///
+/// # Examples
+/// - `5 > 3` -> `BinOp(Gt, 5, 3)` -> `true`
+/// - `1 == 1` -> `BinOp(Eq, 1, 1)` -> `true`
+/// - `1 < 2 < 3` -> Parse error (comparisons don't chain)
 parser! {
     fn cmp_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -773,6 +832,21 @@ parser! {
     }
 }
 
+/// Parse a complete expression.
+///
+/// This is the top-level expression parser that handles all expression types.
+/// It starts with the lowest precedence operator (comparisons) and works up.
+///
+/// # Operator Precedence (lowest to highest)
+/// 1. Comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
+/// 2. Addition/Subtraction: `+`, `-`
+/// 3. Multiplication/Division: `*`, `/`
+/// 4. Function Application: `f x y`
+/// 5. Atomic expressions: literals, variables, parenthesized expressions
+///
+/// # Examples
+/// - `1 + 2 * 3` parses as `1 + (2 * 3)` = `7`
+/// - `f x + 1` parses as `(f x) + 1`
 parser! {
     fn expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]

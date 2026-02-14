@@ -106,7 +106,7 @@ pub enum Expr {
     /// Tuple projection: e.0, e.1, e.2, ...
     TupleProj(Box<Expr>, usize),
     
-    /// Type alias definition: type Name = TypeExpr in body
+    /// Type alias definition: `type Name = TypeExpr in body`
     /// Defines a type alias that can be used in the body expression
     TypeAlias(String, TypeExpr, Box<Expr>),
     
@@ -123,10 +123,10 @@ pub enum Expr {
     TypeDef {
         /// Type name (e.g., "Option", "Either", "List")
         name: String,
-        /// Type parameters (e.g., ["a", "b"] for polymorphic types)
+        /// Type parameters (e.g., `["a", "b"]` for polymorphic types)
         type_params: Vec<String>,
         /// Constructors: (name, payload types)
-        /// e.g., [("Some", vec![TypeAnnotation::Var("a")]), ("None", vec![])]
+        /// e.g., `[("Some", vec![TypeAnnotation::Var("a")]), ("None", vec![])]`
         constructors: Vec<(String, Vec<TypeAnnotation>)>,
         /// Body expression where this type is in scope
         body: Box<Expr>,
