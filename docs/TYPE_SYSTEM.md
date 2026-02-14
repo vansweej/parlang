@@ -8,12 +8,13 @@ The type system is optional and can be enabled in the REPL using the `PARLANG_TY
 
 ## Basic Types
 
-ParLang has four basic types:
+ParLang has five basic types:
 
 - **Int**: Integer values (e.g., `42`, `-10`, `0`)
 - **Bool**: Boolean values (`true`, `false`)
 - **Char**: Character values (e.g., `'a'`, `'Z'`, `'\n'`)
 - **Float**: Floating point values (e.g., `3.14`, `-2.5`, `0.0`)
+- **Unit** (`()`): The unit type, representing the empty tuple
 
 ### Integer Type
 
@@ -135,6 +136,62 @@ Type: Float
 Type: Float
 6.28318
 ```
+
+### Unit Type
+
+The `()` type (pronounced "unit") represents the empty tuple. It has exactly one value: `()`.
+
+The unit type is commonly used to:
+- Represent computations that return no meaningful value (side effects)
+- Serve as the argument type for functions that take no parameters
+- Act as a placeholder when a value is required but no data is needed
+
+**Syntax:**
+```parlang
+()       # The unit value (empty tuple)
+```
+
+**Type Inference:**
+```parlang
+> ()
+Type: ()
+()
+
+> let u = () in u
+Type: ()
+()
+
+> fun x -> ()
+Type: t0 -> ()
+```
+
+**Use Cases:**
+
+1. **Functions with no arguments:**
+```parlang
+> let getAnswer = fun u -> 42 in getAnswer ()
+Type: Int
+42
+```
+
+2. **Functions returning unit:**
+```parlang
+> fun x -> ()
+Type: t0 -> ()
+```
+
+3. **Unit in conditionals:**
+```parlang
+> if true then () else ()
+Type: ()
+()
+```
+
+**Important Notes:**
+- The unit type has only one value: `()`
+- It's distinct from other types like `Int`, `Bool`, etc.
+- Empty tuples `()` are automatically inferred as unit type
+- The unit type is useful for expressing side-effectful operations conceptually
 
 ## Function Types
 
