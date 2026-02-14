@@ -189,7 +189,6 @@ impl Default for TypeEnv {
 /// Substitution map from type variables to types
 type Substitution = HashMap<TypeVar, Type>;
 
-/// Apply substitution to a type
 /// Apply type substitution to a type
 /// 
 /// This is a wrapper around `apply_subst_with_visited` that handles the common case

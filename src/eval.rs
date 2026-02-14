@@ -202,11 +202,6 @@ impl fmt::Display for EvalError {
 
 impl std::error::Error for EvalError {}
 
-/// Evaluate an expression with tail call optimization for recursive functions
-/// This function uses iteration instead of recursion for tail-recursive calls
-/// 
-/// Note: This implementation clones the body and environment on each iteration.
-/// A future optimization could use Rc/Arc to reduce allocations for deep recursion.
 /// Evaluate a recursive function body with tail call optimization (TCO)
 /// 
 /// This function implements tail call optimization for recursive functions. Instead of
