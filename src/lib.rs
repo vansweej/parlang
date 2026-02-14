@@ -34,6 +34,7 @@ pub mod eval;
 pub mod dot;
 pub mod types;
 pub mod typechecker;
+pub mod exhaustiveness;
 
 // Re-export commonly used types and functions
 pub use ast::{Expr, BinOp};
@@ -41,3 +42,4 @@ pub use parser::parse;
 pub use eval::{eval, extract_bindings, Value, Environment, EvalError};
 pub use types::{Type, TypeScheme, TypeVar};
 pub use typechecker::{typecheck, TypeError, TypeEnv};
+pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};

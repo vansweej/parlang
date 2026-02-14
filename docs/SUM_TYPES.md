@@ -246,19 +246,47 @@ match tree with
 
 The type checker provides basic support for sum types. Type definitions are transparent at the type level, allowing constructors to be used naturally within their scope.
 
+## Exhaustiveness Checking
+
+**New in this version:** ParLang now includes **complete exhaustiveness checking** for pattern matching!
+
+The exhaustiveness checker automatically warns you when a `match` expression doesn't cover all possible cases, helping prevent runtime errors.
+
+### Example: Non-Exhaustive Match
+
+```parlang
+type Option a = Some a | None in
+match x with
+| Some n -> n
+# Warning: pattern match is non-exhaustive
+# Missing cases: None
+```
+
+### Example: Exhaustive Match
+
+```parlang
+type Option a = Some a | None in
+match x with
+| Some n -> n
+| None -> 0
+# ✓ No warning - all cases covered
+```
+
+For detailed information about exhaustiveness checking, including examples and best practices, see **[Exhaustiveness Checking Documentation](EXHAUSTIVENESS_CHECKING.md)**.
+
 ## Limitations and Future Work
 
 Current implementation:
 - Basic type inference for sum types
 - Constructor arity checking at runtime
-- Pattern matching with exhaustiveness warnings (runtime errors for non-exhaustive matches)
+- **Complete exhaustiveness checking with warnings**
 
 Potential future enhancements:
-- Compile-time exhaustiveness checking
 - Better type error messages
 - GADT support
 - Deriving functions (Eq, Show, etc.)
 - Record-style constructors
+- Guard patterns in exhaustiveness checking
 
 ## See Also
 
