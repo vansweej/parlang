@@ -122,7 +122,7 @@ flowchart TD
 - Displays welcome banner with version information
 - Presents a `>` prompt for the first line of input
 - Presents a `... ` continuation prompt for subsequent lines
-- Supports multiline input: press Enter to continue, submit with blank line (or auto-submit when ending with `;`)
+- Supports multiline input: press Enter after each line; expressions are automatically submitted when complete and parseable
 - Parses and evaluates each expression after submission
 - Displays results or errors
 - Maintains a persistent environment across evaluations
@@ -246,10 +246,10 @@ fn repl()
 - **Multiline Input**: Accumulates input across multiple lines
   - First line shows `> ` prompt
   - Continuation lines show `... ` prompt
-  - Empty line (just Enter) signals end of input and triggers evaluation
-  - **Auto-submit**: If a line ends with `;` and forms a complete, parseable program, it's automatically submitted without requiring a blank line
+  - Empty line (just Enter) signals end of input and triggers evaluation (if accumulated input is not yet parseable)
+  - **Auto-submit**: After each line, if the accumulated input forms a complete, parseable program, it's automatically submitted without requiring a blank line
 - Each submission cycle:
-  1. Accumulates lines until blank line is entered or auto-submit condition is met
+  1. Accumulates lines until blank line is entered or complete expression is detected
   2. Joins all accumulated lines
   3. Trims whitespace
   4. Parses the complete input
@@ -284,9 +284,7 @@ flowchart TD
     EMPTY -->|Yes, not first| PARSE_ALL[Join all lines]
     EMPTY -->|No| ACCUMULATE[Add to lines<br/>is_first_line = false]
     
-    ACCUMULATE --> CHECK_SEMI{Ends with<br/>semicolon?}
-    CHECK_SEMI -->|No| LOOP
-    CHECK_SEMI -->|Yes| TRY_PARSE[Try parse<br/>accumulated input]
+    ACCUMULATE --> TRY_PARSE[Try parse<br/>accumulated input]
     
     TRY_PARSE -->|Parse ok| PARSE_ALL
     TRY_PARSE -->|Parse fails| LOOP
@@ -326,9 +324,15 @@ Type expressions to evaluate them. Press Ctrl+C to exit.
 
 The REPL supports both single-line and multiline input with intelligent auto-submission:
 
-**Single-line expression**:
+**Single-line expression (auto-submits)**:
 ```
 > 42
+42
+```
+
+**Function call (auto-submits)**:
+```
+> (fun x -> x + 1) 41
 42
 ```
 
@@ -348,7 +352,7 @@ The REPL supports both single-line and multiline input with intelligent auto-sub
 6
 ```
 
-**Multiline expression (requires blank line to submit)**:
+**Multiline let-in expression (continues until complete)**:
 ```
 > let double = fun x -> x + x
 ... in double 5
@@ -356,7 +360,7 @@ The REPL supports both single-line and multiline input with intelligent auto-sub
 10
 ```
 
-**Complex multiline example**:
+**Complex multiline example (continues until complete)**:
 ```
 > let add = fun x -> fun y -> x + y
 ... in let add5 = add 5
@@ -365,7 +369,7 @@ The REPL supports both single-line and multiline input with intelligent auto-sub
 15
 ```
 
-**Auto-Submit Behavior**: When a line ends with a semicolon (`;`) and forms a complete, parseable program (like `let` assignments), the REPL automatically submits it without requiring a blank line. This makes the REPL more intuitive for the common case of defining variables and functions.
+**Auto-Submit Behavior**: The REPL intelligently detects when your expression is complete and parseable after each line you type. When a complete expression is detected (like simple arithmetic, function calls, or semicolon-terminated let assignments), it automatically submits without requiring a blank line. For incomplete multiline expressions (like `let...in` syntax split across lines), simply continue typing on new lines - the REPL waits until your expression is complete.
 
 ### Expression Evaluation
 
@@ -409,7 +413,7 @@ Evaluation error: Division by zero
 42
 ```
 
-**Multiline mode**: Empty line after starting multiline input signals end of expression and triggers evaluation:
+**Multiline mode**: Empty line after starting multiline input signals end of expression and triggers evaluation (if the accumulated input is not already parseable):
 
 ```
 > let x = 10
@@ -453,7 +457,7 @@ fn repl() {
 42
 ```
 
-**Note:** The trailing expression after semicolons is now optional. Both `let x = 42;` and `let x = 42; 0` work identically, defaulting to `0` when omitted. Additionally, expressions ending with semicolons are automatically submitted without requiring an extra blank line.
+**Note:** The trailing expression after semicolons is now optional. Both `let x = 42;` and `let x = 42; 0` work identically, defaulting to `0` when omitted. All complete parseable expressions are automatically submitted after you press Enter.
 
 **Example with traditional let-in syntax (does not persist)**:
 ```
@@ -474,7 +478,7 @@ Evaluation error: Unbound variable: x
 42
 ```
 
-**Note:** The `in 0` part of load statements is now optional. Both `load "file"` and `load "file" in 0` work identically. Load statements ending with semicolons also auto-submit.
+**Note:** The `in 0` part of load statements is now optional. Both `load "file"` and `load "file" in 0` work identically. All complete parseable expressions are automatically submitted after you press Enter.
 
 **Multiple bindings persist (auto-submits)**:
 ```
@@ -484,7 +488,7 @@ Evaluation error: Unbound variable: x
 6
 ```
 
-This makes the REPL much more convenient for interactive development, as you don't need to redefine functions after each evaluation, you don't need to type unnecessary trailing expressions, and expressions ending with semicolons are automatically submitted.
+This makes the REPL much more convenient for interactive development, as you don't need to redefine functions after each evaluation, you don't need to type unnecessary trailing expressions, and complete expressions are automatically submitted without requiring blank lines.
 
 ### Exit Behavior
 

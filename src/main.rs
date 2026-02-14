@@ -85,24 +85,18 @@ fn repl() {
                         continue;
                     }
                     
-                    // Check before moving line if it ends with semicolon
-                    let ends_with_semicolon = trimmed.ends_with(';');
-
                     // Add the line to our accumulator
                     lines.push(line);
                     is_first_line = false;
                     
-                    // Check if input ends with semicolon and is a complete parseable program
-                    // If so, auto-submit without requiring an extra Enter
-                    if ends_with_semicolon {
-                        let accumulated = lines.concat();
-                        let accumulated_trimmed = accumulated.trim();
-                        
-                        // Try to parse the accumulated input
-                        if parse(accumulated_trimmed).is_ok() {
-                            // Input is complete and parseable, submit it
-                            break;
-                        }
+                    // Try to parse the accumulated input after each line
+                    // If it's parseable, auto-submit without requiring a blank line
+                    let accumulated = lines.concat();
+                    let accumulated_trimmed = accumulated.trim();
+                    
+                    if parse(accumulated_trimmed).is_ok() {
+                        // Input is complete and parseable, submit it
+                        break;
                     }
                 }
                 Err(e) => {

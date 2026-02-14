@@ -473,3 +473,66 @@ fn test_optional_body_load_with_in() {
     let (value, _) = parse_eval_and_extract("triple 14", &env).unwrap();
     assert_eq!(value, Value::Int(42));
 }
+
+// ========================================
+// Tests for Auto-Submit Detection
+// ========================================
+// These tests verify that various expressions are complete and parseable,
+// which is the basis for the REPL's auto-submit behavior
+
+#[test]
+fn test_auto_submit_simple_literal() {
+    // Simple literals should parse and auto-submit
+    assert!(parse("42").is_ok());
+    assert!(parse("true").is_ok());
+}
+
+#[test]
+fn test_auto_submit_arithmetic() {
+    // Arithmetic expressions should parse and auto-submit
+    assert!(parse("1 + 2").is_ok());
+    assert!(parse("10 - 3 * 2").is_ok());
+}
+
+#[test]
+fn test_auto_submit_function_call() {
+    // Function calls should parse and auto-submit (main issue being fixed)
+    assert!(parse("(fun x -> x + 1) 41").is_ok());
+    assert!(parse("(fun x -> fun y -> x + y) 1 2").is_ok());
+}
+
+#[test]
+fn test_auto_submit_let_in() {
+    // Complete let-in expressions should parse and auto-submit
+    assert!(parse("let x = 10 in x + 5").is_ok());
+    assert!(parse("let double = fun x -> x + x in double 21").is_ok());
+}
+
+#[test]
+fn test_auto_submit_let_semicolon() {
+    // Let with semicolon should parse and auto-submit
+    assert!(parse("let x = 42;").is_ok());
+    assert!(parse("let double = fun x -> x + x;").is_ok());
+    assert!(parse("let x = 1; let y = 2;").is_ok());
+}
+
+#[test]
+fn test_auto_submit_load() {
+    // Load statements should parse and auto-submit
+    assert!(parse("load \"examples/stdlib.par\"").is_ok());
+    assert!(parse("load \"examples/stdlib.par\" in 0").is_ok());
+}
+
+#[test]
+fn test_incomplete_expression_let_in() {
+    // Incomplete let-in expressions should NOT parse (will wait for continuation)
+    assert!(parse("let x = 10 in").is_err());
+    assert!(parse("let x =").is_err());
+}
+
+#[test]
+fn test_incomplete_expression_function() {
+    // Incomplete function definitions should NOT parse (will wait for continuation)
+    assert!(parse("fun x ->").is_err());
+    assert!(parse("let f = fun x ->").is_err());
+}

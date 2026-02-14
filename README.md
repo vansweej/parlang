@@ -112,7 +112,7 @@ Run the interpreter without arguments to start an interactive REPL:
 cargo run
 ```
 
-The REPL supports both single-line and multiline input. For most expressions, press Enter to submit. For multiline expressions that don't end with a semicolon, press Enter after each line and submit with a blank line:
+The REPL automatically submits expressions when they are complete and parseable. Simply press Enter after typing your expression - no need for a blank line:
 
 ```
 ParLang v0.1.0 - A small ML-alike functional language
@@ -133,7 +133,7 @@ Type expressions to evaluate them. Press Ctrl+C to exit.
 >
 ```
 
-**Note:** When a line ends with a semicolon (after a `let` assignment), the REPL automatically submits it - no need for an extra Enter! For multiline expressions without semicolons (like traditional `let...in` syntax), continue typing on multiple lines and submit with a blank line.
+**Note:** The REPL intelligently detects when your expression is complete and parseable, automatically submitting it after you press Enter. For incomplete multiline expressions (like `let...in` syntax split across lines), simply continue typing on new lines - the REPL waits until your expression is complete.
 
 In the REPL and file mode, you can use semicolon-separated let bindings to define multiple functions without nesting `in` keywords. The trailing expression is optional - if omitted, it defaults to `0`.
 
@@ -157,7 +157,7 @@ In the REPL and file mode, you can use semicolon-separated let bindings to defin
 >
 ```
 
-**Note:** You no longer need to type a trailing `0` or `in 0` - the parser makes these optional for convenience! Additionally, when your input ends with a semicolon (after a `let` assignment), the REPL automatically submits it without requiring an extra blank line.
+**Note:** You no longer need to type a trailing `0` or `in 0` - the parser makes these optional for convenience! The REPL automatically submits complete expressions when you press Enter.
 
 This makes the REPL much more convenient for interactive development, as you don't need to redefine functions after each evaluation.
 
