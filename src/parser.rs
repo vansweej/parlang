@@ -354,25 +354,40 @@ parser! {
              .skip(combine::not_followed_by(alpha_num().or(token('_'))))
              .skip(spaces()))),
             token('=').skip(spaces()),
-            // Constructors separated by |
-            combine::sep_by1(
+            // First constructor (without |)
+            attempt((
+                // Constructor name (must start with uppercase)
                 (
-                    // Constructor name (must start with uppercase)
-                    (
-                        combine::parser::char::upper(),
-                        many::<String, _, _>(alpha_num().or(token('_')))
-                    ).map(|(first, rest)| format!("{}{}", first, rest))
-                     .skip(combine::not_followed_by(alpha_num().or(token('_'))))
-                     .skip(spaces()),
-                    // Constructor argument types
-                    many(attempt(type_annotation_atom().skip(spaces())))
-                ),
-                token('|').skip(spaces())
-            ),
+                    combine::parser::char::upper(),
+                    many::<String, _, _>(alpha_num().or(token('_')))
+                ).map(|(first, rest)| format!("{}{}", first, rest))
+                 .skip(combine::not_followed_by(alpha_num().or(token('_'))))
+                 .skip(spaces()),
+                // Constructor argument types
+                many(attempt(type_annotation_atom().skip(spaces())))
+            )),
+            // Additional constructors (each starting with |)
+            many(attempt((
+                token('|').skip(spaces()),
+                (
+                    combine::parser::char::upper(),
+                    many::<String, _, _>(alpha_num().or(token('_')))
+                ).map(|(first, rest)| format!("{}{}", first, rest))
+                 .skip(combine::not_followed_by(alpha_num().or(token('_'))))
+                 .skip(spaces()),
+                many(attempt(type_annotation_atom().skip(spaces())))
+            ))),
             string("in").skip(spaces()),
             expr()
         )
-            .map(|(_, name, type_params, _, constructors, _, body)| {
+            .map(|tuple: (_, String, Vec<String>, _, (String, Vec<TypeAnnotation>), Vec<(char, String, Vec<TypeAnnotation>)>, _, Expr)| {
+                let (_, name, type_params, _, first_ctor, additional_ctors, _, body) = tuple;
+                // Combine first constructor with additional constructors
+                let mut constructors = vec![first_ctor];
+                for (_, ctor_name, ctor_types) in additional_ctors {
+                    constructors.push((ctor_name, ctor_types));
+                }
+                
                 Expr::TypeDef {
                     name,
                     type_params,
@@ -593,7 +608,7 @@ parser! {
     {
         choice((
             attempt(type_def_expr()),  // Try type def before type alias
-            attempt(type_alias_expr()),
+            // attempt(type_alias_expr()),  // Temporarily disabled
             attempt(let_expr()),
             attempt(load_expr()),
             attempt(if_expr()),
