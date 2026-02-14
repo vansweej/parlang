@@ -37,6 +37,31 @@ where
         })
 }
 
+/// Parse a floating point literal
+fn float<Input>() -> impl Parser<Input, Output = Expr>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    // Parse optional sign, digits, decimal point, and fractional digits
+    let number = (
+        optional(token('-')),
+        many1(combine::parser::char::digit()),
+        token('.'),
+        many1(combine::parser::char::digit()),
+    ).and_then(|(sign, int_part, _, frac_part): (Option<char>, String, char, String)| {
+        let num_str = format!("{}{}.{}", 
+            if sign.is_some() { "-" } else { "" },
+            int_part,
+            frac_part
+        );
+        num_str.parse::<f64>()
+            .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("invalid float"))
+    });
+    
+    number.map(Expr::Float)
+}
+
 /// Parse a boolean literal
 fn bool_literal<Input>() -> impl Parser<Input, Output = Expr>
 where
@@ -221,6 +246,7 @@ parser! {
         choice((
             attempt(bool_literal()),
             attempt(char_literal()),
+            attempt(float()),
             attempt(int()),
             attempt(record()),
             attempt(constructor()),  // Try constructor before variable

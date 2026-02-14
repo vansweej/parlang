@@ -104,6 +104,9 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             };
             output.push_str(&format!("  {node_id} [label=\"Char\\n'{label}'\"];\n"));
         }
+        Expr::Float(fl) => {
+            output.push_str(&format!("  {node_id} [label=\"Float\\n{fl}\"];\n"));
+        }
         Expr::Var(name) => {
             output.push_str(&format!("  {} [label=\"Var\\n{}\"];\n", node_id, escape_label(name)));
         }

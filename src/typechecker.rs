@@ -212,7 +212,7 @@ fn apply_subst_with_visited(
     visited: &mut HashSet<TypeVar>,
 ) -> Type {
     match ty {
-        Type::Int | Type::Bool | Type::Char => ty.clone(),
+        Type::Int | Type::Bool | Type::Char | Type::Float => ty.clone(),
         Type::Var(v) => {
             if visited.contains(v) {
                 // Cycle detected, return the variable as-is
@@ -283,7 +283,7 @@ type RowSubstitution = HashMap<RowVar, Type>;
 /// The type with row variables substituted
 fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Var(_) => ty.clone(),
+        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Var(_) => ty.clone(),
         Type::Fun(arg, ret) => Type::Fun(
             Box::new(apply_row_subst(subst, arg)),
             Box::new(apply_row_subst(subst, ret)),
@@ -359,7 +359,7 @@ fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
 /// - For `{ age: t0 }`: returns `{t0}`
 fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
     match ty {
-        Type::Int | Type::Bool | Type::Char => HashSet::new(),
+        Type::Int | Type::Bool | Type::Char | Type::Float => HashSet::new(),
         Type::Var(v) => {
             let mut set = HashSet::new();
             set.insert(v.clone());
@@ -405,7 +405,7 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
 /// For the type `forall r0. { age: Int | r0 }`, after instantiation r0 is bound.
 fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Var(_) | Type::Record(_) => HashSet::new(),
+        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Var(_) | Type::Record(_) => HashSet::new(),
         Type::RecordRow(fields, row_var) => {
             let mut set = HashSet::new();
             set.insert(row_var.clone());
@@ -446,6 +446,8 @@ fn type_annotation_to_type(
             match name.as_str() {
                 "Int" => Type::Int,
                 "Bool" => Type::Bool,
+                "Char" => Type::Char,
+                "Float" => Type::Float,
                 _ => {
                     // User-defined sum type (not a built-in primitive)
                     // Treat as a sum type with no arguments
@@ -530,7 +532,7 @@ impl std::error::Error for TypeError {}
 /// Unification algorithm
 fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
     match (t1, t2) {
-        (Type::Int, Type::Int) | (Type::Bool, Type::Bool) | (Type::Char, Type::Char) => Ok(HashMap::new()),
+        (Type::Int, Type::Int) | (Type::Bool, Type::Bool) | (Type::Char, Type::Char) | (Type::Float, Type::Float) => Ok(HashMap::new()),
 
         (Type::Var(v), t) | (t, Type::Var(v)) => bind_var(v.clone(), t.clone()),
 
@@ -773,6 +775,8 @@ fn resolve_type_annotation(ty_ann: &crate::ast::TypeAnnotation, env: &mut TypeEn
             match name.as_str() {
                 "Int" => Ok(Type::Int),
                 "Bool" => Ok(Type::Bool),
+                "Char" => Ok(Type::Char),
+                "Float" => Ok(Type::Float),
                 _ => {
                     // Try to resolve as type alias
                     env.resolve_type_alias(name)
@@ -807,6 +811,8 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
 
         Expr::Char(_) => Ok((Type::Char, HashMap::new())),
 
+        Expr::Float(_) => Ok((Type::Float, HashMap::new())),
+
         Expr::Var(name) => {
             let ty = env
                 .lookup(name)
@@ -822,11 +828,57 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             let (right_ty, s2) = infer(right, &mut env1)?;
             let left_ty = apply_subst(&s2, &left_ty);
 
-            let (expected_arg, expected_ret) = match op {
-                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => (Type::Int, Type::Int),
+            match op {
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
+                    // Arithmetic operations work on Int and Float
+                    // Check if left type is Int or Float
+                    match &left_ty {
+                        Type::Int => {
+                            let s3 = unify(&right_ty, &Type::Int)?;
+                            let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+                            return Ok((Type::Int, subst));
+                        }
+                        Type::Float => {
+                            let s3 = unify(&right_ty, &Type::Float)?;
+                            let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+                            return Ok((Type::Float, subst));
+                        }
+                        Type::Var(_) => {
+                            // Try to unify with right type first
+                            let s3 = unify(&left_ty, &right_ty)?;
+                            let unified_ty = apply_subst(&s3, &left_ty);
+                            
+                            // Now check if unified type is Int or Float
+                            match &unified_ty {
+                                Type::Int | Type::Float => {
+                                    let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+                                    return Ok((unified_ty, subst));
+                                }
+                                Type::Var(_) => {
+                                    // Still a type variable, default to Int for arithmetic operations
+                                    let s4 = unify(&unified_ty, &Type::Int)?;
+                                    let subst = compose_subst(&s4, &compose_subst(&s3, &compose_subst(&s2, &s1)));
+                                    return Ok((Type::Int, subst));
+                                }
+                                _ => {
+                                    return Err(TypeError::UnificationError(
+                                        unified_ty,
+                                        Type::Int,
+                                    ));
+                                }
+                            }
+                        }
+                        _ => {
+                            return Err(TypeError::UnificationError(
+                                left_ty,
+                                Type::Int,
+                            ));
+                        }
+                    }
+                }
                 BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
-                    // Ordering comparisons work for Int and Char
-                    // Check if left type is Int or Char
+                    // Ordering comparisons work for Int, Char, and Float
+                    // Check if left type is Int, Char, or Float
                     match &left_ty {
                         Type::Int => {
                             let s3 = unify(&right_ty, &Type::Int)?;
@@ -838,14 +890,19 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
                             return Ok((Type::Bool, subst));
                         }
+                        Type::Float => {
+                            let s3 = unify(&right_ty, &Type::Float)?;
+                            let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+                            return Ok((Type::Bool, subst));
+                        }
                         Type::Var(_) => {
                             // Try to unify with right type first
                             let s3 = unify(&left_ty, &right_ty)?;
                             let unified_ty = apply_subst(&s3, &left_ty);
                             
-                            // Now check if unified type is Int or Char
+                            // Now check if unified type is Int, Char, or Float
                             match &unified_ty {
-                                Type::Int | Type::Char => {
+                                Type::Int | Type::Char | Type::Float => {
                                     let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
                                     return Ok((Type::Bool, subst));
                                 }
@@ -877,14 +934,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                     let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
                     return Ok((Type::Bool, subst));
                 }
-            };
-
-            let s3 = unify(&left_ty, &expected_arg)?;
-            let right_ty = apply_subst(&s3, &right_ty);
-            let s4 = unify(&right_ty, &expected_arg)?;
-
-            let subst = compose_subst(&s4, &compose_subst(&s3, &compose_subst(&s2, &s1)));
-            Ok((expected_ret, subst))
+            }
         }
 
         Expr::If(cond, then_br, else_br) => {
