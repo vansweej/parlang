@@ -1,0 +1,9 @@
+type List a = Nil | Cons a (List a) in
+let myList = Cons 1 (Cons 2 (Cons 3 Nil)) in
+let sum = rec sum -> fun list ->
+  match list with
+  | Nil -> 0
+  | Cons head tail -> head + sum tail
+in
+sum myList
+

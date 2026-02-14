@@ -9,6 +9,7 @@ ParLang is a simple functional programming language with:
 - **Basic Types**: Integers and booleans
 - **Type Inference**: Optional Hindley-Milner type system with automatic type inference
 - **Type Aliases**: Define alternative names for types for better code documentation
+- **Sum Types**: Algebraic data types with constructors and pattern matching (Option, Either, List, etc.)
 - **Records**: Product types with named fields for structured data
 - **Tuples**: Heterogeneous tuples with projection and pattern matching
 - **Variables**: Let bindings for creating local variables
@@ -16,7 +17,7 @@ ParLang is a simple functional programming language with:
 - **Polymorphism**: Let-polymorphism for generic functions
 - **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
-- **Pattern Matching**: Match expressions for cleaner multi-branch logic (supports records, tuples, literals)
+- **Pattern Matching**: Match expressions for cleaner multi-branch logic (supports records, tuples, literals, and sum types)
 - **Binary Operations**: Arithmetic (`+`, `-`, `*`, `/`) and comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`)
 - **Function Application**: Call functions with arguments
 - **Currying**: Functions naturally support partial application
@@ -223,6 +224,62 @@ f 41
 ```
 
 Type aliases are transparent - they don't affect runtime behavior, just provide documentation for types.
+
+### Sum Types (Algebraic Data Types)
+
+Sum types allow you to define types with multiple variants, enabling type-safe representation of data that can be one of several forms.
+
+**Defining sum types:**
+```
+# Option type for nullable values
+type Option a = Some a | None in
+let x = Some 42 in
+match x with
+| Some n -> n + 1
+| None -> 0
+# Result: 43
+
+# Either type for values that can be one of two types
+type Either a b = Left a | Right b in
+let result = Left 10 in
+match result with
+| Left n -> n
+| Right m -> m
+# Result: 10
+```
+
+**Recursive sum types:**
+```
+# List type
+type List a = Nil | Cons a (List a) in
+let list = Cons 1 (Cons 2 (Cons 3 Nil)) in
+let rec sum -> fun l ->
+  match l with
+  | Nil -> 0
+  | Cons head tail -> head + sum tail
+in sum list
+# Result: 6
+```
+
+**Nested pattern matching:**
+```
+type Option a = Some a | None in
+let x = Some (Some 42) in
+match x with
+| Some (Some n) -> n
+| Some None -> 0
+| None -> 0
+# Result: 42
+```
+
+Sum types support:
+- Multiple constructors per type (separated by `|`)
+- Constructor arguments (payload data)
+- Type parameters for polymorphism
+- Recursive type definitions
+- Pattern matching to extract values
+
+See [docs/SUM_TYPES.md](docs/SUM_TYPES.md) for comprehensive documentation and examples.
 
 ### Binary Operations
 ```
