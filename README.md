@@ -19,6 +19,7 @@ ParLang is a simple functional programming language with:
 - **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
 - **Pattern Matching**: Match expressions for cleaner multi-branch logic (supports records, tuples, literals, and sum types)
+- **Exhaustiveness Checking**: Automatic warnings for non-exhaustive pattern matches, helping catch bugs early
 - **Binary Operations**: Arithmetic (`+`, `-`, `*`, `/`) and comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`)
 - **Function Application**: Call functions with arguments
 - **Currying**: Functions naturally support partial application
@@ -99,6 +100,31 @@ let factorial = rec fact -> fun n ->
 ```
 
 Pattern matching evaluates patterns from top to bottom and executes the first matching arm. This is especially useful for replacing deeply nested if-then-else chains with more readable code.
+
+### Exhaustiveness Checking
+
+**New Feature:** ParLang now includes automatic exhaustiveness checking for pattern matching!
+
+The exhaustiveness checker warns you when a `match` expression doesn't cover all possible cases:
+
+```
+type Option a = Some a | None in
+match x with
+| Some n -> n
+# Warning: pattern match is non-exhaustive
+# Missing cases: None
+```
+
+**Exhaustive match (no warning):**
+```
+type Option a = Some a | None in
+match x with
+| Some n -> n
+| None -> 0
+# ✓ All cases covered
+```
+
+The checker helps catch bugs early by ensuring you handle all constructors in sum types. For more details, see [Exhaustiveness Checking Documentation](docs/EXHAUSTIVENESS_CHECKING.md).
 
 ### Tuples
 
@@ -628,6 +654,8 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Language Specification](docs/LANGUAGE_SPEC.md)** - Formal language specification with grammar and semantics
 - **[Type System](docs/TYPE_SYSTEM.md)** - Hindley-Milner type inference system documentation
 - **[Generic Types](docs/GENERIC_TYPES.md)** - Parameterized types and type inference for generic data structures
+- **[Sum Types](docs/SUM_TYPES.md)** - Algebraic data types with pattern matching
+- **[Exhaustiveness Checking](docs/EXHAUSTIVENESS_CHECKING.md)** - Automatic checking for complete pattern matches
 - **[Examples Guide](docs/EXAMPLES.md)** - Tutorial-style examples from basic to advanced
 
 ### 🔧 Module Documentation
