@@ -83,7 +83,7 @@ where
             "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with"
         ) {
             // Use a parser that will never succeed to reject keywords
-            combine::unexpected("keyword").map(move |(): ()| name.clone()).right()
+            combine::unexpected("keyword").map(move |_| name.clone()).right()
         } else {
             combine::value(name).left()
         }
@@ -462,7 +462,7 @@ parser! {
             }),
             optional(expr()).skip(spaces())
         )
-            .map(|((), bindings, body): (_, Vec<(String, Expr)>, Option<Expr>)| {
+            .map(|((), bindings, body): ((), Vec<(String, Expr)>, Option<Expr>)| {
                 let body_expr = body.unwrap_or(Expr::Int(0));
                 if bindings.is_empty() {
                     body_expr
