@@ -207,6 +207,30 @@ impl std::error::Error for EvalError {}
 /// 
 /// Note: This implementation clones the body and environment on each iteration.
 /// A future optimization could use Rc/Arc to reduce allocations for deep recursion.
+/// Evaluate a recursive function body with tail call optimization (TCO)
+/// 
+/// This function implements tail call optimization for recursive functions. Instead of
+/// creating a new stack frame for each recursive call, it iteratively updates the
+/// environment and re-evaluates the body expression. This allows deep recursion without
+/// stack overflow for tail-recursive functions.
+/// 
+/// # Arguments
+/// * `body` - The body expression of the recursive function
+/// * `initial_env` - The initial environment with the argument binding
+/// * `rec_name` - The name of the recursive function
+/// * `param_name` - The name of the function parameter
+/// * `closure_env` - The environment captured in the closure
+/// 
+/// # Returns
+/// The result value of evaluating the function, or an error
+/// 
+/// # Example
+/// For a tail-recursive factorial with accumulator:
+/// ```text
+/// rec fact -> fun acc -> fun n ->
+///     if n == 0 then acc else fact (acc * n) (n - 1)
+/// ```
+/// Instead of recursing, this function updates `acc` and `n` and re-evaluates the body.
 fn eval_with_tco(
     body: &Expr,
     initial_env: &Environment,
@@ -264,7 +288,22 @@ fn eval_with_tco(
 }
 
 /// Check if an expression is ultimately a call to the recursive function
-/// Handles nested applications like: (`rec_name` arg1) arg2
+/// 
+/// This helper function determines whether an expression is a direct or indirect call
+/// to the named recursive function. It handles nested applications like `(rec_name arg1) arg2`
+/// by recursively checking the function part of applications.
+/// 
+/// # Arguments
+/// * `expr` - The expression to check
+/// * `rec_name` - The name of the recursive function
+/// 
+/// # Returns
+/// `true` if the expression calls the recursive function, `false` otherwise
+/// 
+/// # Example
+/// - `is_tail_call_to(Var("fact"), "fact")` returns `true`
+/// - `is_tail_call_to(App(Var("fact"), Lit(5)), "fact")` returns `true`
+/// - `is_tail_call_to(Var("other"), "fact")` returns `false`
 fn is_tail_call_to(expr: &Expr, rec_name: &str) -> bool {
     match expr {
         Expr::Var(name) => name == rec_name,
@@ -329,6 +368,33 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
 }
 
 /// Match a pattern against a value, returning an extended environment if successful
+/// 
+/// This function implements pattern matching by recursively checking if a pattern
+/// matches a given value. If successful, it returns an environment extended with
+/// any variable bindings from the pattern. If the match fails, it returns `None`.
+/// 
+/// # Arguments
+/// * `pattern` - The pattern to match against
+/// * `value` - The value to match
+/// * `env` - The current environment to extend with bindings
+/// 
+/// # Returns
+/// `Some(Environment)` with new bindings if the pattern matches, `None` otherwise
+/// 
+/// # Supported Patterns
+/// - `Wildcard`: Matches anything without binding
+/// - `Var(name)`: Matches anything and binds it to `name`
+/// - `Literal(lit)`: Matches only the specific literal value
+/// - `Tuple(patterns)`: Matches tuples with matching sub-patterns
+/// - `Record(fields)`: Matches records with specified fields (supports partial matching)
+/// - `Constructor(name, args)`: Matches sum type constructors
+/// 
+/// # Example
+/// ```text
+/// match_pattern(Var("x"), Int(42), env) → Some(env + {x: 42})
+/// match_pattern(Literal(Int(0)), Int(0), env) → Some(env)
+/// match_pattern(Literal(Int(0)), Int(1), env) → None
+/// ```
 fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<Environment> {
     match pattern {
         Pattern::Wildcard => {

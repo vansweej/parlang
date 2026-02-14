@@ -1,5 +1,65 @@
 /// Abstract Syntax Tree definitions for the `ParLang` language
-/// This defines the structure of programs in our ML-alike functional language
+/// 
+/// This module defines the Abstract Syntax Tree (AST) structure for ParLang,
+/// representing the parsed structure of programs before evaluation or type checking.
+/// 
+/// # Overview
+/// 
+/// The AST consists of several key types:
+/// 
+/// - **`Expr`**: Core expression type representing all language constructs (literals,
+///   variables, functions, applications, conditionals, pattern matching, etc.)
+/// - **`Pattern`**: Patterns used in pattern matching and destructuring
+/// - **`Literal`**: Primitive literal values (integers, booleans)
+/// - **`TypeExpr`**: Type expressions for type aliases
+/// - **`TypeAnnotation`**: Type annotations for sum type definitions
+/// - **`BinOp`**: Binary operators for arithmetic and comparison
+/// 
+/// # Expression Types
+/// 
+/// The language supports:
+/// - Literals: `Lit(Literal)`
+/// - Variables: `Var(String)`
+/// - Functions: `Fun(param, body)`
+/// - Applications: `App(func, arg)`
+/// - Recursion: `Rec(name, param, body)`
+/// - Let bindings: `Let(name, ty_ann, value, body)`
+/// - Sequential bindings: `Seq(bindings, body)`
+/// - Conditionals: `If(cond, then_expr, else_expr)`
+/// - Binary operations: `BinOp(op, left, right)`
+/// - Pattern matching: `Match(expr, arms)`
+/// - Tuples: `Tuple(elements)`
+/// - Tuple projection: `TupleProj(tuple, index)`
+/// - Records: `Record(fields)`
+/// - Record access: `RecordAccess(record, field)`
+/// - Type aliases: `TypeAlias(name, type_expr, body)`
+/// - Sum types: `SumType(name, params, constructors, body)`
+/// - Constructors: `Constructor(name, args)`
+/// - Library loading: `Load(filepath, body)`
+/// 
+/// # Pattern Matching
+/// 
+/// Patterns support:
+/// - Literal patterns: `Pattern::Literal(lit)`
+/// - Variable binding: `Pattern::Var(name)`
+/// - Wildcards: `Pattern::Wildcard`
+/// - Tuples: `Pattern::Tuple(patterns)`
+/// - Records: `Pattern::Record(fields)` with partial matching
+/// - Constructors: `Pattern::Constructor(name, args)`
+/// 
+/// # Example
+/// 
+/// ```text
+/// let x = 42 in x + 1
+/// ```
+/// 
+/// Is represented as:
+/// 
+/// ```text
+/// Let("x", None, 
+///     Lit(Int(42)),
+///     BinOp(Add, Var("x"), Lit(Int(1))))
+/// ```
 use std::fmt;
 
 /// Literal values for pattern matching

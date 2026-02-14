@@ -190,6 +190,18 @@ impl Default for TypeEnv {
 type Substitution = HashMap<TypeVar, Type>;
 
 /// Apply substitution to a type
+/// Apply type substitution to a type
+/// 
+/// This is a wrapper around `apply_subst_with_visited` that handles the common case
+/// of applying a substitution without needing to track visited variables. It prevents
+/// infinite recursion when dealing with cyclic type references.
+/// 
+/// # Arguments
+/// * `subst` - The substitution mapping type variables to types
+/// * `ty` - The type to apply the substitution to
+/// 
+/// # Returns
+/// A new type with all substitutable type variables replaced
 fn apply_subst(subst: &Substitution, ty: &Type) -> Type {
     apply_subst_with_visited(subst, ty, &mut HashSet::new())
 }
@@ -331,6 +343,21 @@ fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
 }
 
 /// Get free type variables in a type
+/// 
+/// A type variable is "free" if it appears in the type but is not bound by any
+/// quantifier. This function recursively traverses a type and collects all free
+/// type variables.
+/// 
+/// # Arguments
+/// * `ty` - The type to analyze
+/// 
+/// # Returns
+/// A set of all free type variables in the type
+/// 
+/// # Example
+/// - For `Int -> Int`: returns `{}`
+/// - For `t0 -> t1`: returns `{t0, t1}`
+/// - For `{ age: t0 }`: returns `{t0}`
 fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
     match ty {
         Type::Int | Type::Bool => HashSet::new(),
