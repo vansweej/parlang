@@ -739,6 +739,39 @@ fn resolve_type_expr(ty_expr: &crate::ast::TypeExpr, env: &TypeEnv) -> Result<Ty
     }
 }
 
+/// Convert a TypeAnnotation to a Type, resolving names to concrete types
+fn resolve_type_annotation(ty_ann: &crate::ast::TypeAnnotation, env: &mut TypeEnv) -> Result<Type, TypeError> {
+    match ty_ann {
+        crate::ast::TypeAnnotation::Concrete(name) => {
+            // Check if it's a basic type
+            match name.as_str() {
+                "Int" => Ok(Type::Int),
+                "Bool" => Ok(Type::Bool),
+                _ => {
+                    // Try to resolve as type alias
+                    env.resolve_type_alias(name)
+                        .ok_or_else(|| TypeError::UnboundVariable(name.clone()))
+                }
+            }
+        }
+        crate::ast::TypeAnnotation::Var(_name) => {
+            // Type variables in annotations become fresh type variables
+            // This allows polymorphic annotations like: fun (x : a) -> x
+            Ok(env.fresh_var())
+        }
+        crate::ast::TypeAnnotation::Fun(arg, ret) => {
+            let arg_ty = resolve_type_annotation(arg, env)?;
+            let ret_ty = resolve_type_annotation(ret, env)?;
+            Ok(Type::Fun(Box::new(arg_ty), Box::new(ret_ty)))
+        }
+        crate::ast::TypeAnnotation::App(name, args) => {
+            // For now, we don't support applied types in annotations
+            // This would require tracking type constructors
+            Err(TypeError::UnboundVariable(format!("Applied type not yet supported in annotations: {}", name)))
+        }
+    }
+}
+
 /// Type inference for expressions
 pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), TypeError> {
     match expr {
@@ -806,24 +839,49 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             Ok((result_ty, subst))
         }
 
-        Expr::Let(name, value, body) => {
+        Expr::Let(name, ty_ann_opt, value, body) => {
             let (value_ty, s1) = infer(value, env)?;
 
-            let mut env1 = env.clone();
-            apply_subst_env(&s1, &mut env1);
+            // If there's a type annotation, check it matches the inferred type
+            if let Some(ty_ann) = ty_ann_opt {
+                let annotated_ty = resolve_type_annotation(ty_ann, env)?;
+                let s_ann = unify(&value_ty, &annotated_ty)?;
+                let s1 = compose_subst(&s_ann, &s1);
+                
+                let mut env1 = env.clone();
+                apply_subst_env(&s1, &mut env1);
+                
+                let unified_ty = apply_subst(&s1, &value_ty);
+                let scheme = env1.generalize(&unified_ty);
+                env1.bind(name.clone(), scheme);
 
-            // Generalize the type (let-polymorphism)
-            let scheme = env1.generalize(&value_ty);
-            env1.bind(name.clone(), scheme);
+                let (body_ty, s2) = infer(body, &mut env1)?;
 
-            let (body_ty, s2) = infer(body, &mut env1)?;
+                let subst = compose_subst(&s2, &s1);
+                Ok((body_ty, subst))
+            } else {
+                let mut env1 = env.clone();
+                apply_subst_env(&s1, &mut env1);
 
-            let subst = compose_subst(&s2, &s1);
-            Ok((body_ty, subst))
+                // Generalize the type (let-polymorphism)
+                let scheme = env1.generalize(&value_ty);
+                env1.bind(name.clone(), scheme);
+
+                let (body_ty, s2) = infer(body, &mut env1)?;
+
+                let subst = compose_subst(&s2, &s1);
+                Ok((body_ty, subst))
+            }
         }
 
-        Expr::Fun(param, body) => {
-            let param_ty = env.fresh_var();
+        Expr::Fun(param, ty_ann_opt, body) => {
+            // Use annotated type if provided, otherwise create fresh variable
+            let param_ty = if let Some(ty_ann) = ty_ann_opt {
+                resolve_type_annotation(ty_ann, env)?
+            } else {
+                env.fresh_var()
+            };
+            
             let mut env1 = env.clone();
             env1 = env1.extend(param.clone(), param_ty.clone());
 
