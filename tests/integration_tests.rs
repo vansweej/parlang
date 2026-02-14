@@ -1,6 +1,5 @@
 /// Integration tests combining parser and evaluator
 /// These tests verify the full pipeline from source code to evaluation
-
 use parlang::{parse, eval, extract_bindings, Environment, Value};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
@@ -551,33 +550,33 @@ fn test_rec_simple_identity() {
 #[test]
 fn test_rec_factorial() {
     // Classic factorial using recursion
-    let factorial = r#"
+    let factorial = r"
         (rec factorial -> fun n ->
             if n == 0
             then 1
             else n * factorial (n - 1)
         ) 5
-    "#;
+    ";
     assert_eq!(parse_and_eval(factorial), Ok(Value::Int(120)));
 }
 
 #[test]
 fn test_rec_factorial_larger() {
     // Factorial of 10
-    let factorial = r#"
+    let factorial = r"
         (rec factorial -> fun n ->
             if n == 0
             then 1
             else n * factorial (n - 1)
         ) 10
-    "#;
-    assert_eq!(parse_and_eval(factorial), Ok(Value::Int(3628800)));
+    ";
+    assert_eq!(parse_and_eval(factorial), Ok(Value::Int(3_628_800)));
 }
 
 #[test]
 fn test_rec_fibonacci() {
     // Fibonacci sequence using recursion
-    let fib = r#"
+    let fib = r"
         (rec fib -> fun n ->
             if n == 0
             then 0
@@ -585,66 +584,66 @@ fn test_rec_fibonacci() {
             then 1
             else fib (n - 1) + fib (n - 2)
         ) 10
-    "#;
+    ";
     assert_eq!(parse_and_eval(fib), Ok(Value::Int(55)));
 }
 
 #[test]
 fn test_rec_sum_to_n() {
     // Sum from 1 to n using recursion (not tail recursive, so keep it small)
-    let sum = r#"
+    let sum = r"
         (rec sum -> fun n ->
             if n == 0
             then 0
             else n + sum (n - 1)
         ) 10
-    "#;
+    ";
     assert_eq!(parse_and_eval(sum), Ok(Value::Int(55)));
 }
 
 #[test]
 fn test_rec_countdown() {
     // Countdown to zero
-    let countdown = r#"
+    let countdown = r"
         (rec countdown -> fun n ->
             if n == 0
             then 0
             else countdown (n - 1)
         ) 10
-    "#;
+    ";
     assert_eq!(parse_and_eval(countdown), Ok(Value::Int(0)));
 }
 
 #[test]
 fn test_rec_with_let() {
     // Recursive function with let binding
-    let code = r#"
+    let code = r"
         let fact = rec factorial -> fun n ->
             if n == 0
             then 1
             else n * factorial (n - 1)
         in fact 6
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(720)));
 }
 
 #[test]
 fn test_rec_power() {
     // Compute x^n using recursion
-    let power = r#"
+    let power = r"
         (rec pow -> fun n ->
             if n == 0
             then 1
             else 2 * pow (n - 1)
         ) 8
-    "#;
+    ";
     assert_eq!(parse_and_eval(power), Ok(Value::Int(256)));
 }
 
 #[test]
 fn test_rec_even_odd() {
     // Test even using mutual recursion simulation (via helper)
-    let even = r#"
+    let even = r"
         (rec is_even -> fun n ->
             if n == 0
             then true
@@ -652,10 +651,10 @@ fn test_rec_even_odd() {
             then false
             else is_even (n - 2)
         ) 10
-    "#;
+    ";
     assert_eq!(parse_and_eval(even), Ok(Value::Bool(true)));
     
-    let odd = r#"
+    let odd = r"
         (rec is_even -> fun n ->
             if n == 0
             then true
@@ -663,7 +662,7 @@ fn test_rec_even_odd() {
             then false
             else is_even (n - 2)
         ) 11
-    "#;
+    ";
     assert_eq!(parse_and_eval(odd), Ok(Value::Bool(false)));
 }
 
@@ -671,46 +670,46 @@ fn test_rec_even_odd() {
 fn test_rec_tail_call_optimization() {
     // Test that tail call optimization prevents stack overflow for deep recursion
     // Uses a simple countdown function that recurses 1000 times
-    let countdown = r#"
+    let countdown = r"
         (rec countdown -> fun n ->
             if n == 0
             then 0
             else countdown (n - 1)
         ) 1000
-    "#;
+    ";
     assert_eq!(parse_and_eval(countdown), Ok(Value::Int(0)));
 }
 
 #[test]
 fn test_rec_gcd() {
     // Greatest common divisor using Euclidean algorithm
-    let gcd = r#"
+    let gcd = r"
         (rec gcd -> fun a -> fun b ->
             if b == 0
             then a
             else gcd b (a - (a / b) * b)
         ) 48 18
-    "#;
+    ";
     assert_eq!(parse_and_eval(gcd), Ok(Value::Int(6)));
 }
 
 #[test]
 fn test_rec_nested_calls() {
     // Test recursive function with nested arithmetic
-    let code = r#"
+    let code = r"
         (rec f -> fun n ->
             if n == 0
             then 0
             else (f (n - 1)) + n
         ) 5
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(15)));
 }
 
 #[test]
 fn test_rec_comparison_in_recursion() {
     // Test comparison operators in recursive function
-    let max_value = r#"
+    let max_value = r"
         (rec find_max -> fun current -> fun n ->
             if n == 0
             then current
@@ -718,14 +717,14 @@ fn test_rec_comparison_in_recursion() {
             then find_max n (n - 1)
             else find_max current (n - 1)
         ) 0 10
-    "#;
+    ";
     assert_eq!(parse_and_eval(max_value), Ok(Value::Int(10)));
 }
 
 #[test]
 fn test_rec_multiple_base_cases() {
     // Recursive function with multiple base cases
-    let fib_like = r#"
+    let fib_like = r"
         (rec f -> fun n ->
             if n == 0
             then 1
@@ -735,33 +734,33 @@ fn test_rec_multiple_base_cases() {
             then 2
             else f (n - 1) + f (n - 2)
         ) 6
-    "#;
+    ";
     assert_eq!(parse_and_eval(fib_like), Ok(Value::Int(13)));
 }
 
 #[test]
 fn test_rec_with_boolean_result() {
     // Recursive function returning boolean
-    let is_positive = r#"
+    let is_positive = r"
         (rec check -> fun n ->
             if n > 0
             then true
             else false
         ) 5
-    "#;
+    ";
     assert_eq!(parse_and_eval(is_positive), Ok(Value::Bool(true)));
 }
 
 #[test]
 fn test_rec_seq_binding() {
     // Test recursive function with sequential bindings
-    let code = r#"
+    let code = r"
         let factorial = rec f -> fun n ->
             if n == 0
             then 1
             else n * f (n - 1);
         factorial 5
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(120)));
 }
 
@@ -781,14 +780,14 @@ fn test_rec_repl_persistence() {
 #[test]
 fn test_rec_curried_function() {
     // Test recursive function with currying
-    let code = r#"
+    let code = r"
         let add_up_to = rec f -> fun acc -> fun n ->
             if n == 0
             then acc
             else f (acc + n) (n - 1)
         in let add_from_zero = add_up_to 0
         in add_from_zero 10
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(55)));
 }
 
@@ -846,46 +845,46 @@ fn test_match_with_expr() {
 
 #[test]
 fn test_match_in_function() {
-    let code = r#"
+    let code = r"
         let abs = fun n -> match n with | 0 -> 0 | n -> if n < 0 then 0 - n else n
         in abs (-5)
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(5)));
 }
 
 #[test]
 fn test_match_factorial() {
-    let code = r#"
+    let code = r"
         let factorial = rec fact -> fun n ->
             match n with
             | 0 -> 1
             | n -> n * fact (n - 1)
         in factorial 5
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(120)));
 }
 
 #[test]
 fn test_match_fibonacci() {
-    let code = r#"
+    let code = r"
         let fib = rec f -> fun n ->
             match n with
             | 0 -> 0
             | 1 -> 1
             | n -> f (n - 1) + f (n - 2)
         in fib 7
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(13)));
 }
 
 #[test]
 fn test_match_nested() {
-    let code = r#"
+    let code = r"
         match 1 with
         | 0 -> 10
         | 1 -> match 2 with | 2 -> 20 | _ -> 30
         | _ -> 40
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(20)));
 }
 
@@ -916,13 +915,13 @@ fn test_match_variable_binding() {
 
 #[test]
 fn test_match_with_let() {
-    let code = r#"
+    let code = r"
         let x = 5
         in match x with
         | 0 -> 1
         | 5 -> 42
         | _ -> 0
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(42)));
 }
 
@@ -940,16 +939,16 @@ fn test_match_replaces_nested_if() {
     // Demonstrate match replacing nested if-then-else
     // This would work with strings, but we only have ints and bools
     // So we use a numeric example
-    let if_code = r#"
+    let if_code = r"
         let category = fun n ->
             if n == 0 then 0
             else if n == 1 then 1
             else if n == 2 then 2
             else 999
         in category 1
-    "#;
+    ";
     
-    let match_code = r#"
+    let match_code = r"
         let category = fun n ->
             match n with
             | 0 -> 0
@@ -957,7 +956,7 @@ fn test_match_replaces_nested_if() {
             | 2 -> 2
             | _ -> 999
         in category 1
-    "#;
+    ";
     
     assert_eq!(parse_and_eval(if_code), parse_and_eval(match_code));
     assert_eq!(parse_and_eval(match_code), Ok(Value::Int(1)));
@@ -1110,13 +1109,13 @@ fn test_match_tuple_nested() {
 
 #[test]
 fn test_match_tuple_multiple_arms() {
-    let code = r#"
+    let code = r"
         match (1, 2) with
         | (0, 0) -> 0
         | (1, 1) -> 1
         | (1, 2) -> 12
         | (x, y) -> x + y
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(12)));
 }
 
@@ -1160,19 +1159,19 @@ fn test_match_tuple_wrong_literal() {
 // Complex realistic examples
 #[test]
 fn test_tuple_point_distance() {
-    let code = r#"
+    let code = r"
         let p1 = (0, 0) in
         let p2 = (3, 4) in
         let dx = p2.0 - p1.0 in
         let dy = p2.1 - p1.1 in
         dx * dx + dy * dy
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(25)));
 }
 
 #[test]
 fn test_tuple_fibonacci_pair() {
-    let code = r#"
+    let code = r"
         let fib = rec fib -> fun n ->
             if n == 0 then (0, 1)
             else if n == 1 then (1, 1)
@@ -1180,13 +1179,13 @@ fn test_tuple_fibonacci_pair() {
                 let prev = fib (n - 1) in
                 (prev.1, prev.0 + prev.1)
         in (fib 6).0
-    "#;
+    ";
     assert_eq!(parse_and_eval(code), Ok(Value::Int(8)));
 }
 
 #[test]
 fn test_tuple_with_match_and_rec() {
-    let code = r#"
+    let code = r"
         let divmod = rec divmod -> fun p ->
             match p with
             | (n, d) ->
@@ -1195,7 +1194,7 @@ fn test_tuple_with_match_and_rec() {
                     let result = divmod (n - d, d) in
                     (result.0 + 1, result.1)
         in divmod (17, 5)
-    "#;
+    ";
     assert_eq!(
         parse_and_eval(code),
         Ok(Value::Tuple(vec![Value::Int(3), Value::Int(2)]))

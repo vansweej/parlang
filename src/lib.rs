@@ -1,4 +1,4 @@
-/// ParLang: A small ML-alike functional language written in Rust
+/// `ParLang`: A small ML-alike functional language written in Rust
 /// 
 /// This library provides:
 /// - AST definitions for the language
@@ -16,7 +16,6 @@
 /// let result = eval(&expr, &env).expect("Evaluation error");
 /// println!("Result: {}", result); // prints "Result: 43"
 /// ```
-
 pub mod ast;
 pub mod parser;
 pub mod eval;

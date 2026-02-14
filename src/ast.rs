@@ -1,6 +1,5 @@
-/// Abstract Syntax Tree definitions for the ParLang language
+/// Abstract Syntax Tree definitions for the `ParLang` language
 /// This defines the structure of programs in our ML-alike functional language
-
 use std::fmt;
 
 /// Literal values for pattern matching
@@ -92,34 +91,34 @@ pub enum BinOp {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expr::Int(n) => write!(f, "{}", n),
-            Expr::Bool(b) => write!(f, "{}", b),
-            Expr::Var(name) => write!(f, "{}", name),
-            Expr::BinOp(op, left, right) => write!(f, "({} {} {})", left, op, right),
+            Expr::Int(n) => write!(f, "{n}"),
+            Expr::Bool(b) => write!(f, "{b}"),
+            Expr::Var(name) => write!(f, "{name}"),
+            Expr::BinOp(op, left, right) => write!(f, "({left} {op} {right})"),
             Expr::If(cond, then_branch, else_branch) => {
-                write!(f, "(if {} then {} else {})", cond, then_branch, else_branch)
+                write!(f, "(if {cond} then {then_branch} else {else_branch})")
             }
             Expr::Let(name, value, body) => {
-                write!(f, "(let {} = {} in {})", name, value, body)
+                write!(f, "(let {name} = {value} in {body})")
             }
-            Expr::Fun(param, body) => write!(f, "(fun {} -> {})", param, body),
-            Expr::App(func, arg) => write!(f, "({} {})", func, arg),
-            Expr::Load(filepath, body) => write!(f, "(load \"{}\" in {})", filepath, body),
+            Expr::Fun(param, body) => write!(f, "(fun {param} -> {body})"),
+            Expr::App(func, arg) => write!(f, "({func} {arg})"),
+            Expr::Load(filepath, body) => write!(f, "(load \"{filepath}\" in {body})"),
             Expr::Seq(bindings, body) => {
                 write!(f, "(")?;
                 for (i, (name, value)) in bindings.iter().enumerate() {
                     if i > 0 {
                         write!(f, "; ")?;
                     }
-                    write!(f, "let {} = {}", name, value)?;
+                    write!(f, "let {name} = {value}")?;
                 }
-                write!(f, "; {})", body)
+                write!(f, "; {body})")
             }
-            Expr::Rec(name, body) => write!(f, "(rec {} -> {})", name, body),
+            Expr::Rec(name, body) => write!(f, "(rec {name} -> {body})"),
             Expr::Match(scrutinee, arms) => {
-                write!(f, "(match {} with", scrutinee)?;
+                write!(f, "(match {scrutinee} with")?;
                 for (pattern, result) in arms {
-                    write!(f, " | {} -> {}", pattern, result)?;
+                    write!(f, " | {pattern} -> {result}")?;
                 }
                 write!(f, ")")
             }
@@ -129,11 +128,11 @@ impl fmt::Display for Expr {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", elem)?;
+                    write!(f, "{elem}")?;
                 }
                 write!(f, ")")
             }
-            Expr::TupleProj(tuple, index) => write!(f, "{}.{}", tuple, index),
+            Expr::TupleProj(tuple, index) => write!(f, "{tuple}.{index}"),
         }
     }
 }
@@ -141,8 +140,8 @@ impl fmt::Display for Expr {
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Literal::Int(n) => write!(f, "{}", n),
-            Literal::Bool(b) => write!(f, "{}", b),
+            Literal::Int(n) => write!(f, "{n}"),
+            Literal::Bool(b) => write!(f, "{b}"),
         }
     }
 }
@@ -150,8 +149,8 @@ impl fmt::Display for Literal {
 impl fmt::Display for Pattern {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Pattern::Literal(lit) => write!(f, "{}", lit),
-            Pattern::Var(name) => write!(f, "{}", name),
+            Pattern::Literal(lit) => write!(f, "{lit}"),
+            Pattern::Var(name) => write!(f, "{name}"),
             Pattern::Wildcard => write!(f, "_"),
             Pattern::Tuple(patterns) => {
                 write!(f, "(")?;
@@ -159,7 +158,7 @@ impl fmt::Display for Pattern {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", pat)?;
+                    write!(f, "{pat}")?;
                 }
                 write!(f, ")")
             }
@@ -181,7 +180,7 @@ impl fmt::Display for BinOp {
             BinOp::Gt => ">",
             BinOp::Ge => ">=",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -355,7 +354,7 @@ mod tests {
             Box::new(Expr::Int(1)),
             Box::new(Expr::Int(2)),
         );
-        assert_eq!(format!("{}", expr), "(1 + 2)");
+        assert_eq!(format!("{expr}"), "(1 + 2)");
     }
 
     #[test]
@@ -369,7 +368,7 @@ mod tests {
             )),
             Box::new(Expr::Int(3)),
         );
-        assert_eq!(format!("{}", expr), "((1 + 2) * 3)");
+        assert_eq!(format!("{expr}"), "((1 + 2) * 3)");
     }
 
     #[test]
@@ -379,7 +378,7 @@ mod tests {
             Box::new(Expr::Int(1)),
             Box::new(Expr::Int(2)),
         );
-        assert_eq!(format!("{}", expr), "(if true then 1 else 2)");
+        assert_eq!(format!("{expr}"), "(if true then 1 else 2)");
     }
 
     #[test]
@@ -389,13 +388,13 @@ mod tests {
             Box::new(Expr::Int(42)),
             Box::new(Expr::Var("x".to_string())),
         );
-        assert_eq!(format!("{}", expr), "(let x = 42 in x)");
+        assert_eq!(format!("{expr}"), "(let x = 42 in x)");
     }
 
     #[test]
     fn test_display_fun() {
         let expr = Expr::Fun("x".to_string(), Box::new(Expr::Var("x".to_string())));
-        assert_eq!(format!("{}", expr), "(fun x -> x)");
+        assert_eq!(format!("{expr}"), "(fun x -> x)");
     }
 
     #[test]
@@ -404,7 +403,7 @@ mod tests {
             Box::new(Expr::Var("f".to_string())),
             Box::new(Expr::Int(42)),
         );
-        assert_eq!(format!("{}", expr), "(f 42)");
+        assert_eq!(format!("{expr}"), "(f 42)");
     }
 
     #[test]
@@ -413,7 +412,7 @@ mod tests {
             "lib.par".to_string(),
             Box::new(Expr::Var("x".to_string())),
         );
-        assert_eq!(format!("{}", expr), "(load \"lib.par\" in x)");
+        assert_eq!(format!("{expr}"), "(load \"lib.par\" in x)");
     }
 
     #[test]
@@ -423,7 +422,7 @@ mod tests {
             ("y".to_string(), Expr::Int(10)),
         ];
         let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
-        assert_eq!(format!("{}", expr), "(let x = 42; let y = 10; x)");
+        assert_eq!(format!("{expr}"), "(let x = 42; let y = 10; x)");
     }
 
     // Test Display implementation for BinOp
@@ -506,7 +505,7 @@ mod tests {
             )),
         );
         assert_eq!(
-            format!("{}", expr),
+            format!("{expr}"),
             "(let f = (fun x -> (x + 1)) in (f 41))"
         );
     }
@@ -529,7 +528,7 @@ mod tests {
                 Box::new(Expr::Var("n".to_string())),
             )),
         );
-        assert_eq!(format!("{}", expr), "(rec factorial -> (fun n -> n))");
+        assert_eq!(format!("{expr}"), "(rec factorial -> (fun n -> n))");
     }
 
     // Test Literal construction and equality
@@ -586,19 +585,19 @@ mod tests {
     #[test]
     fn test_display_pattern_literal() {
         let pat = Pattern::Literal(Literal::Int(42));
-        assert_eq!(format!("{}", pat), "42");
+        assert_eq!(format!("{pat}"), "42");
     }
 
     #[test]
     fn test_display_pattern_var() {
         let pat = Pattern::Var("x".to_string());
-        assert_eq!(format!("{}", pat), "x");
+        assert_eq!(format!("{pat}"), "x");
     }
 
     #[test]
     fn test_display_pattern_wildcard() {
         let pat = Pattern::Wildcard;
-        assert_eq!(format!("{}", pat), "_");
+        assert_eq!(format!("{pat}"), "_");
     }
 
     // Test Tuple pattern
@@ -624,13 +623,13 @@ mod tests {
             Pattern::Var("x".to_string()),
             Pattern::Wildcard,
         ]);
-        assert_eq!(format!("{}", pat), "(1, x, _)");
+        assert_eq!(format!("{pat}"), "(1, x, _)");
     }
 
     #[test]
     fn test_display_pattern_tuple_empty() {
         let pat = Pattern::Tuple(vec![]);
-        assert_eq!(format!("{}", pat), "()");
+        assert_eq!(format!("{pat}"), "()");
     }
 
     #[test]
@@ -639,7 +638,7 @@ mod tests {
             Pattern::Tuple(vec![Pattern::Var("x".to_string()), Pattern::Var("y".to_string())]),
             Pattern::Var("z".to_string()),
         ]);
-        assert_eq!(format!("{}", pat), "((x, y), z)");
+        assert_eq!(format!("{pat}"), "((x, y), z)");
     }
 
     // Test Match expression
@@ -665,7 +664,7 @@ mod tests {
         ];
         let expr = Expr::Match(Box::new(Expr::Var("x".to_string())), arms);
         assert_eq!(
-            format!("{}", expr),
+            format!("{expr}"),
             "(match x with | 0 -> 1 | n -> n | _ -> 42)"
         );
     }
@@ -704,19 +703,19 @@ mod tests {
     #[test]
     fn test_display_tuple() {
         let expr = Expr::Tuple(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]);
-        assert_eq!(format!("{}", expr), "(1, 2, 3)");
+        assert_eq!(format!("{expr}"), "(1, 2, 3)");
     }
 
     #[test]
     fn test_display_tuple_empty() {
         let expr = Expr::Tuple(vec![]);
-        assert_eq!(format!("{}", expr), "()");
+        assert_eq!(format!("{expr}"), "()");
     }
 
     #[test]
     fn test_display_tuple_single() {
         let expr = Expr::Tuple(vec![Expr::Int(42)]);
-        assert_eq!(format!("{}", expr), "(42)");
+        assert_eq!(format!("{expr}"), "(42)");
     }
 
     #[test]
@@ -725,7 +724,7 @@ mod tests {
             Expr::Tuple(vec![Expr::Int(1), Expr::Int(2)]),
             Expr::Tuple(vec![Expr::Int(3), Expr::Int(4)]),
         ]);
-        assert_eq!(format!("{}", expr), "((1, 2), (3, 4))");
+        assert_eq!(format!("{expr}"), "((1, 2), (3, 4))");
     }
 
     #[test]
@@ -735,7 +734,7 @@ mod tests {
             Expr::Bool(true),
             Expr::Var("x".to_string()),
         ]);
-        assert_eq!(format!("{}", expr), "(42, true, x)");
+        assert_eq!(format!("{expr}"), "(42, true, x)");
     }
 
     // Test TupleProj expression
@@ -767,13 +766,13 @@ mod tests {
     #[test]
     fn test_display_tuple_proj() {
         let expr = Expr::TupleProj(Box::new(Expr::Var("t".to_string())), 0);
-        assert_eq!(format!("{}", expr), "t.0");
+        assert_eq!(format!("{expr}"), "t.0");
     }
 
     #[test]
     fn test_display_tuple_proj_index() {
         let expr = Expr::TupleProj(Box::new(Expr::Var("pair".to_string())), 1);
-        assert_eq!(format!("{}", expr), "pair.1");
+        assert_eq!(format!("{expr}"), "pair.1");
     }
 
     #[test]
@@ -789,6 +788,6 @@ mod tests {
             )),
             1,
         );
-        assert_eq!(format!("{}", expr), "((1, 2), 3).0.1");
+        assert_eq!(format!("{expr}"), "((1, 2), 3).0.1");
     }
 }
