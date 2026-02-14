@@ -94,6 +94,47 @@ where
     identifier().map(Expr::Var)
 }
 
+/// Parse a tuple or parenthesized expression
+/// This handles:
+/// - () -> empty tuple
+/// - (expr) -> parenthesized expression (not a tuple)
+/// - (expr, expr, ...) -> tuple with 2+ elements
+fn tuple_or_paren<Input>() -> impl Parser<Input, Output = Expr>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    between(
+        token('(').skip(spaces()),
+        token(')'),
+        // Try to parse comma-separated expressions
+        (
+            optional(expr().skip(spaces())),
+            many(token(',').skip(spaces()).with(expr().skip(spaces()))),
+        )
+            .map(|(first_opt, rest): (Option<Expr>, Vec<Expr>)| {
+                match first_opt {
+                    None => {
+                        // Empty parens: ()
+                        Expr::Tuple(vec![])
+                    }
+                    Some(first) => {
+                        if rest.is_empty() {
+                            // Single element with no comma: (expr)
+                            // This is a parenthesized expression, not a tuple
+                            first
+                        } else {
+                            // Multiple elements: (expr, expr, ...)
+                            let mut elements = vec![first];
+                            elements.extend(rest);
+                            Expr::Tuple(elements)
+                        }
+                    }
+                }
+            }),
+    )
+}
+
 parser! {
     fn atom[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -102,11 +143,7 @@ parser! {
             attempt(bool_literal()),
             attempt(int()),
             attempt(variable()),
-            attempt(between(
-                token('(').skip(spaces()),
-                token(')'),
-                expr().skip(spaces()),
-            )),
+            attempt(tuple_or_paren()),
         ))
     }
 }
@@ -197,30 +234,54 @@ parser! {
     }
 }
 
-/// Parse a pattern for pattern matching
-fn pattern<Input>() -> impl Parser<Input, Output = Pattern>
-where
-    Input: Stream<Token = char>,
-    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
-{
-    choice((
-        // Wildcard pattern: _
-        attempt(token('_').skip(combine::not_followed_by(alpha_num().or(token('_')))).map(|_| Pattern::Wildcard)),
-        // Boolean literal pattern: true, false
-        attempt(string("true").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(true)))),
-        attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
-        // Integer literal pattern: 0, 1, 42, -10
-        attempt({
-            let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
-            (optional(token('-')), number)
-                .map(|(sign, n)| {
-                    let value = if sign.is_some() { -n } else { n };
-                    Pattern::Literal(Literal::Int(value))
-                })
-        }),
-        // Variable pattern: x, n, acc (any identifier)
-        identifier().map(Pattern::Var),
-    ))
+parser! {
+    fn pattern[Input]()(Input) -> Pattern
+    where [Input: Stream<Token = char>]
+    {
+        choice((
+            // Tuple pattern: (p1, p2, ...)
+            attempt(between(
+                token('(').skip(spaces()),
+                token(')'),
+                (
+                    optional(pattern().skip(spaces())),
+                    many(token(',').skip(spaces()).with(pattern().skip(spaces()))),
+                )
+                    .map(|(first_opt, rest): (Option<Pattern>, Vec<Pattern>)| {
+                        match first_opt {
+                            None => {
+                                // Empty tuple pattern: ()
+                                Pattern::Tuple(vec![])
+                            }
+                            Some(first) => {
+                                // Tuple with elements: (p1, p2, ...)
+                                // Note: We treat (p) as a tuple pattern, not a parenthesized pattern
+                                // This is different from expressions where (e) is parenthesized
+                                let mut patterns = vec![first];
+                                patterns.extend(rest);
+                                Pattern::Tuple(patterns)
+                            }
+                        }
+                    }),
+            )),
+            // Wildcard pattern: _
+            attempt(token('_').skip(combine::not_followed_by(alpha_num().or(token('_')))).map(|_| Pattern::Wildcard)),
+            // Boolean literal pattern: true, false
+            attempt(string("true").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(true)))),
+            attempt(string("false").skip(combine::not_followed_by(alpha_num())).map(|_| Pattern::Literal(Literal::Bool(false)))),
+            // Integer literal pattern: 0, 1, 42, -10
+            attempt({
+                let number = many1(combine::parser::char::digit()).map(|s: String| s.parse::<i64>().unwrap());
+                (optional(token('-')), number)
+                    .map(|(sign, n)| {
+                        let value = if sign.is_some() { -n } else { n };
+                        Pattern::Literal(Literal::Int(value))
+                    })
+            }),
+            // Variable pattern: x, n, acc (any identifier)
+            identifier().map(Pattern::Var),
+        ))
+    }
 }
 
 parser! {
@@ -266,10 +327,25 @@ parser! {
 }
 
 parser! {
+    fn proj_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        (
+            primary().skip(spaces()),
+            many(token('.').with(many1(combine::parser::char::digit()).map(|s: String| s.parse::<usize>().unwrap())))
+        )
+            .map(|(base, indices): (Expr, Vec<usize>)| {
+                indices.into_iter()
+                    .fold(base, |expr, index| Expr::TupleProj(Box::new(expr), index))
+            })
+    }
+}
+
+parser! {
     fn app_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
-        (primary().skip(spaces()), many(primary().skip(spaces())))
+        (proj_expr().skip(spaces()), many(proj_expr().skip(spaces())))
             .map(|(func, args): (Expr, Vec<Expr>)| {
                 args.into_iter()
                     .fold(func, |f, arg| Expr::App(Box::new(f), Box::new(arg)))
@@ -984,4 +1060,208 @@ mod tests {
         let result = parse("match x | 0 -> 1");
         assert!(result.is_err());
     }
+
+    // Test tuple parsing
+    #[test]
+    fn test_parse_tuple_empty() {
+        let result = parse("()");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert_eq!(expr, Expr::Tuple(vec![]));
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_two_elements() {
+        let result = parse("(1, 2)");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert_eq!(expr, Expr::Tuple(vec![Expr::Int(1), Expr::Int(2)]));
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_three_elements() {
+        let result = parse("(1, 2, 3)");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert_eq!(
+                expr,
+                Expr::Tuple(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)])
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_mixed_types() {
+        let result = parse("(42, true, x)");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert_eq!(
+                expr,
+                Expr::Tuple(vec![Expr::Int(42), Expr::Bool(true), Expr::Var("x".to_string())])
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_nested() {
+        let result = parse("((1, 2), (3, 4))");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert_eq!(
+                expr,
+                Expr::Tuple(vec![
+                    Expr::Tuple(vec![Expr::Int(1), Expr::Int(2)]),
+                    Expr::Tuple(vec![Expr::Int(3), Expr::Int(4)]),
+                ])
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_parenthesized_expr() {
+        // Single element without comma should be parenthesized expr, not tuple
+        let result = parse("(42)");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert_eq!(expr, Expr::Int(42));
+        }
+    }
+
+    #[test]
+    fn test_parse_parenthesized_complex() {
+        let result = parse("(1 + 2)");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert!(matches!(expr, Expr::BinOp(_, _, _)));
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_with_spaces() {
+        let result = parse("( 1 , 2 , 3 )");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert_eq!(
+                expr,
+                Expr::Tuple(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)])
+            );
+        }
+    }
+
+    // Test tuple projection parsing
+    #[test]
+    fn test_parse_tuple_proj_simple() {
+        let result = parse("t.0");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert_eq!(
+                expr,
+                Expr::TupleProj(Box::new(Expr::Var("t".to_string())), 0)
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_proj_index_1() {
+        let result = parse("pair.1");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert_eq!(
+                expr,
+                Expr::TupleProj(Box::new(Expr::Var("pair".to_string())), 1)
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_proj_chained() {
+        let result = parse("t.0.1");
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            assert_eq!(
+                expr,
+                Expr::TupleProj(
+                    Box::new(Expr::TupleProj(Box::new(Expr::Var("t".to_string())), 0)),
+                    1
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_tuple_proj_nested_tuple() {
+        let result = parse("((1, 2), 3).0.1");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_tuple_proj_with_let() {
+        let result = parse("let t = (10, 20) in t.0");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_tuple_in_let() {
+        let result = parse("let pair = (42, true) in pair");
+        assert!(result.is_ok());
+    }
+
+    // Test pattern matching with tuples
+    #[test]
+    fn test_parse_pattern_tuple_simple() {
+        let result = parse("match (1, 2) with | (x, y) -> x + y");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_pattern_tuple_with_literal() {
+        let result = parse("match p with | (0, 0) -> 0 | (x, y) -> x");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_pattern_tuple_nested() {
+        let result = parse("match t with | ((a, b), c) -> a");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_pattern_tuple_with_wildcard() {
+        let result = parse("match t with | (x, _) -> x");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_pattern_tuple_empty() {
+        let result = parse("match t with | () -> 0");
+        assert!(result.is_ok());
+    }
+
+    // Test complex combinations
+    #[test]
+    fn test_parse_tuple_function_return() {
+        let result = parse("fun x -> (x, x + 1)");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_tuple_in_app() {
+        let result = parse("f (1, 2)");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_tuple_proj_in_binop() {
+        let result = parse("t.0 + t.1");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_tuple_complex() {
+        let result = parse("let swap = fun p -> (p.1, p.0) in swap (5, 10)");
+        assert!(result.is_ok());
+    }
 }
+
