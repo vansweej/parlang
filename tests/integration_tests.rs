@@ -669,15 +669,16 @@ fn test_rec_even_odd() {
 
 #[test]
 fn test_rec_tail_call_optimization() {
-    // Test simple tail recursion with smaller number
-    let sum = r#"
-        let sum_helper = rec helper -> fun acc -> fun n ->
+    // Test that tail call optimization prevents stack overflow for deep recursion
+    // Uses a simple countdown function that recurses 1000 times
+    let countdown = r#"
+        (rec countdown -> fun n ->
             if n == 0
-            then acc
-            else helper (acc + n) (n - 1)
-        in sum_helper 0 100
+            then 0
+            else countdown (n - 1)
+        ) 1000
     "#;
-    assert_eq!(parse_and_eval(sum), Ok(Value::Int(5050)));
+    assert_eq!(parse_and_eval(countdown), Ok(Value::Int(0)));
 }
 
 #[test]

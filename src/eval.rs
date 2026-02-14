@@ -146,7 +146,24 @@ fn eval_with_tco(
                 // Not a tail call to self - evaluate normally and return
                 break eval(&current_expr, &current_env);
             }
-            // For if expressions, we can't do TCO easily, so just evaluate
+            // Handle if expressions - evaluate condition and continue with the appropriate branch
+            Expr::If(cond, then_branch, else_branch) => {
+                let cond_val = eval(cond, &current_env)?;
+                match cond_val {
+                    Value::Bool(true) => {
+                        current_expr = (**then_branch).clone();
+                        continue;
+                    }
+                    Value::Bool(false) => {
+                        current_expr = (**else_branch).clone();
+                        continue;
+                    }
+                    _ => return Err(EvalError::TypeError(
+                        "if condition must evaluate to a boolean".to_string(),
+                    )),
+                }
+            }
+            // For other expressions, evaluate normally and return
             _ => break eval(&current_expr, &current_env),
         }
     }
