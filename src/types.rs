@@ -15,6 +15,13 @@ pub enum Type {
     /// Record type: { field1: Type1, field2: Type2, ... }
     /// Uses HashMap for O(1) field lookup during type checking
     Record(std::collections::HashMap<String, Type>),
+    /// Record type with row polymorphism: { field1: Type1, field2: Type2 | r }
+    /// The row variable represents "the rest of the fields"
+    /// This enables functions like `fun r -> r.field` to work with any record having that field
+    RecordRow(std::collections::HashMap<String, Type>, RowVar),
+    /// Row variable (for row polymorphism): ρ
+    /// Represents an unknown set of record fields
+    Row(RowVar),
     /// Generic sum type: Type constructor applied to type arguments
     /// E.g., Option Int, List Bool, Either Int Bool
     /// First element is the type constructor name, second is the list of type arguments
@@ -25,11 +32,18 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeVar(pub usize);
 
+/// Row variable identifier for row polymorphism
+/// Represents "the rest of the fields" in a record type
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct RowVar(pub usize);
+
 /// Type scheme for polymorphic types: ∀α.τ
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeScheme {
     /// Quantified type variables
     pub vars: Vec<TypeVar>,
+    /// Quantified row variables
+    pub row_vars: Vec<RowVar>,
     /// The type
     pub ty: Type,
 }
@@ -61,6 +75,24 @@ impl fmt::Display for Type {
                 }
                 write!(f, "}}")
             }
+            Type::RecordRow(fields, row) => {
+                write!(f, "{{")?;
+                // Sort fields by name for consistent display
+                let mut sorted: Vec<_> = fields.iter().collect();
+                sorted.sort_by_key(|(name, _)| *name);
+                
+                for (i, (name, ty)) in sorted.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {ty}")?;
+                }
+                if !fields.is_empty() {
+                    write!(f, " | ")?;
+                }
+                write!(f, "r{}}}", row.0)
+            }
+            Type::Row(row) => write!(f, "r{}", row.0),
             Type::SumType(name, args) => {
                 write!(f, "{name}")?;
                 if !args.is_empty() {
@@ -76,15 +108,24 @@ impl fmt::Display for Type {
 
 impl fmt::Display for TypeScheme {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.vars.is_empty() {
+        if self.vars.is_empty() && self.row_vars.is_empty() {
             write!(f, "{}", self.ty)
         } else {
             write!(f, "forall ")?;
-            for (i, var) in self.vars.iter().enumerate() {
-                if i > 0 {
+            let mut first = true;
+            for var in self.vars.iter() {
+                if !first {
                     write!(f, ", ")?;
                 }
                 write!(f, "t{}", var.0)?;
+                first = false;
+            }
+            for row_var in self.row_vars.iter() {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                write!(f, "r{}", row_var.0)?;
+                first = false;
             }
             write!(f, ". {}", self.ty)
         }
@@ -125,10 +166,12 @@ mod tests {
     fn test_type_scheme_equality() {
         let scheme1 = TypeScheme {
             vars: vec![TypeVar(0)],
+            row_vars: vec![],
             ty: Type::Var(TypeVar(0)),
         };
         let scheme2 = TypeScheme {
             vars: vec![TypeVar(0)],
+            row_vars: vec![],
             ty: Type::Var(TypeVar(0)),
         };
         assert_eq!(scheme1, scheme2);
@@ -180,6 +223,7 @@ mod tests {
     fn test_display_type_scheme_monomorphic() {
         let scheme = TypeScheme {
             vars: vec![],
+            row_vars: vec![],
             ty: Type::Int,
         };
         assert_eq!(format!("{scheme}"), "Int");
@@ -189,6 +233,7 @@ mod tests {
     fn test_display_type_scheme_polymorphic() {
         let scheme = TypeScheme {
             vars: vec![TypeVar(0)],
+            row_vars: vec![],
             ty: Type::Fun(
                 Box::new(Type::Var(TypeVar(0))),
                 Box::new(Type::Var(TypeVar(0))),
@@ -201,6 +246,7 @@ mod tests {
     fn test_display_type_scheme_multiple_vars() {
         let scheme = TypeScheme {
             vars: vec![TypeVar(0), TypeVar(1)],
+            row_vars: vec![],
             ty: Type::Fun(
                 Box::new(Type::Var(TypeVar(0))),
                 Box::new(Type::Var(TypeVar(1))),
@@ -369,5 +415,110 @@ mod tests {
         assert_eq!(ty1, ty2);
         assert_ne!(ty1, ty3); // Different type argument
         assert_ne!(ty1, ty4); // Different type constructor
+    }
+
+    // Tests for row polymorphism
+    #[test]
+    fn test_row_var_equality() {
+        assert_eq!(RowVar(0), RowVar(0));
+        assert_ne!(RowVar(0), RowVar(1));
+    }
+
+    #[test]
+    fn test_row_var_ordering() {
+        assert!(RowVar(0) < RowVar(1));
+        assert!(RowVar(5) > RowVar(3));
+    }
+
+    #[test]
+    fn test_display_row() {
+        let ty = Type::Row(RowVar(0));
+        assert_eq!(format!("{ty}"), "r0");
+        
+        let ty = Type::Row(RowVar(42));
+        assert_eq!(format!("{ty}"), "r42");
+    }
+
+    #[test]
+    fn test_display_record_row() {
+        let mut fields = std::collections::HashMap::new();
+        fields.insert("name".to_string(), Type::Int);
+        let ty = Type::RecordRow(fields, RowVar(0));
+        assert_eq!(format!("{ty}"), "{name: Int | r0}");
+    }
+
+    #[test]
+    fn test_display_record_row_multiple_fields() {
+        let mut fields = std::collections::HashMap::new();
+        fields.insert("name".to_string(), Type::Int);
+        fields.insert("age".to_string(), Type::Bool);
+        let ty = Type::RecordRow(fields, RowVar(1));
+        // Fields are sorted alphabetically
+        assert_eq!(format!("{ty}"), "{age: Bool, name: Int | r1}");
+    }
+
+    #[test]
+    fn test_display_record_row_empty() {
+        let fields = std::collections::HashMap::new();
+        let ty = Type::RecordRow(fields, RowVar(2));
+        assert_eq!(format!("{ty}"), "{r2}");
+    }
+
+    #[test]
+    fn test_record_row_equality() {
+        let mut fields1 = std::collections::HashMap::new();
+        fields1.insert("name".to_string(), Type::Int);
+        let ty1 = Type::RecordRow(fields1.clone(), RowVar(0));
+        let ty2 = Type::RecordRow(fields1, RowVar(0));
+        assert_eq!(ty1, ty2);
+    }
+
+    #[test]
+    fn test_record_row_inequality() {
+        let mut fields1 = std::collections::HashMap::new();
+        fields1.insert("name".to_string(), Type::Int);
+        let ty1 = Type::RecordRow(fields1.clone(), RowVar(0));
+        
+        let mut fields2 = std::collections::HashMap::new();
+        fields2.insert("name".to_string(), Type::Bool);
+        let ty2 = Type::RecordRow(fields2, RowVar(0));
+        
+        let ty3 = Type::RecordRow(fields1, RowVar(1));
+        
+        assert_ne!(ty1, ty2); // Different field type
+        assert_ne!(ty1, ty3); // Different row variable
+    }
+
+    #[test]
+    fn test_display_type_scheme_with_row_vars() {
+        let scheme = TypeScheme {
+            vars: vec![TypeVar(0)],
+            row_vars: vec![RowVar(0)],
+            ty: Type::Fun(
+                Box::new(Type::RecordRow(
+                    {
+                        let mut fields = std::collections::HashMap::new();
+                        fields.insert("age".to_string(), Type::Var(TypeVar(0)));
+                        fields
+                    },
+                    RowVar(0),
+                )),
+                Box::new(Type::Var(TypeVar(0))),
+            ),
+        };
+        assert_eq!(format!("{scheme}"), "forall t0, r0. {age: t0 | r0} -> t0");
+    }
+
+    #[test]
+    fn test_display_type_scheme_only_row_vars() {
+        let scheme = TypeScheme {
+            vars: vec![],
+            row_vars: vec![RowVar(0), RowVar(1)],
+            ty: Type::Fun(
+                Box::new(Type::Row(RowVar(0))),
+                Box::new(Type::Row(RowVar(1))),
+            ),
+        };
+        assert_eq!(format!("{scheme}"), "forall r0, r1. r0 -> r1");
     }
 }
