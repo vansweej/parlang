@@ -420,6 +420,18 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             // Infer the type of the body with the extended environment
             infer(body, &mut new_env)
         }
+        
+        Expr::Record(_fields) => {
+            // For now, return a type variable for records
+            // Full implementation will add proper record types
+            Ok((env.fresh_var(), HashMap::new()))
+        }
+        
+        Expr::FieldAccess(_record, _field) => {
+            // For now, return a type variable for field access
+            // Full implementation will check record has the field
+            Ok((env.fresh_var(), HashMap::new()))
+        }
     }
 }
 

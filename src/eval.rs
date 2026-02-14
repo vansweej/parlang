@@ -16,6 +16,9 @@ pub enum Value {
     RecClosure(String, String, Expr, Environment),
     /// Tuple of values
     Tuple(Vec<Value>),
+    /// Record value: field name -> value
+    /// Uses HashMap for O(1) field access at runtime
+    Record(HashMap<String, Value>),
 }
 
 impl fmt::Display for Value {
@@ -34,6 +37,20 @@ impl fmt::Display for Value {
                     write!(f, "{val}")?;
                 }
                 write!(f, ")")
+            }
+            Value::Record(fields) => {
+                write!(f, "{{")?;
+                // Sort fields by name for consistent display
+                let mut sorted_fields: Vec<_> = fields.iter().collect();
+                sorted_fields.sort_by_key(|(name, _)| *name);
+                
+                for (i, (name, value)) in sorted_fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {value}")?;
+                }
+                write!(f, "}}")
             }
         }
     }
@@ -92,6 +109,10 @@ pub enum EvalError {
     DivisionByZero,
     LoadError(String),
     IndexOutOfBounds(String),
+    /// Field not found in record: field name, available fields
+    FieldNotFound(String, Vec<String>),
+    /// Expected record but got a different type
+    RecordExpected(String),
 }
 
 impl fmt::Display for EvalError {
@@ -102,6 +123,12 @@ impl fmt::Display for EvalError {
             EvalError::DivisionByZero => write!(f, "Division by zero"),
             EvalError::LoadError(msg) => write!(f, "Load error: {msg}"),
             EvalError::IndexOutOfBounds(msg) => write!(f, "Index out of bounds: {msg}"),
+            EvalError::FieldNotFound(field, available) => {
+                write!(f, "Field '{field}' not found. Available fields: {available:?}")
+            }
+            EvalError::RecordExpected(got) => {
+                write!(f, "Expected record, got {got}")
+            }
         }
     }
 }
@@ -269,6 +296,34 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
                             None => return None,
                         }
                     }
+                    Some(current_env)
+                }
+                _ => None,
+            }
+        }
+        Pattern::Record(pattern_fields) => {
+            // Record pattern can be partial - only matches specified fields
+            match value {
+                Value::Record(value_fields) => {
+                    let mut current_env = env.clone();
+                    
+                    // Match each field in the pattern
+                    for (field_name, field_pattern) in pattern_fields {
+                        match value_fields.get(field_name) {
+                            Some(field_value) => {
+                                // Recursively match the field
+                                match match_pattern(field_pattern, field_value, &current_env) {
+                                    Some(new_env) => current_env = new_env,
+                                    None => return None,
+                                }
+                            }
+                            None => {
+                                // Field not found in value record - pattern doesn't match
+                                return None;
+                            }
+                        }
+                    }
+                    
                     Some(current_env)
                 }
                 _ => None,
@@ -461,6 +516,39 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             // Type aliases are transparent at runtime - they're only used during type checking
             // We simply evaluate the body in the current environment
             eval(body, env)
+        }
+        
+        Expr::Record(fields) => {
+            // Evaluate all field expressions and build the record
+            let mut record = HashMap::new();
+            
+            for (name, expr) in fields {
+                let value = eval(expr, env)?;
+                record.insert(name.clone(), value);
+            }
+            
+            Ok(Value::Record(record))
+        }
+        
+        Expr::FieldAccess(record_expr, field_name) => {
+            // Evaluate the record expression
+            let record_value = eval(record_expr, env)?;
+            
+            // Check that the value is a record and access the field
+            match record_value {
+                Value::Record(fields) => {
+                    fields.get(field_name)
+                        .cloned()
+                        .ok_or_else(|| {
+                            let mut available: Vec<String> = fields.keys().cloned().collect();
+                            available.sort();
+                            EvalError::FieldNotFound(field_name.clone(), available)
+                        })
+                }
+                other => {
+                    Err(EvalError::RecordExpected(format!("{:?}", other)))
+                }
+            }
         }
     }
 }
