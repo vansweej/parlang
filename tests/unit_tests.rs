@@ -32,16 +32,16 @@ fn test_is_tail_call_nested() {
 fn test_dot_write_ast_to_file() {
     // Test writing AST to DOT file
     let expr = parse("1 + 2").unwrap();
-    let temp_file = "/tmp/test_dot_output.dot";
+    let temp_file = std::env::temp_dir().join("test_dot_output.dot");
     
-    let result = dot::write_ast_to_dot_file(&expr, temp_file);
+    let result = dot::write_ast_to_dot_file(&expr, temp_file.to_str().unwrap());
     assert!(result.is_ok());
     
     // Verify file was created
-    assert!(fs::metadata(temp_file).is_ok());
+    assert!(fs::metadata(&temp_file).is_ok());
     
     // Verify file contains valid DOT content
-    let content = fs::read_to_string(temp_file).unwrap();
+    let content = fs::read_to_string(&temp_file).unwrap();
     assert!(content.contains("digraph"));
     assert!(content.contains("BinOp"));
     
@@ -91,16 +91,16 @@ fn test_load_file_not_found() {
 #[test]
 fn test_load_invalid_syntax() {
     // Create a temp file with invalid syntax
-    let temp_file = "/tmp/test_invalid_syntax.par";
-    fs::write(temp_file, "let x = in y").unwrap();
+    let temp_file = std::env::temp_dir().join("test_invalid_syntax.par");
+    fs::write(&temp_file, "let x = in y").unwrap();
     
-    let code = format!("load \"{temp_file}\" in 42");
+    let code = format!("load \"{}\" in 42", temp_file.display());
     let expr = parse(&code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env);
     
     // Cleanup first
-    fs::remove_file(temp_file).ok();
+    fs::remove_file(&temp_file).ok();
     
     assert!(matches!(result, Err(EvalError::LoadError(_))));
 }

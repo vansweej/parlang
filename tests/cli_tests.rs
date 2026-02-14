@@ -2,21 +2,22 @@
 /// These tests verify the command-line interface functionality
 use std::fs;
 use std::process::Command;
+use std::env;
 
 #[test]
 fn test_cli_file_execution() {
     // Create a temporary test file
-    let test_file = "/tmp/test_program.par";
-    fs::write(test_file, "1 + 2 + 3").unwrap();
+    let test_file = env::temp_dir().join("test_program.par");
+    fs::write(&test_file, "1 + 2 + 3").unwrap();
 
     // Execute the file with the CLI
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file])
+        .args(&["run", "--quiet", "--", test_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
     // Clean up
-    let _ = fs::remove_file(test_file);
+    let _ = fs::remove_file(&test_file);
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -26,8 +27,9 @@ fn test_cli_file_execution() {
 #[test]
 fn test_cli_file_not_found() {
     // Try to execute a non-existent file
+    let nonexistent = env::temp_dir().join("nonexistent_file.par");
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", "/tmp/nonexistent_file.par"])
+        .args(&["run", "--quiet", "--", nonexistent.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
@@ -39,16 +41,16 @@ fn test_cli_file_not_found() {
 #[test]
 fn test_cli_parse_error() {
     // Create a temporary test file with invalid syntax
-    let test_file = "/tmp/test_parse_error.par";
-    fs::write(test_file, "let x = in y").unwrap();
+    let test_file = env::temp_dir().join("test_parse_error.par");
+    fs::write(&test_file, "let x = in y").unwrap();
 
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file])
+        .args(&["run", "--quiet", "--", test_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
     // Clean up
-    let _ = fs::remove_file(test_file);
+    let _ = fs::remove_file(&test_file);
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -58,16 +60,16 @@ fn test_cli_parse_error() {
 #[test]
 fn test_cli_eval_error() {
     // Create a temporary test file with runtime error
-    let test_file = "/tmp/test_eval_error.par";
-    fs::write(test_file, "1 / 0").unwrap();
+    let test_file = env::temp_dir().join("test_eval_error.par");
+    fs::write(&test_file, "1 / 0").unwrap();
 
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file])
+        .args(&["run", "--quiet", "--", test_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
     // Clean up
-    let _ = fs::remove_file(test_file);
+    let _ = fs::remove_file(&test_file);
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -77,21 +79,28 @@ fn test_cli_eval_error() {
 #[test]
 fn test_cli_dump_ast() {
     // Create a temporary test file
-    let test_file = "/tmp/test_ast.par";
-    let dot_file = "/tmp/test_ast.dot";
-    fs::write(test_file, "1 + 2").unwrap();
+    let test_file = env::temp_dir().join("test_ast.par");
+    let dot_file = env::temp_dir().join("test_ast.dot");
+    fs::write(&test_file, "1 + 2").unwrap();
 
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file, "--dump-ast", dot_file])
+        .args(&[
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--dump-ast",
+            dot_file.to_str().unwrap(),
+        ])
         .output()
         .expect("Failed to execute command");
 
     // Check that DOT file was created
-    let dot_exists = fs::metadata(dot_file).is_ok();
+    let dot_exists = fs::metadata(&dot_file).is_ok();
 
     // Clean up
-    let _ = fs::remove_file(test_file);
-    let _ = fs::remove_file(dot_file);
+    let _ = fs::remove_file(&test_file);
+    let _ = fs::remove_file(&dot_file);
 
     assert!(output.status.success());
     assert!(dot_exists, "DOT file should have been created");
@@ -103,8 +112,9 @@ fn test_cli_dump_ast() {
 #[test]
 fn test_cli_dump_ast_without_file() {
     // Try to dump AST without providing a source file
+    let dot_file = env::temp_dir().join("test.dot");
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", "--dump-ast", "/tmp/test.dot"])
+        .args(&["run", "--quiet", "--", "--dump-ast", dot_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
@@ -116,7 +126,7 @@ fn test_cli_dump_ast_without_file() {
 #[test]
 fn test_cli_complex_program() {
     // Test a more complex program
-    let test_file = "/tmp/test_complex.par";
+    let test_file = env::temp_dir().join("test_complex.par");
     let program = r"
         let factorial = rec f -> fun n ->
             if n == 0
@@ -124,15 +134,15 @@ fn test_cli_complex_program() {
             else n * f (n - 1)
         in factorial 5
     ";
-    fs::write(test_file, program).unwrap();
+    fs::write(&test_file, program).unwrap();
 
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file])
+        .args(&["run", "--quiet", "--", test_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
     // Clean up
-    let _ = fs::remove_file(test_file);
+    let _ = fs::remove_file(&test_file);
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -142,22 +152,22 @@ fn test_cli_complex_program() {
 #[test]
 fn test_cli_multiline_program() {
     // Test a multiline program
-    let test_file = "/tmp/test_multiline.par";
+    let test_file = env::temp_dir().join("test_multiline.par");
     let program = r"
 let x = 10 in
 let y = 20 in
 let z = 30 in
 x + y + z
     ";
-    fs::write(test_file, program).unwrap();
+    fs::write(&test_file, program).unwrap();
 
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file])
+        .args(&["run", "--quiet", "--", test_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
     // Clean up
-    let _ = fs::remove_file(test_file);
+    let _ = fs::remove_file(&test_file);
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
