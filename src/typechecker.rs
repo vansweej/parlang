@@ -263,6 +263,10 @@ fn apply_subst_with_visited(
             let new_elem_ty = apply_subst_with_visited(subst, elem_ty, visited);
             Type::Array(Box::new(new_elem_ty), *size)
         }
+        Type::Ref(inner_ty) => {
+            let new_inner_ty = apply_subst_with_visited(subst, inner_ty, visited);
+            Type::Ref(Box::new(new_inner_ty))
+        }
     }
 }
 
@@ -346,6 +350,10 @@ fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
             let new_elem_ty = apply_row_subst(subst, elem_ty);
             Type::Array(Box::new(new_elem_ty), *size)
         }
+        Type::Ref(inner_ty) => {
+            let new_inner_ty = apply_row_subst(subst, inner_ty);
+            Type::Ref(Box::new(new_inner_ty))
+        }
     }
 }
 
@@ -403,6 +411,9 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
         Type::Array(elem_ty, _size) => {
             free_type_vars(elem_ty)
         }
+        Type::Ref(inner_ty) => {
+            free_type_vars(inner_ty)
+        }
     }
 }
 
@@ -444,6 +455,9 @@ fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
         }
         Type::Array(elem_ty, _size) => {
             free_row_vars(elem_ty)
+        }
+        Type::Ref(inner_ty) => {
+            free_row_vars(inner_ty)
         }
     }
 }
@@ -1340,6 +1354,77 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                     ))
                 }
             }
+        }
+        
+        Expr::Ref(expr) => {
+            // Type of ref expr is Ref T where T is the type of expr
+            let (ty, subst) = infer(expr, env)?;
+            Ok((Type::Ref(Box::new(ty)), subst))
+        }
+        
+        Expr::Deref(expr) => {
+            // Type of !ref_expr is T where ref_expr has type Ref T
+            let (ref_ty, subst) = infer(expr, env)?;
+            
+            // Create a fresh type variable for the inner type
+            let inner_ty = env.fresh_var();
+            let expected_ref_ty = Type::Ref(Box::new(inner_ty.clone()));
+            
+            // Unify the inferred type with Ref inner_ty
+            let ref_ty_subst = apply_subst(&subst, &ref_ty);
+            let s2 = match &ref_ty_subst {
+                Type::Ref(actual_inner) => {
+                    unify(&inner_ty, actual_inner)?
+                }
+                Type::Var(_) => {
+                    unify(&ref_ty_subst, &expected_ref_ty)?
+                }
+                _ => {
+                    return Err(TypeError::UnificationError(
+                        ref_ty_subst,
+                        expected_ref_ty
+                    ));
+                }
+            };
+            
+            let final_subst = compose_subst(&s2, &subst);
+            Ok((apply_subst(&final_subst, &inner_ty), final_subst))
+        }
+        
+        Expr::RefAssign(ref_expr, value_expr) => {
+            // Type check: ref_expr must have type Ref T, value_expr must have type T
+            // Result type is unit ()
+            let (ref_ty, s1) = infer(ref_expr, env)?;
+            let (val_ty, s2) = infer(value_expr, env)?;
+            let mut subst = compose_subst(&s2, &s1);
+            
+            // Extract the inner type from the reference
+            let ref_ty_subst = apply_subst(&subst, &ref_ty);
+            let inner_ty = match &ref_ty_subst {
+                Type::Ref(inner) => inner.as_ref().clone(),
+                Type::Var(_) => {
+                    // If it's a type variable, create a fresh variable for the inner type
+                    let fresh_inner = env.fresh_var();
+                    let expected_ref_ty = Type::Ref(Box::new(fresh_inner.clone()));
+                    let s3 = unify(&ref_ty_subst, &expected_ref_ty)?;
+                    subst = compose_subst(&s3, &subst);
+                    fresh_inner
+                }
+                _ => {
+                    return Err(TypeError::UnificationError(
+                        ref_ty_subst,
+                        Type::Ref(Box::new(env.fresh_var()))
+                    ));
+                }
+            };
+            
+            // Unify the value type with the inner type of the reference
+            let val_ty_subst = apply_subst(&subst, &val_ty);
+            let s3 = unify(&val_ty_subst, &apply_subst(&subst, &inner_ty))?;
+            subst = compose_subst(&s3, &subst);
+            
+            // Return unit type
+            Ok((Type::Unit, subst))
         }
     }
 }

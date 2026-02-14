@@ -2,10 +2,20 @@
 /// This module implements the runtime evaluation of `ParLang` expressions
 use crate::ast::{BinOp, Expr, Literal, Pattern};
 use crate::exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 use std::path::Path;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Global counter for generating unique reference IDs
+static NEXT_REF_ID: AtomicUsize = AtomicUsize::new(0);
+
+fn next_ref_id() -> usize {
+    NEXT_REF_ID.fetch_add(1, Ordering::SeqCst)
+}
 
 /// Runtime values in the language
 #[derive(Debug, Clone, PartialEq)]
@@ -33,6 +43,11 @@ pub enum Value {
     /// e.g., [|1, 2, 3|] -> Array(3, vec![Int(1), Int(2), Int(3)])
     /// All elements must be of the same type
     Array(usize, Vec<Value>),
+    /// Reference to a value
+    /// Reference: (unique_id, RefCell for interior mutability)
+    /// e.g., ref 42 -> Reference(0, RefCell(Int(42)))
+    /// Allows mutation through a reference
+    Reference(usize, Rc<RefCell<Value>>),
 }
 
 impl fmt::Display for Value {
@@ -101,6 +116,9 @@ impl fmt::Display for Value {
                 }
                 write!(f, "|]")?;
                 write!(f, " (size: {size})")
+            }
+            Value::Reference(id, cell) => {
+                write!(f, "<ref #{id}: {}>", cell.borrow())
             }
         }
     }
@@ -837,6 +855,43 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                 }
                 _ => Err(EvalError::TypeError(
                     "Array indexing requires an array".to_string()
+                )),
+            }
+        }
+        
+        Expr::Ref(expr) => {
+            // Create a reference to a value
+            let val = eval(expr, env)?;
+            let id = next_ref_id();
+            Ok(Value::Reference(id, Rc::new(RefCell::new(val))))
+        }
+        
+        Expr::Deref(expr) => {
+            // Dereference a reference to get the value
+            let ref_val = eval(expr, env)?;
+            match ref_val {
+                Value::Reference(_id, cell) => {
+                    Ok(cell.borrow().clone())
+                }
+                _ => Err(EvalError::TypeError(
+                    "Dereference requires a reference".to_string()
+                )),
+            }
+        }
+        
+        Expr::RefAssign(ref_expr, value_expr) => {
+            // Assign a new value to a reference
+            let ref_val = eval(ref_expr, env)?;
+            let new_val = eval(value_expr, env)?;
+            
+            match ref_val {
+                Value::Reference(_id, cell) => {
+                    *cell.borrow_mut() = new_val;
+                    // Return unit value after assignment
+                    Ok(Value::Tuple(vec![]))
+                }
+                _ => Err(EvalError::TypeError(
+                    "Reference assignment requires a reference".to_string()
                 )),
             }
         }

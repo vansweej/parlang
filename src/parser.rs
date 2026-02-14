@@ -135,7 +135,7 @@ where
         // Reject keywords by returning a failing parser
         if matches!(
             name.as_str(),
-            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with" | "type"
+            "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with" | "type" | "ref"
         ) {
             // Use a parser that will never succeed to reject keywords
             combine::unexpected("keyword").map(move |()| name.clone()).right()
@@ -746,6 +746,18 @@ parser! {
 }
 
 parser! {
+    fn ref_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        (
+            string("ref").skip(spaces()),
+            primary(),
+        )
+            .map(|(_, expr)| Expr::Ref(Box::new(expr)))
+    }
+}
+
+parser! {
     fn primary[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
@@ -758,6 +770,7 @@ parser! {
             attempt(match_expr()),
             attempt(rec_expr()),
             attempt(fun_expr()),
+            attempt(ref_expr()),  // Add ref expression
             attempt(atom()),
         ))
     }
@@ -805,10 +818,24 @@ parser! {
 }
 
 parser! {
+    fn deref_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        choice((
+            // Parse dereference: !expr
+            (token('!').skip(spaces()), proj_expr().skip(spaces()))
+                .map(|(_, expr)| Expr::Deref(Box::new(expr))),
+            // Otherwise just parse projection expression
+            proj_expr()
+        ))
+    }
+}
+
+parser! {
     fn app_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
-        (proj_expr().skip(spaces()), many(proj_expr().skip(spaces())))
+        (deref_expr().skip(spaces()), many(deref_expr().skip(spaces())))
             .map(|(func, args): (Expr, Vec<Expr>)| {
                 // Special handling for constructor applications
                 // If func is a constructor, combine it with all arguments
@@ -952,14 +979,15 @@ parser! {
 /// Parse a complete expression.
 ///
 /// This is the top-level expression parser that handles all expression types.
-/// It starts with the lowest precedence operator (comparisons) and works up.
+/// It starts with the lowest precedence operator (assignment) and works up.
 ///
 /// # Operator Precedence (lowest to highest)
-/// 1. Comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
-/// 2. Addition/Subtraction: `+`, `-`
-/// 3. Multiplication/Division: `*`, `/`
-/// 4. Function Application: `f x y`
-/// 5. Atomic expressions: literals, variables, parenthesized expressions
+/// 1. Assignment: `:=`
+/// 2. Comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
+/// 3. Addition/Subtraction: `+`, `-`
+/// 4. Multiplication/Division: `*`, `/`
+/// 5. Function Application: `f x y`
+/// 6. Atomic expressions: literals, variables, parenthesized expressions
 ///
 /// # Examples
 /// - `1 + 2 * 3` parses as `1 + (2 * 3)` = `7`
@@ -968,7 +996,15 @@ parser! {
     fn expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
-        cmp_expr()
+        // Parse assignment: ref_expr := value_expr
+        (cmp_expr().skip(spaces()), optional(string(":=").skip(spaces()).with(expr())))
+            .map(|(left, rest)| {
+                if let Some(right) = rest {
+                    Expr::RefAssign(Box::new(left), Box::new(right))
+                } else {
+                    left
+                }
+            })
     }
 }
 

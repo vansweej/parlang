@@ -210,6 +210,18 @@ pub enum Expr {
     /// Array indexing: arr[i]
     /// Accesses element at index i (zero-based)
     ArrayIndex(Box<Expr>, Box<Expr>),
+    
+    /// Reference creation: ref expr
+    /// Creates a mutable reference to a value
+    Ref(Box<Expr>),
+    
+    /// Reference dereference: !expr
+    /// Reads the value from a reference
+    Deref(Box<Expr>),
+    
+    /// Reference assignment: ref_expr := value_expr
+    /// Mutates the value stored in a reference
+    RefAssign(Box<Expr>, Box<Expr>),
 }
 
 /// Binary operators
@@ -348,6 +360,9 @@ impl fmt::Display for Expr {
                 write!(f, "|]")
             }
             Expr::ArrayIndex(arr, index) => write!(f, "{arr}[{index}]"),
+            Expr::Ref(expr) => write!(f, "(ref {expr})"),
+            Expr::Deref(expr) => write!(f, "(!{expr})"),
+            Expr::RefAssign(ref_expr, value) => write!(f, "({ref_expr} := {value})"),
         }
     }
 }
