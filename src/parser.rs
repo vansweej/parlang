@@ -699,6 +699,21 @@ parser! {
     }
 }
 
+/// Parse multiplication and division expressions.
+///
+/// This parser implements left-associative binary operations with equal precedence:
+/// - `*` (multiplication)
+/// - `/` (division)
+///
+/// # Precedence
+/// Higher precedence than addition/subtraction, lower than function application.
+///
+/// # Associativity
+/// Left-associative: `a * b * c` parses as `(a * b) * c`
+///
+/// # Examples
+/// - `2 * 3` -> `BinOp(Mul, 2, 3)`
+/// - `10 / 2 / 5` -> `BinOp(Div, BinOp(Div, 10, 2), 5)` = `1`
 parser! {
     fn mul_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -721,6 +736,21 @@ parser! {
     }
 }
 
+/// Parse addition and subtraction expressions.
+///
+/// This parser implements left-associative binary operations with equal precedence:
+/// - `+` (addition)
+/// - `-` (subtraction)
+///
+/// # Precedence
+/// Lower precedence than multiplication/division, higher than comparisons.
+///
+/// # Associativity
+/// Left-associative: `a + b - c` parses as `(a + b) - c`
+///
+/// # Examples
+/// - `1 + 2` -> `BinOp(Add, 1, 2)`
+/// - `10 - 3 + 2` -> `BinOp(Add, BinOp(Sub, 10, 3), 2)` = `9`
 parser! {
     fn add_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -743,6 +773,27 @@ parser! {
     }
 }
 
+/// Parse comparison expressions.
+///
+/// This parser implements comparison operations:
+/// - `==` (equality)
+/// - `!=` (inequality)
+/// - `<` (less than)
+/// - `<=` (less than or equal)
+/// - `>` (greater than)
+/// - `>=` (greater than or equal)
+///
+/// # Precedence
+/// Lowest precedence - comparisons are evaluated last.
+///
+/// # Associativity
+/// Non-associative: comparison operators cannot be chained.
+/// `1 < 2 < 3` is not allowed (unlike in Python).
+///
+/// # Examples
+/// - `5 > 3` -> `BinOp(Gt, 5, 3)` -> `true`
+/// - `1 == 1` -> `BinOp(Eq, 1, 1)` -> `true`
+/// - `1 < 2 < 3` -> Parse error (comparisons don't chain)
 parser! {
     fn cmp_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -767,6 +818,21 @@ parser! {
     }
 }
 
+/// Parse a complete expression.
+///
+/// This is the top-level expression parser that handles all expression types.
+/// It starts with the lowest precedence operator (comparisons) and works up.
+///
+/// # Operator Precedence (lowest to highest)
+/// 1. Comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
+/// 2. Addition/Subtraction: `+`, `-`
+/// 3. Multiplication/Division: `*`, `/`
+/// 4. Function Application: `f x y`
+/// 5. Atomic expressions: literals, variables, parenthesized expressions
+///
+/// # Examples
+/// - `1 + 2 * 3` parses as `1 + (2 * 3)` = `7`
+/// - `f x + 1` parses as `(f x) + 1`
 parser! {
     fn expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]

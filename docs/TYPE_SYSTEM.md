@@ -348,3 +348,156 @@ Type: Int
 ```
 
 The `const` function ignores its second argument and returns the first. It's polymorphic: `forall a, b. a -> b -> a`.
+
+## Known Limitations
+
+While ParLang's type system is robust and well-implemented, there are some known limitations:
+
+### 1. Recursive Functions Not Supported
+
+The type checker cannot currently infer types for recursive functions defined with the `rec` keyword:
+
+```parlang
+rec factorial -> fun n ->
+    if n == 0 then 1 else n * factorial (n - 1)
+# Error: RecursionRequiresAnnotation
+```
+
+**Workaround**: You can still evaluate recursive functions by disabling type checking (don't set `PARLANG_TYPECHECK=1`).
+
+**Why**: Typing recursive functions requires either:
+- Fixpoint types (fix: (a -> a) -> a)
+- Explicit type annotations
+- Or special handling of recursive let-bindings
+
+**Future Plans**: Add support through explicit type annotations or automatic fixpoint typing.
+
+### 2. Pattern Matching Type Checking is Incomplete
+
+While pattern matching works at runtime, the type checker has limited support:
+- Pattern types are assigned fresh type variables
+- No exhaustiveness checking (won't warn about missing cases)
+- No redundancy checking (won't warn about unreachable patterns)
+
+```parlang
+# This typechecks but might fail at runtime if value is 0
+match value with
+| 1 -> "one"
+| 2 -> "two"
+# Missing case for other values - no warning
+```
+
+**Future Plans**: Implement full case analysis with exhaustiveness and redundancy checking.
+
+### 3. No Row Polymorphism for Records
+
+Record field access requires exact type matches:
+
+```parlang
+fun p -> p.age
+# Current type: {age: Int} -> Int (exact match only)
+# Desired type: {age: Int, ...rest} -> Int (row polymorphism)
+```
+
+This means a function expecting `{age: Int}` won't accept `{age: Int, name: String}`.
+
+**Future Plans**: Implement row polymorphism with row type variables.
+
+### 4. No Type Annotations
+
+Users cannot explicitly specify types:
+
+```parlang
+# These are not supported:
+(42 : Int)                    # Type annotation on expression
+fun (x : Int) -> x + 1        # Type annotation on parameter
+let (f : Int -> Int) = ...    # Type annotation on binding
+```
+
+**Benefits of Type Annotations**:
+- Better error messages (errors at annotation, not at use site)
+- Documentation in code
+- Early error detection
+- Can guide inference in ambiguous cases
+
+**Future Plans**: Add syntax for optional type annotations.
+
+### 5. Performance Considerations
+
+The type checker is efficient for typical programs but has some characteristics to be aware of:
+
+- **Environment Cloning**: Each scope creates a new environment through cloning (O(n) where n = number of bindings)
+- **Deep Type Trees**: Deeply nested generic types may slow down inference
+- **Large Programs**: Type inference is roughly O(expression_size × average_type_size)
+
+**For typical ParLang programs**, these are not issues. For very large programs, consider:
+- Breaking into smaller modules
+- Using simpler type structures where possible
+
+## Advanced Topics
+
+### Type Inference Algorithm
+
+ParLang uses Algorithm W, a constraint-based type inference algorithm. For a detailed explanation of how the algorithm works, see [TYPE_INFERENCE.md](TYPE_INFERENCE.md).
+
+Key concepts:
+- **Unification**: Finding substitutions to make types equal
+- **Generalization**: Creating polymorphic type schemes
+- **Instantiation**: Using polymorphic types with fresh variables
+- **Let-Polymorphism**: Enabling polymorphic let-bound variables
+
+### Debugging Type Errors
+
+When you encounter a type error, the error message will tell you:
+1. What type was expected
+2. What type was actually found
+3. Where the types couldn't be unified
+
+**Example**:
+```parlang
+> if 1 then 2 else 3
+Type error: Cannot unify types: Int and Bool
+```
+
+**Explanation**: The `if` expression expected a `Bool` condition, but received `Int` (the value `1`).
+
+**Tips**:
+1. Work backwards from the error location
+2. Check types of intermediate expressions
+3. Use let-bindings to break complex expressions into parts
+4. Remember that type errors may appear far from the actual mistake
+
+### Type System Guarantees
+
+The Hindley-Milner type system provides strong guarantees:
+
+1. **Soundness**: Well-typed programs won't have type errors at runtime
+   - If an expression has type `T`, evaluation will produce a value of type `T` or diverge
+   - Type errors are caught before execution
+
+2. **Principal Types**: Every typeable expression has a most general type
+   - The inferred type is the most general type possible
+   - All other valid types are instances of the principal type
+
+3. **Type Safety**: No runtime type confusion
+   - Can't add a boolean to an integer
+   - Can't apply a non-function
+   - Records can't access non-existent fields
+
+4. **Let-Polymorphism**: Flexible reuse of functions
+   - Functions can work at multiple types in the same program
+   - No need to duplicate code for different types
+
+### Further Reading
+
+For more information about ParLang's type system:
+
+- **[TYPE_INFERENCE.md](TYPE_INFERENCE.md)** - Detailed explanation of the type inference algorithm
+- **[MODULE_TYPECHECKER.md](MODULE_TYPECHECKER.md)** - Implementation details of the type checker
+- **[GENERIC_TYPES.md](GENERIC_TYPES.md)** - Generic/parameterized types and sum types
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Overall system architecture including type checking
+
+Academic references:
+- **Principal Type-Schemes for Functional Programs** (Damas & Milner, 1982)
+- **A Theory of Type Polymorphism in Programming** (Milner, 1978)
+- **Types and Programming Languages** (Pierce, 2002)
