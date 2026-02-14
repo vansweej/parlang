@@ -106,7 +106,7 @@ where
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     (
-        combine::satisfy(|c: char| c.is_uppercase()),
+        combine::parser::char::upper(),
         many::<String, _, _>(alpha_num().or(token('_'))),
     )
         .map(|(first, rest): (char, String)| format!("{first}{rest}"))
@@ -346,19 +346,20 @@ parser! {
         (
             string("type").skip(spaces()),
             raw_identifier().skip(spaces()),  // type name
-            many(attempt(combine::satisfy(|c: char| c.is_lowercase() || c == '_')
-                .and(many::<String, _, _>(alpha_num().or(token('_'))))
-                .map(|(first, rest)| format!("{}{}", first, rest))
-                .skip(spaces()))),  // type parameters
+            // Type parameters: lowercase identifiers
+            many(attempt((
+                combine::parser::char::lower(),
+                many::<String, _, _>(alpha_num().or(token('_')))
+            ).map(|(first, rest)| format!("{}{}", first, rest)).skip(spaces()))),
             token('=').skip(spaces()),
             // Constructors separated by |
             combine::sep_by1(
                 (
                     // Constructor name (must start with uppercase)
-                    combine::satisfy(|c: char| c.is_uppercase())
-                        .and(many::<String, _, _>(alpha_num().or(token('_'))))
-                        .map(|(first, rest)| format!("{}{}", first, rest))
-                        .skip(spaces()),
+                    (
+                        combine::parser::char::upper(),
+                        many::<String, _, _>(alpha_num().or(token('_')))
+                    ).map(|(first, rest)| format!("{}{}", first, rest)).skip(spaces()),
                     // Constructor argument types
                     many(attempt(type_annotation_atom().skip(spaces())))
                 ),
