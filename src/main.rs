@@ -39,7 +39,7 @@ fn main() {
     // Handle REPL command or no arguments
     if cli.command.is_some() || (cli.file.is_none() && cli.dump_ast.is_none()) {
         // REPL mode
-        println!("ParLang - A small ML-alike functional language");
+        println!("ParLang v{} - A small ML-alike functional language", env!("CARGO_PKG_VERSION"));
         println!("Type expressions to evaluate them. Press Ctrl+C to exit.");
         println!();
         repl();

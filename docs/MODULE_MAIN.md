@@ -5,8 +5,8 @@
 The `main.rs` module implements the command-line interface and Read-Eval-Print Loop (REPL) for ParLang. It provides two execution modes: interactive REPL mode for exploring the language and file execution mode for running ParLang programs from `.par` files.
 
 **Location**: `src/main.rs`  
-**Lines of Code**: ~116  
-**Key Functions**: `main()`, `repl()`, `execute()`  
+**Lines of Code**: ~184  
+**Key Functions**: `main()`, `repl()`  
 **External Dependencies**: clap 4.5 (CLI parsing), Standard library (`std::fs`, `std::io`)
 
 ## Purpose

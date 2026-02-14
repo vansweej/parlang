@@ -5,7 +5,7 @@
 The `dot.rs` module provides functionality to convert ParLang Abstract Syntax Trees (ASTs) into Graphviz DOT format for visualization. This allows developers to visualize the structure of ParLang programs, making it easier to understand complex expressions and debug parser behavior.
 
 **Location**: `src/dot.rs`  
-**Lines of Code**: ~400  
+**Lines of Code**: ~483  
 **Key Functions**: `ast_to_dot()`, `write_ast_to_dot_file()`, `expr_to_dot()`, `pattern_to_dot()`  
 **External Dependencies**: None (uses standard library only)
 
