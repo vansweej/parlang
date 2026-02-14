@@ -7,8 +7,9 @@
 
 use clap::{Parser, Subcommand};
 use parlang::{parse, eval, extract_bindings, dot, Environment};
+use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 use std::fs;
-use std::io::{self, Write};
 use std::process;
 
 #[derive(Parser)]
@@ -95,8 +96,7 @@ fn main() {
 
 fn repl() {
     let mut env = Environment::new();
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
+    let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
 
     loop {
         // Accumulate multiline input
@@ -104,22 +104,12 @@ fn repl() {
         let mut is_first_line = true;
 
         loop {
-            // Print appropriate prompt
-            if is_first_line {
-                print!("> ");
-            } else {
-                print!("... ");
-            }
-            stdout.flush().unwrap();
-
-            let mut line = String::new();
-            match stdin.read_line(&mut line) {
-                Ok(0) => {
-                    // EOF - exit the REPL
-                    println!("\nGoodbye!");
-                    return;
-                }
-                Ok(_) => {
+            // Read line with history support
+            let prompt = if is_first_line { "> " } else { "... " };
+            
+            let readline = rl.readline(prompt);
+            match readline {
+                Ok(line) => {
                     let trimmed = line.trim();
                     
                     // Empty line signals end of input (if we have at least one line)
@@ -132,8 +122,15 @@ fn repl() {
                         continue;
                     }
                     
-                    // Add the line to our accumulator
-                    lines.push(line);
+                    // Add the line to history if it's the first line
+                    if is_first_line {
+                        if let Err(e) = rl.add_history_entry(line.as_str()) {
+                            eprintln!("Warning: Failed to add entry to history: {}", e);
+                        }
+                    }
+                    
+                    // Add the line to our accumulator (with newline to match old behavior)
+                    lines.push(line + "\n");
                     is_first_line = false;
                     
                     // Try to parse the accumulated input after each line
@@ -146,8 +143,18 @@ fn repl() {
                         break;
                     }
                 }
-                Err(e) => {
-                    eprintln!("Error reading input: {}", e);
+                Err(ReadlineError::Interrupted) => {
+                    // Ctrl+C - reset the multiline input state and start fresh
+                    println!("^C");
+                    break;
+                }
+                Err(ReadlineError::Eof) => {
+                    // Ctrl+D
+                    println!("\nGoodbye!");
+                    return;
+                }
+                Err(err) => {
+                    eprintln!("Error reading input: {}", err);
                     return;
                 }
             }
@@ -155,7 +162,7 @@ fn repl() {
 
         // Join all lines and try to parse/evaluate
         if !lines.is_empty() {
-            let input = lines.concat();  // Preserves newlines from read_line()
+            let input = lines.concat();  // Preserves newlines
             let input = input.trim();
 
             match parse(input) {
