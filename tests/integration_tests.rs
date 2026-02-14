@@ -1201,3 +1201,39 @@ fn test_tuple_with_match_and_rec() {
     );
 }
 
+#[test]
+fn test_rec_closure_display() {
+    // Test that recursive closures display correctly
+    let code = r"rec factorial -> fun n -> if n == 0 then 1 else n * factorial (n - 1)";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env).unwrap();
+    let display_str = format!("{result}");
+    assert!(display_str.contains("<recursive function"));
+    assert!(display_str.contains("factorial"));
+}
+
+#[test]
+fn test_tuple_display() {
+    // Test tuple display formatting
+    let code = "(1, 2, 3)";
+    let result = parse_and_eval(code).unwrap();
+    assert_eq!(format!("{result}"), "(1, 2, 3)");
+}
+
+#[test]
+fn test_nested_tuple_display() {
+    // Test nested tuple display
+    let code = "((1, 2), (3, 4))";
+    let result = parse_and_eval(code).unwrap();
+    assert_eq!(format!("{result}"), "((1, 2), (3, 4))");
+}
+
+#[test]
+fn test_empty_tuple_display() {
+    // Test empty tuple display
+    let code = "()";
+    let result = parse_and_eval(code).unwrap();
+    assert_eq!(format!("{result}"), "()");
+}
+
