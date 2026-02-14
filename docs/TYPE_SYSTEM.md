@@ -8,10 +8,52 @@ The type system is optional and can be enabled in the REPL using the `PARLANG_TY
 
 ## Basic Types
 
-ParLang has two basic types:
+ParLang has three basic types:
 
 - **Int**: Integer values (e.g., `42`, `-10`, `0`)
 - **Bool**: Boolean values (`true`, `false`)
+- **Char**: Character values (e.g., `'a'`, `'Z'`, `'\n'`)
+
+### Character Type
+
+The `Char` type represents single Unicode characters.
+
+**Syntax:**
+```parlang
+'a'      # lowercase letter
+'Z'      # uppercase letter
+'0'      # digit
+' '      # space
+'\n'     # newline (escape sequence)
+'\t'     # tab (escape sequence)
+'\''     # single quote (escape sequence)
+'\\'     # backslash (escape sequence)
+```
+
+**Supported Operations:**
+- Equality: `'a' == 'b'`, `'a' != 'b'`
+- Ordering: `'a' < 'b'`, `'z' > 'a'`, `'m' <= 'n'`, `'x' >= 'w'`
+
+**Type Inference:**
+```parlang
+> 'a'
+Type: Char
+'a'
+
+> fun c -> c
+Type: t0 -> t0
+
+> fun c -> c == 'a'
+Type: Char -> Bool
+```
+
+**Pattern Matching:**
+Char literals can be used in pattern matching:
+```parlang
+> match 'a' with | 'a' -> 1 | 'b' -> 2 | _ -> 3
+Type: Int
+1
+```
 
 ## Function Types
 
