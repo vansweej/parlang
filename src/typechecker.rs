@@ -45,6 +45,17 @@ impl TypeEnv {
     }
 
     /// Generate a fresh row variable
+    /// 
+    /// Row variables represent "the rest of the fields" in record types.
+    /// They enable row polymorphism, allowing functions to work with records
+    /// that have at least certain fields.
+    /// 
+    /// # Example
+    /// ```
+    /// // When type-checking: fun r -> r.age
+    /// // We create a row variable to represent unknown fields:
+    /// // Type: { age: t0 | r0 } -> t0
+    /// ```
     pub fn fresh_row_var(&mut self) -> RowVar {
         let row_var = RowVar(self.next_row_var);
         self.next_row_var += 1;
@@ -241,9 +252,24 @@ fn apply_subst_with_visited(
 }
 
 /// Row substitution (maps RowVar to Type)
+/// 
+/// Row substitutions map row variables to concrete types, allowing us to
+/// resolve row polymorphic types to concrete record types during unification.
 type RowSubstitution = HashMap<RowVar, Type>;
 
 /// Apply row substitution to a type
+/// 
+/// This function applies row variable substitutions to types, which is essential
+/// for row polymorphism. When we have a type like `{ age: Int | r0 }` and a
+/// substitution `r0 -> { name: Int }`, we can merge them to get
+/// `{ age: Int, name: Int }`.
+/// 
+/// # Arguments
+/// * `subst` - The row substitution mapping row variables to types
+/// * `ty` - The type to apply the substitution to
+/// 
+/// # Returns
+/// The type with row variables substituted
 fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
     match ty {
         Type::Int | Type::Bool | Type::Var(_) => ty.clone(),
@@ -344,6 +370,13 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
 }
 
 /// Get free row variables in a type
+/// 
+/// Row variables that appear in a type but are not bound by any quantifier
+/// are considered "free". This function collects all such free row variables.
+/// 
+/// # Example
+/// For the type `{ age: Int | r0 }`, this returns `{r0}`.
+/// For the type `forall r0. { age: Int | r0 }`, after instantiation r0 is bound.
 fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
     match ty {
         Type::Int | Type::Bool | Type::Var(_) | Type::Record(_) => HashSet::new(),
@@ -509,6 +542,8 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
         }
 
         // Unify closed record with row-polymorphic record
+        // This handles cases like: { x: Int, y: Int } ~ { x: Int | r0 }
+        // The closed record must have at least the fields in the row-polymorphic record
         (Type::Record(fields), Type::RecordRow(row_fields, row_var))
         | (Type::RecordRow(row_fields, row_var), Type::Record(fields)) => {
             // The closed record must have at least the fields in row_fields
@@ -546,6 +581,8 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
         }
 
         // Unify two row-polymorphic records
+        // This handles cases like: { x: Int | r0 } ~ { y: Int | r1 }
+        // We need to unify common fields and handle the row variables appropriately
         (Type::RecordRow(fields1, row1), Type::RecordRow(fields2, row2)) => {
             // Find common fields and unify them
             let mut subst = HashMap::new();

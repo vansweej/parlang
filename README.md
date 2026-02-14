@@ -211,7 +211,26 @@ in let olderPerson = { name: person.name, age: person.age + 1 }
 in olderPerson                         # Result: { name: 42, age: 31 }
 ```
 
-Records support polymorphic field access - a function like `fun p -> p.age` works with any record that has an `age` field. See [docs/RECORDS.md](docs/RECORDS.md) for comprehensive documentation and advanced examples.
+**Row Polymorphism:**
+
+Records support **row polymorphism**, allowing functions to work with any record that has at least certain fields:
+
+```
+# Function that works with any record having an 'age' field
+let getAge = fun r -> r.age
+
+# Works with different record types
+getAge { name: 42, age: 30 }           # Result: 30
+getAge { age: 25, city: 100 }          # Result: 25
+```
+
+When type checking is enabled, row polymorphic functions show their flexible type:
+```
+> fun p -> p.age
+Type: { age: t0 | r0 } -> t0
+```
+
+The type `{ age: t0 | r0 }` means "a record with at least an `age` field (type `t0`), plus any other fields (`r0`)". This provides flexibility while maintaining type safety. See [docs/RECORDS.md](docs/RECORDS.md) for comprehensive documentation and advanced examples.
 
 ### Type Aliases
 

@@ -43,6 +43,117 @@ fun x -> fun y -> x + y
 
 This function takes an integer and returns a function that takes another integer and returns an integer.
 
+## Record Types
+
+Records are product types with named fields, providing structured data with type-safe field access.
+
+### Basic Record Types
+
+```parlang
+> { name: 42, age: 30 }
+Type: { age: Int, name: Int }
+{ name: 42, age: 30 }
+```
+
+Record types show all fields and their types. Fields are displayed in alphabetical order for consistency.
+
+### Row Polymorphism
+
+ParLang implements **row polymorphism** for records, allowing functions to work with any record that has **at least** certain fields.
+
+#### Row Variables
+
+A row variable (denoted `r0`, `r1`, etc.) represents "unknown additional fields" in a record:
+
+```parlang
+> fun p -> p.age
+Type: { age: t0 | r0 } -> t0
+```
+
+This type means:
+- The function takes a record with at least an `age` field (type `t0`)
+- The record may have other fields (represented by `r0`)
+- The function returns the value of the `age` field (type `t0`)
+
+#### Benefits of Row Polymorphism
+
+**Flexible, reusable functions:**
+```parlang
+let getAge = fun r -> r.age
+# Works with any record that has an 'age' field
+
+> getAge { name: 42, age: 30 }
+Type: Int
+30
+
+> getAge { age: 25, city: 100, active: true }
+Type: Int
+25
+```
+
+**Type safety is maintained:**
+```parlang
+> let getAge = fun r -> r.age
+  in let config = { port: 8080 }
+  in getAge config
+Type error: Field 'age' not found
+```
+
+#### Type Variables and Row Variables
+
+Type schemes can quantify both type variables and row variables:
+
+```parlang
+> let id = fun x -> x in id
+Type: forall t0. t0 -> t0
+
+> let getAge = fun r -> r.age in getAge
+Type: forall t0, r0. { age: t0 | r0 } -> t0
+```
+
+The `forall t0, r0` means:
+- `t0` can be any type (the type of the age field)
+- `r0` can be any set of additional fields
+
+#### Closed vs Open Records
+
+- **Closed record**: `{ x: Int, y: Int }` - exactly these fields, no more
+- **Open record**: `{ x: Int | r0 }` - at least x field, possibly more
+
+Row polymorphism allows functions to work with open records, providing flexibility while maintaining type safety.
+
+### Record Type Examples
+
+**Simple field access:**
+```parlang
+> let person = { name: 42, age: 30 } in person.age
+Type: Int
+30
+```
+
+**Polymorphic field access:**
+```parlang
+> fun r -> r.value
+Type: { value: t0 | r0 } -> t0
+```
+
+**Multiple field accesses:**
+```parlang
+> let addXY = fun r -> r.x + r.y
+  in addXY { x: 10, y: 20, z: 30 }
+Type: Int
+30
+```
+
+**Nested records:**
+```parlang
+> let person = { address: { city: 100 } } in person.address
+Type: { city: Int }
+{ city: 100 }
+```
+
+For more details on record types and row polymorphism, see [RECORDS.md](RECORDS.md).
+
 ## Type Aliases
 
 Type aliases allow you to define alternative names for existing types, making code more readable and self-documenting.
