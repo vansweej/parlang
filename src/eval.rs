@@ -15,6 +15,8 @@ pub enum Value {
     Closure(String, Expr, Environment),
     /// Recursive closure: function name, parameter name, body, environment
     RecClosure(String, String, Expr, Environment),
+    /// Tuple of values
+    Tuple(Vec<Value>),
 }
 
 impl fmt::Display for Value {
@@ -24,6 +26,16 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{}", b),
             Value::Closure(param, _, _) => write!(f, "<function {}>", param),
             Value::RecClosure(name, _, _, _) => write!(f, "<recursive function {}>", name),
+            Value::Tuple(values) => {
+                write!(f, "(")?;
+                for (i, val) in values.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", val)?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -77,6 +89,7 @@ pub enum EvalError {
     TypeError(String),
     DivisionByZero,
     LoadError(String),
+    IndexOutOfBounds(String),
 }
 
 impl fmt::Display for EvalError {
@@ -86,6 +99,7 @@ impl fmt::Display for EvalError {
             EvalError::TypeError(msg) => write!(f, "Type error: {}", msg),
             EvalError::DivisionByZero => write!(f, "Division by zero"),
             EvalError::LoadError(msg) => write!(f, "Load error: {}", msg),
+            EvalError::IndexOutOfBounds(msg) => write!(f, "Index out of bounds: {}", msg),
         }
     }
 }
@@ -210,6 +224,27 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
         Pattern::Var(name) => {
             // Variable pattern binds the value to the name
             Some(env.extend(name.clone(), value.clone()))
+        }
+        Pattern::Tuple(patterns) => {
+            // Tuple pattern must match a tuple value with the same number of elements
+            match value {
+                Value::Tuple(values) => {
+                    // Check if the number of patterns matches the number of values
+                    if patterns.len() != values.len() {
+                        return None;
+                    }
+                    // Match each pattern against corresponding value
+                    let mut current_env = env.clone();
+                    for (pat, val) in patterns.iter().zip(values.iter()) {
+                        match match_pattern(pat, val, &current_env) {
+                            Some(new_env) => current_env = new_env,
+                            None => return None,
+                        }
+                    }
+                    Some(current_env)
+                }
+                _ => None,
+            }
         }
     }
 }
@@ -349,6 +384,39 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             Err(EvalError::TypeError(
                 "No pattern matched in match expression".to_string(),
             ))
+        }
+        
+        Expr::Tuple(elements) => {
+            // Evaluate all elements of the tuple
+            let mut values = Vec::new();
+            for elem in elements {
+                values.push(eval(elem, env)?);
+            }
+            Ok(Value::Tuple(values))
+        }
+        
+        Expr::TupleProj(tuple_expr, index) => {
+            // Evaluate the tuple expression
+            let tuple_val = eval(tuple_expr, env)?;
+            
+            // Check that the value is a tuple
+            match tuple_val {
+                Value::Tuple(values) => {
+                    // Check bounds
+                    if *index >= values.len() {
+                        Err(EvalError::IndexOutOfBounds(format!(
+                            "Tuple index {} out of bounds for tuple of size {}",
+                            index,
+                            values.len()
+                        )))
+                    } else {
+                        Ok(values[*index].clone())
+                    }
+                }
+                _ => Err(EvalError::TypeError(
+                    "Tuple projection requires a tuple".to_string(),
+                )),
+            }
         }
     }
 }
@@ -1431,4 +1499,238 @@ mod tests {
         assert_eq!(result_env.lookup("x"), Some(&Value::Int(1)));
         assert_eq!(result_env.lookup("y"), Some(&Value::Int(2)));
     }
+
+    // Test Tuple evaluation
+    #[test]
+    fn test_eval_tuple_simple() {
+        let env = Environment::new();
+        let expr = Expr::Tuple(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]);
+        assert_eq!(
+            eval(&expr, &env),
+            Ok(Value::Tuple(vec![
+                Value::Int(1),
+                Value::Int(2),
+                Value::Int(3)
+            ]))
+        );
+    }
+
+    #[test]
+    fn test_eval_tuple_empty() {
+        let env = Environment::new();
+        let expr = Expr::Tuple(vec![]);
+        assert_eq!(eval(&expr, &env), Ok(Value::Tuple(vec![])));
+    }
+
+    #[test]
+    fn test_eval_tuple_mixed() {
+        let env = Environment::new();
+        let expr = Expr::Tuple(vec![Expr::Int(42), Expr::Bool(true)]);
+        assert_eq!(
+            eval(&expr, &env),
+            Ok(Value::Tuple(vec![Value::Int(42), Value::Bool(true)]))
+        );
+    }
+
+    #[test]
+    fn test_eval_tuple_nested() {
+        let env = Environment::new();
+        let expr = Expr::Tuple(vec![
+            Expr::Tuple(vec![Expr::Int(1), Expr::Int(2)]),
+            Expr::Int(3),
+        ]);
+        assert_eq!(
+            eval(&expr, &env),
+            Ok(Value::Tuple(vec![
+                Value::Tuple(vec![Value::Int(1), Value::Int(2)]),
+                Value::Int(3)
+            ]))
+        );
+    }
+
+    #[test]
+    fn test_eval_tuple_with_var() {
+        let mut env = Environment::new();
+        env.bind("x".to_string(), Value::Int(10));
+        let expr = Expr::Tuple(vec![Expr::Var("x".to_string()), Expr::Int(20)]);
+        assert_eq!(
+            eval(&expr, &env),
+            Ok(Value::Tuple(vec![Value::Int(10), Value::Int(20)]))
+        );
+    }
+
+    // Test TupleProj evaluation
+    #[test]
+    fn test_eval_tuple_proj_first() {
+        let env = Environment::new();
+        let expr = Expr::TupleProj(
+            Box::new(Expr::Tuple(vec![Expr::Int(10), Expr::Int(20)])),
+            0,
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(10)));
+    }
+
+    #[test]
+    fn test_eval_tuple_proj_second() {
+        let env = Environment::new();
+        let expr = Expr::TupleProj(
+            Box::new(Expr::Tuple(vec![Expr::Int(10), Expr::Int(20)])),
+            1,
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(20)));
+    }
+
+    #[test]
+    fn test_eval_tuple_proj_nested() {
+        let env = Environment::new();
+        // ((1, 2), (3, 4)).0.1 => 2
+        let expr = Expr::TupleProj(
+            Box::new(Expr::TupleProj(
+                Box::new(Expr::Tuple(vec![
+                    Expr::Tuple(vec![Expr::Int(1), Expr::Int(2)]),
+                    Expr::Tuple(vec![Expr::Int(3), Expr::Int(4)]),
+                ])),
+                0,
+            )),
+            1,
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(2)));
+    }
+
+    #[test]
+    fn test_eval_tuple_proj_out_of_bounds() {
+        let env = Environment::new();
+        let expr = Expr::TupleProj(
+            Box::new(Expr::Tuple(vec![Expr::Int(10), Expr::Int(20)])),
+            2,
+        );
+        assert!(matches!(
+            eval(&expr, &env),
+            Err(EvalError::IndexOutOfBounds(_))
+        ));
+    }
+
+    #[test]
+    fn test_eval_tuple_proj_non_tuple() {
+        let env = Environment::new();
+        let expr = Expr::TupleProj(Box::new(Expr::Int(42)), 0);
+        assert!(matches!(eval(&expr, &env), Err(EvalError::TypeError(_))));
+    }
+
+    // Test pattern matching with tuples
+    #[test]
+    fn test_match_pattern_tuple_simple() {
+        let env = Environment::new();
+        let pattern = Pattern::Tuple(vec![Pattern::Var("x".to_string()), Pattern::Var("y".to_string())]);
+        let value = Value::Tuple(vec![Value::Int(1), Value::Int(2)]);
+        let result = match_pattern(&pattern, &value, &env);
+        assert!(result.is_some());
+        let new_env = result.unwrap();
+        assert_eq!(new_env.lookup("x"), Some(&Value::Int(1)));
+        assert_eq!(new_env.lookup("y"), Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn test_match_pattern_tuple_with_literal() {
+        let env = Environment::new();
+        let pattern = Pattern::Tuple(vec![
+            Pattern::Literal(Literal::Int(0)),
+            Pattern::Var("y".to_string()),
+        ]);
+        let value = Value::Tuple(vec![Value::Int(0), Value::Int(5)]);
+        let result = match_pattern(&pattern, &value, &env);
+        assert!(result.is_some());
+        let new_env = result.unwrap();
+        assert_eq!(new_env.lookup("y"), Some(&Value::Int(5)));
+    }
+
+    #[test]
+    fn test_match_pattern_tuple_mismatch() {
+        let env = Environment::new();
+        let pattern = Pattern::Tuple(vec![
+            Pattern::Literal(Literal::Int(0)),
+            Pattern::Var("y".to_string()),
+        ]);
+        let value = Value::Tuple(vec![Value::Int(1), Value::Int(5)]);
+        let result = match_pattern(&pattern, &value, &env);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_match_pattern_tuple_wrong_length() {
+        let env = Environment::new();
+        let pattern = Pattern::Tuple(vec![Pattern::Var("x".to_string())]);
+        let value = Value::Tuple(vec![Value::Int(1), Value::Int(2)]);
+        let result = match_pattern(&pattern, &value, &env);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_match_pattern_tuple_nested() {
+        let env = Environment::new();
+        let pattern = Pattern::Tuple(vec![
+            Pattern::Tuple(vec![Pattern::Var("a".to_string()), Pattern::Var("b".to_string())]),
+            Pattern::Var("c".to_string()),
+        ]);
+        let value = Value::Tuple(vec![
+            Value::Tuple(vec![Value::Int(1), Value::Int(2)]),
+            Value::Int(3),
+        ]);
+        let result = match_pattern(&pattern, &value, &env);
+        assert!(result.is_some());
+        let new_env = result.unwrap();
+        assert_eq!(new_env.lookup("a"), Some(&Value::Int(1)));
+        assert_eq!(new_env.lookup("b"), Some(&Value::Int(2)));
+        assert_eq!(new_env.lookup("c"), Some(&Value::Int(3)));
+    }
+
+    #[test]
+    fn test_eval_match_with_tuple() {
+        let env = Environment::new();
+        // match (10, 20) with | (0, 0) -> 0 | (x, y) -> x + y
+        let expr = Expr::Match(
+            Box::new(Expr::Tuple(vec![Expr::Int(10), Expr::Int(20)])),
+            vec![
+                (
+                    Pattern::Tuple(vec![
+                        Pattern::Literal(Literal::Int(0)),
+                        Pattern::Literal(Literal::Int(0)),
+                    ]),
+                    Expr::Int(0),
+                ),
+                (
+                    Pattern::Tuple(vec![Pattern::Var("x".to_string()), Pattern::Var("y".to_string())]),
+                    Expr::BinOp(
+                        BinOp::Add,
+                        Box::new(Expr::Var("x".to_string())),
+                        Box::new(Expr::Var("y".to_string())),
+                    ),
+                ),
+            ],
+        );
+        assert_eq!(eval(&expr, &env), Ok(Value::Int(30)));
+    }
+
+    // Test Value Display
+    #[test]
+    fn test_value_display_tuple() {
+        let val = Value::Tuple(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
+        assert_eq!(format!("{}", val), "(1, 2, 3)");
+    }
+
+    #[test]
+    fn test_value_display_tuple_empty() {
+        let val = Value::Tuple(vec![]);
+        assert_eq!(format!("{}", val), "()");
+    }
+
+    #[test]
+    fn test_value_display_tuple_nested() {
+        let val = Value::Tuple(vec![
+            Value::Tuple(vec![Value::Int(1), Value::Int(2)]),
+            Value::Int(3),
+        ]);
+        assert_eq!(format!("{}", val), "((1, 2), 3)");
+    }
 }
+

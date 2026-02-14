@@ -21,6 +21,8 @@ pub enum Pattern {
     Var(String),
     /// Wildcard pattern: _ (matches anything without binding)
     Wildcard,
+    /// Tuple pattern: (p1, p2, p3)
+    Tuple(Vec<Pattern>),
 }
 
 /// Expression types in the language
@@ -64,6 +66,12 @@ pub enum Expr {
     /// Pattern matching: match e with | p1 -> e1 | p2 -> e2 | ...
     /// (scrutinee expression, vector of (pattern, result expression) arms)
     Match(Box<Expr>, Vec<(Pattern, Expr)>),
+    
+    /// Tuple construction: (e1, e2, e3, ...)
+    Tuple(Vec<Expr>),
+    
+    /// Tuple projection: e.0, e.1, e.2, ...
+    TupleProj(Box<Expr>, usize),
 }
 
 /// Binary operators
@@ -115,6 +123,17 @@ impl fmt::Display for Expr {
                 }
                 write!(f, ")")
             }
+            Expr::Tuple(elements) => {
+                write!(f, "(")?;
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", elem)?;
+                }
+                write!(f, ")")
+            }
+            Expr::TupleProj(tuple, index) => write!(f, "{}.{}", tuple, index),
         }
     }
 }
@@ -134,6 +153,16 @@ impl fmt::Display for Pattern {
             Pattern::Literal(lit) => write!(f, "{}", lit),
             Pattern::Var(name) => write!(f, "{}", name),
             Pattern::Wildcard => write!(f, "_"),
+            Pattern::Tuple(patterns) => {
+                write!(f, "(")?;
+                for (i, pat) in patterns.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", pat)?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -572,6 +601,47 @@ mod tests {
         assert_eq!(format!("{}", pat), "_");
     }
 
+    // Test Tuple pattern
+    #[test]
+    fn test_pattern_tuple() {
+        let pat = Pattern::Tuple(vec![
+            Pattern::Literal(Literal::Int(1)),
+            Pattern::Var("x".to_string()),
+        ]);
+        assert_eq!(
+            pat,
+            Pattern::Tuple(vec![
+                Pattern::Literal(Literal::Int(1)),
+                Pattern::Var("x".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_display_pattern_tuple() {
+        let pat = Pattern::Tuple(vec![
+            Pattern::Literal(Literal::Int(1)),
+            Pattern::Var("x".to_string()),
+            Pattern::Wildcard,
+        ]);
+        assert_eq!(format!("{}", pat), "(1, x, _)");
+    }
+
+    #[test]
+    fn test_display_pattern_tuple_empty() {
+        let pat = Pattern::Tuple(vec![]);
+        assert_eq!(format!("{}", pat), "()");
+    }
+
+    #[test]
+    fn test_display_pattern_tuple_nested() {
+        let pat = Pattern::Tuple(vec![
+            Pattern::Tuple(vec![Pattern::Var("x".to_string()), Pattern::Var("y".to_string())]),
+            Pattern::Var("z".to_string()),
+        ]);
+        assert_eq!(format!("{}", pat), "((x, y), z)");
+    }
+
     // Test Match expression
     #[test]
     fn test_expr_match() {
@@ -598,5 +668,127 @@ mod tests {
             format!("{}", expr),
             "(match x with | 0 -> 1 | n -> n | _ -> 42)"
         );
+    }
+
+    // Test Tuple expression
+    #[test]
+    fn test_expr_tuple() {
+        let expr = Expr::Tuple(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]);
+        assert_eq!(
+            expr,
+            Expr::Tuple(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)])
+        );
+    }
+
+    #[test]
+    fn test_expr_tuple_empty() {
+        let expr = Expr::Tuple(vec![]);
+        assert_eq!(expr, Expr::Tuple(vec![]));
+    }
+
+    #[test]
+    fn test_expr_tuple_nested() {
+        let expr = Expr::Tuple(vec![
+            Expr::Tuple(vec![Expr::Int(1), Expr::Int(2)]),
+            Expr::Int(3),
+        ]);
+        assert_eq!(
+            expr,
+            Expr::Tuple(vec![
+                Expr::Tuple(vec![Expr::Int(1), Expr::Int(2)]),
+                Expr::Int(3),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_display_tuple() {
+        let expr = Expr::Tuple(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]);
+        assert_eq!(format!("{}", expr), "(1, 2, 3)");
+    }
+
+    #[test]
+    fn test_display_tuple_empty() {
+        let expr = Expr::Tuple(vec![]);
+        assert_eq!(format!("{}", expr), "()");
+    }
+
+    #[test]
+    fn test_display_tuple_single() {
+        let expr = Expr::Tuple(vec![Expr::Int(42)]);
+        assert_eq!(format!("{}", expr), "(42)");
+    }
+
+    #[test]
+    fn test_display_tuple_nested() {
+        let expr = Expr::Tuple(vec![
+            Expr::Tuple(vec![Expr::Int(1), Expr::Int(2)]),
+            Expr::Tuple(vec![Expr::Int(3), Expr::Int(4)]),
+        ]);
+        assert_eq!(format!("{}", expr), "((1, 2), (3, 4))");
+    }
+
+    #[test]
+    fn test_display_tuple_mixed() {
+        let expr = Expr::Tuple(vec![
+            Expr::Int(42),
+            Expr::Bool(true),
+            Expr::Var("x".to_string()),
+        ]);
+        assert_eq!(format!("{}", expr), "(42, true, x)");
+    }
+
+    // Test TupleProj expression
+    #[test]
+    fn test_expr_tuple_proj() {
+        let expr = Expr::TupleProj(Box::new(Expr::Var("t".to_string())), 0);
+        assert_eq!(
+            expr,
+            Expr::TupleProj(Box::new(Expr::Var("t".to_string())), 0)
+        );
+    }
+
+    #[test]
+    fn test_expr_tuple_proj_nested() {
+        // t.0.1
+        let expr = Expr::TupleProj(
+            Box::new(Expr::TupleProj(Box::new(Expr::Var("t".to_string())), 0)),
+            1,
+        );
+        assert_eq!(
+            expr,
+            Expr::TupleProj(
+                Box::new(Expr::TupleProj(Box::new(Expr::Var("t".to_string())), 0)),
+                1,
+            )
+        );
+    }
+
+    #[test]
+    fn test_display_tuple_proj() {
+        let expr = Expr::TupleProj(Box::new(Expr::Var("t".to_string())), 0);
+        assert_eq!(format!("{}", expr), "t.0");
+    }
+
+    #[test]
+    fn test_display_tuple_proj_index() {
+        let expr = Expr::TupleProj(Box::new(Expr::Var("pair".to_string())), 1);
+        assert_eq!(format!("{}", expr), "pair.1");
+    }
+
+    #[test]
+    fn test_display_tuple_proj_nested() {
+        // ((1, 2), 3).0.1
+        let expr = Expr::TupleProj(
+            Box::new(Expr::TupleProj(
+                Box::new(Expr::Tuple(vec![
+                    Expr::Tuple(vec![Expr::Int(1), Expr::Int(2)]),
+                    Expr::Int(3),
+                ])),
+                0,
+            )),
+            1,
+        );
+        assert_eq!(format!("{}", expr), "((1, 2), 3).0.1");
     }
 }

@@ -961,3 +961,243 @@ fn test_match_replaces_nested_if() {
     assert_eq!(parse_and_eval(if_code), parse_and_eval(match_code));
     assert_eq!(parse_and_eval(match_code), Ok(Value::Int(1)));
 }
+
+// Tuple tests
+#[test]
+fn test_tuple_simple() {
+    let result = parse_and_eval("(1, 2, 3)");
+    assert_eq!(
+        result,
+        Ok(Value::Tuple(vec![
+            Value::Int(1),
+            Value::Int(2),
+            Value::Int(3)
+        ]))
+    );
+}
+
+#[test]
+fn test_tuple_empty() {
+    let result = parse_and_eval("()");
+    assert_eq!(result, Ok(Value::Tuple(vec![])));
+}
+
+#[test]
+fn test_tuple_mixed_types() {
+    let result = parse_and_eval("(42, true)");
+    assert_eq!(
+        result,
+        Ok(Value::Tuple(vec![Value::Int(42), Value::Bool(true)]))
+    );
+}
+
+#[test]
+fn test_tuple_nested() {
+    let result = parse_and_eval("((1, 2), (3, 4))");
+    assert_eq!(
+        result,
+        Ok(Value::Tuple(vec![
+            Value::Tuple(vec![Value::Int(1), Value::Int(2)]),
+            Value::Tuple(vec![Value::Int(3), Value::Int(4)]),
+        ]))
+    );
+}
+
+#[test]
+fn test_tuple_projection_first() {
+    assert_eq!(parse_and_eval("(10, 20).0"), Ok(Value::Int(10)));
+}
+
+#[test]
+fn test_tuple_projection_second() {
+    assert_eq!(parse_and_eval("(10, 20).1"), Ok(Value::Int(20)));
+}
+
+#[test]
+fn test_tuple_projection_nested() {
+    // ((1, 2), (3, 4)).0.1 => 2
+    assert_eq!(parse_and_eval("((1, 2), (3, 4)).0.1"), Ok(Value::Int(2)));
+}
+
+#[test]
+fn test_tuple_projection_complex() {
+    // ((10, 20), 30).0.0 => 10
+    assert_eq!(parse_and_eval("((10, 20), 30).0.0"), Ok(Value::Int(10)));
+}
+
+#[test]
+fn test_tuple_with_let() {
+    let code = "let pair = (42, true) in pair";
+    assert_eq!(
+        parse_and_eval(code),
+        Ok(Value::Tuple(vec![Value::Int(42), Value::Bool(true)]))
+    );
+}
+
+#[test]
+fn test_tuple_projection_with_let() {
+    let code = "let point = (10, 20) in point.0";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(10)));
+}
+
+#[test]
+fn test_tuple_in_binop() {
+    let code = "(10, 20).0 + (5, 15).1";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(25)));
+}
+
+#[test]
+fn test_function_returning_tuple() {
+    let code = "let f = fun x -> (x, x + 1) in f 5";
+    assert_eq!(
+        parse_and_eval(code),
+        Ok(Value::Tuple(vec![Value::Int(5), Value::Int(6)]))
+    );
+}
+
+#[test]
+fn test_tuple_swap() {
+    let code = "let swap = fun p -> (p.1, p.0) in swap (5, 10)";
+    assert_eq!(
+        parse_and_eval(code),
+        Ok(Value::Tuple(vec![Value::Int(10), Value::Int(5)]))
+    );
+}
+
+#[test]
+fn test_tuple_with_function() {
+    let code = "(42, fun x -> x * 2)";
+    let result = parse_and_eval(code);
+    assert!(result.is_ok());
+    if let Ok(Value::Tuple(values)) = result {
+        assert_eq!(values.len(), 2);
+        assert_eq!(values[0], Value::Int(42));
+        assert!(matches!(values[1], Value::Closure(_, _, _)));
+    }
+}
+
+#[test]
+fn test_tuple_function_projection_call_result() {
+    let code = "let data = (42, fun x -> x * 2) in data.1 21";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(42)));
+}
+
+// Pattern matching with tuples
+#[test]
+fn test_match_tuple_simple() {
+    let code = "match (10, 20) with | (0, 0) -> 0 | (x, y) -> x + y";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(30)));
+}
+
+#[test]
+fn test_match_tuple_with_literal() {
+    let code = "match (0, 5) with | (0, y) -> y | (x, y) -> x";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(5)));
+}
+
+#[test]
+fn test_match_tuple_with_wildcard() {
+    let code = "match (10, 20) with | (x, _) -> x";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(10)));
+}
+
+#[test]
+fn test_match_tuple_nested() {
+    let code = "match ((1, 2), 3) with | ((a, b), c) -> a + b + c";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(6)));
+}
+
+#[test]
+fn test_match_tuple_multiple_arms() {
+    let code = r#"
+        match (1, 2) with
+        | (0, 0) -> 0
+        | (1, 1) -> 1
+        | (1, 2) -> 12
+        | (x, y) -> x + y
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(12)));
+}
+
+#[test]
+fn test_match_empty_tuple() {
+    let code = "match () with | () -> 42";
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(42)));
+}
+
+// Error cases
+#[test]
+fn test_tuple_projection_out_of_bounds() {
+    let result = parse_and_eval("(10, 20).2");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("out of bounds"));
+}
+
+#[test]
+fn test_tuple_projection_non_tuple() {
+    let result = parse_and_eval("42.0");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Tuple projection requires a tuple"));
+}
+
+#[test]
+fn test_match_tuple_wrong_pattern_size() {
+    let code = "match (1, 2) with | (x, y, z) -> x";
+    let result = parse_and_eval(code);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("No pattern matched"));
+}
+
+#[test]
+fn test_match_tuple_wrong_literal() {
+    let code = "match (1, 2) with | (0, 0) -> 0";
+    let result = parse_and_eval(code);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("No pattern matched"));
+}
+
+// Complex realistic examples
+#[test]
+fn test_tuple_point_distance() {
+    let code = r#"
+        let p1 = (0, 0) in
+        let p2 = (3, 4) in
+        let dx = p2.0 - p1.0 in
+        let dy = p2.1 - p1.1 in
+        dx * dx + dy * dy
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(25)));
+}
+
+#[test]
+fn test_tuple_fibonacci_pair() {
+    let code = r#"
+        let fib = rec fib -> fun n ->
+            if n == 0 then (0, 1)
+            else if n == 1 then (1, 1)
+            else
+                let prev = fib (n - 1) in
+                (prev.1, prev.0 + prev.1)
+        in (fib 6).0
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(8)));
+}
+
+#[test]
+fn test_tuple_with_match_and_rec() {
+    let code = r#"
+        let divmod = rec divmod -> fun p ->
+            match p with
+            | (n, d) ->
+                if n < d then (0, n)
+                else
+                    let result = divmod (n - d, d) in
+                    (result.0 + 1, result.1)
+        in divmod (17, 5)
+    "#;
+    assert_eq!(
+        parse_and_eval(code),
+        Ok(Value::Tuple(vec![Value::Int(3), Value::Int(2)]))
+    );
+}
+
