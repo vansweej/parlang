@@ -6,7 +6,7 @@
 /// - AST dumping to DOT format for visualization
 
 use clap::{Parser, Subcommand};
-use parlang::{parse, eval, extract_bindings, dot, Environment, Value};
+use parlang::{parse, eval, extract_bindings, dot, Environment};
 use std::fs;
 use std::io::{self, Write};
 use std::process;
@@ -39,7 +39,7 @@ fn main() {
     // Handle REPL command or no arguments
     if cli.command.is_some() || (cli.file.is_none() && cli.dump_ast.is_none()) {
         // REPL mode
-        println!("ParLang v{} - A small ML-alike functional language", env!("CARGO_PKG_VERSION"));
+        println!("ParLang - A small ML-alike functional language");
         println!("Type expressions to evaluate them. Press Ctrl+C to exit.");
         println!();
         repl();
@@ -67,7 +67,8 @@ fn main() {
                         }
 
                         // Execute the program
-                        match execute(&expr) {
+                        let env = Environment::new();
+                        match eval(&expr, &env).map_err(|e| e.to_string()) {
                             Ok(value) => println!("{}", value),
                             Err(e) => {
                                 eprintln!("Error: {}", e);
@@ -90,11 +91,6 @@ fn main() {
         eprintln!("Error: --dump-ast requires a file argument");
         process::exit(1);
     }
-}
-
-fn execute(expr: &parlang::Expr) -> Result<Value, String> {
-    let env = Environment::new();
-    eval(expr, &env).map_err(|e| e.to_string())
 }
 
 fn repl() {

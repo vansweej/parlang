@@ -19,16 +19,25 @@
 use crate::ast::{Expr, BinOp, Pattern, Literal};
 use std::io;
 
-/// Counter for generating unique node IDs
+/// Counter for generating unique node IDs in the DOT graph
+/// 
+/// This helper struct ensures each AST node gets a unique identifier
+/// when converting to DOT format. Node IDs are sequential strings
+/// in the format "node0", "node1", "node2", etc.
 struct NodeIdGenerator {
     counter: usize,
 }
 
 impl NodeIdGenerator {
+    /// Create a new generator starting from node0
     fn new() -> Self {
         NodeIdGenerator { counter: 0 }
     }
 
+    /// Generate the next unique node ID
+    /// 
+    /// Returns a string like "node0", "node1", etc. and increments
+    /// the internal counter for the next call.
     fn next(&mut self) -> String {
         let id = format!("node{}", self.counter);
         self.counter += 1;
