@@ -542,3 +542,49 @@ fn test_char_polymorphic_function() {
     let ty = typecheck(&expr).unwrap();
     assert_eq!(ty, Type::Char);
 }
+
+#[test]
+fn test_unit_type_empty_tuple() {
+    // Empty tuple should have unit type
+    let expr = parse("()").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(ty, Type::Unit);
+}
+
+#[test]
+fn test_unit_type_in_let() {
+    // Let binding with unit value
+    let expr = parse("let u = () in u").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(ty, Type::Unit);
+}
+
+#[test]
+fn test_unit_function_arg() {
+    // Function that takes unit and returns int
+    let expr = parse("let f = fun u -> 42 in f ()").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(ty, Type::Int);
+}
+
+#[test]
+fn test_unit_function_return() {
+    // Function that returns unit
+    let expr = parse("fun x -> ()").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    // Should be t0 -> ()
+    match ty {
+        Type::Fun(_, ret) => {
+            assert_eq!(*ret, Type::Unit);
+        }
+        _ => panic!("Expected function type, got: {ty:?}"),
+    }
+}
+
+#[test]
+fn test_unit_in_if() {
+    // If expression with unit branches
+    let expr = parse("if true then () else ()").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(ty, Type::Unit);
+}
