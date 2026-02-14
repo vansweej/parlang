@@ -1,0 +1,23 @@
+let fact = rec f -> fun n ->
+    if n == 0
+    then 1
+    else n * f (n - 1)
+in
+
+let fib = rec fib -> fun n ->
+    if n <= 1
+    then n
+    else fib (n - 1) + fib (n - 2)
+in
+
+let sum_to = rec helper -> fun acc -> fun n ->
+    if n == 0
+    then acc
+    else helper (acc + n) (n - 1)
+in
+
+let result1 = fact 5 in
+let result2 = fib 7 in
+let result3 = sum_to 0 10 in
+
+result1 + result2 + result3
