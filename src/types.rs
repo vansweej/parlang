@@ -33,6 +33,10 @@ pub enum Type {
     /// E.g., Option Int, List Bool, Either Int Bool
     /// First element is the type constructor name, second is the list of type arguments
     SumType(String, Vec<Type>),
+    /// Fixed-size array type: Array[T, n]
+    /// All elements have the same type T, array has fixed size n
+    /// E.g., Array[Int, 3] is an array of 3 integers
+    Array(Box<Type>, usize),
 }
 
 /// Type variable identifier
@@ -111,6 +115,9 @@ impl fmt::Display for Type {
                     }
                 }
                 Ok(())
+            }
+            Type::Array(elem_type, size) => {
+                write!(f, "Array[{elem_type}, {size}]")
             }
         }
     }

@@ -1,0 +1,32 @@
+let numbers = [|1, 2, 3, 4, 5|];
+
+let first = numbers[0];
+let third = numbers[2];
+let last = numbers[4];
+
+let computed = [|first + 1, third * 2, last - 1|];
+
+let matrix = [|
+    [|1, 2, 3|],
+    [|4, 5, 6|],
+    [|7, 8, 9|]
+|];
+
+let centerElement = matrix[1][1];
+
+let getElement = fun arr -> fun index -> arr[index];
+let result = getElement [|100, 200, 300|] 1;
+
+let sumFirstTwo = fun arr -> arr[0] + arr[1];
+let total = sumFirstTwo [|10, 20, 30|];
+
+let x = 42;
+let y = 84;
+let z = 126;
+let values = [|x, y, z|];
+
+let chars = [|'H', 'e', 'l', 'l', 'o'|];
+
+let flags = [|true, false, true, true|];
+
+result

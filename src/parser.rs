@@ -239,6 +239,23 @@ where
     .map(Expr::Record)
 }
 
+/// Parse an array literal: [|e1, e2, e3|]
+fn array<Input>() -> impl Parser<Input, Output = Expr>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    between(
+        (token('['), token('|')).skip(spaces()),
+        (token('|'), token(']')),
+        combine::sep_by(
+            expr().skip(spaces()),
+            token(',').skip(spaces())
+        )
+    )
+    .map(Expr::Array)
+}
+
 parser! {
     fn atom[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -248,6 +265,7 @@ parser! {
             attempt(char_literal()),
             attempt(float()),
             attempt(int()),
+            attempt(array()),
             attempt(record()),
             attempt(constructor()),  // Try constructor before variable
             attempt(variable()),
@@ -751,25 +769,35 @@ parser! {
     {
         (
             primary().skip(spaces()),
-            // Parse projections: either .number (tuple) or .identifier (record field)
-            many(token('.').with(choice((
-                // Try to parse a number first (tuple projection)
-                attempt(many1(combine::parser::char::digit()).and_then(|s: String| {
-                    s.parse::<usize>()
-                        .map(|n| (true, n, String::new()))
-                        .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("index overflow"))
-                })),
-                // Otherwise parse an identifier (field access)
-                identifier().map(|name| (false, 0, name))
-            ))))
+            // Parse projections and array indexing
+            many(choice((
+                // Array indexing: [expr]
+                attempt(between(
+                    token('[').skip(spaces()),
+                    token(']'),
+                    expr().skip(spaces())
+                ).map(|index_expr| (2, 0, String::new(), Some(index_expr)))),
+                // Tuple/field access: .number or .identifier
+                token('.').with(choice((
+                    // Try to parse a number first (tuple projection)
+                    attempt(many1(combine::parser::char::digit()).and_then(|s: String| {
+                        s.parse::<usize>()
+                            .map(|n| (0, n, String::new(), None))
+                            .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("index overflow"))
+                    })),
+                    // Otherwise parse an identifier (field access)
+                    identifier().map(|name| (1, 0, name, None))
+                )))
+            )))
         )
-            .map(|(base, projs): (Expr, Vec<(bool, usize, String)>)| {
+            .map(|(base, projs): (Expr, Vec<(u8, usize, String, Option<Expr>)>)| {
                 projs.into_iter()
-                    .fold(base, |expr, (is_tuple, index, field)| {
-                        if is_tuple {
-                            Expr::TupleProj(Box::new(expr), index)
-                        } else {
-                            Expr::FieldAccess(Box::new(expr), field)
+                    .fold(base, |expr, (proj_type, index, field, index_expr)| {
+                        match proj_type {
+                            0 => Expr::TupleProj(Box::new(expr), index),
+                            1 => Expr::FieldAccess(Box::new(expr), field),
+                            2 => Expr::ArrayIndex(Box::new(expr), Box::new(index_expr.unwrap())),
+                            _ => unreachable!("Invalid projection type: {}", proj_type),
                         }
                     })
             })
