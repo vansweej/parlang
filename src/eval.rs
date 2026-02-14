@@ -28,6 +28,11 @@ pub enum Value {
     ///       None -> Variant("None", vec![])
     ///       Cons(1, rest) -> Variant("Cons", vec![Int(1), <list>])
     Variant(String, Vec<Value>),
+    /// Fixed-size array of values
+    /// Array: (size, elements)
+    /// e.g., [|1, 2, 3|] -> Array(3, vec![Int(1), Int(2), Int(3)])
+    /// All elements must be of the same type
+    Array(usize, Vec<Value>),
 }
 
 impl fmt::Display for Value {
@@ -85,6 +90,17 @@ impl fmt::Display for Value {
                     write!(f, ")")?;
                 }
                 Ok(())
+            }
+            Value::Array(size, values) => {
+                write!(f, "[|")?;
+                for (i, val) in values.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{val}")?;
+                }
+                write!(f, "|]")?;
+                write!(f, " (size: {size})")
             }
         }
     }
@@ -772,6 +788,57 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             }
             
             Ok(Value::Variant(ctor_name.clone(), values))
+        }
+        
+        Expr::Array(elements) => {
+            // Evaluate all elements of the array
+            let mut values = Vec::new();
+            for elem in elements {
+                values.push(eval(elem, env)?);
+            }
+            let size = values.len();
+            Ok(Value::Array(size, values))
+        }
+        
+        Expr::ArrayIndex(arr_expr, index_expr) => {
+            // Evaluate the array and index expressions
+            let arr_val = eval(arr_expr, env)?;
+            let index_val = eval(index_expr, env)?;
+            
+            // Check that the index is an integer
+            let index = match index_val {
+                Value::Int(i) => i,
+                _ => return Err(EvalError::TypeError(
+                    "Array index must be an integer".to_string()
+                )),
+            };
+            
+            // Check that index is non-negative
+            if index < 0 {
+                return Err(EvalError::IndexOutOfBounds(format!(
+                    "Array index {} is negative",
+                    index
+                )));
+            }
+            
+            // Check that the value is an array
+            match arr_val {
+                Value::Array(size, values) => {
+                    let idx = index as usize;
+                    // Check bounds
+                    if idx >= size {
+                        Err(EvalError::IndexOutOfBounds(format!(
+                            "Array index {} out of bounds for array of size {}",
+                            idx, size
+                        )))
+                    } else {
+                        Ok(values[idx].clone())
+                    }
+                }
+                _ => Err(EvalError::TypeError(
+                    "Array indexing requires an array".to_string()
+                )),
+            }
         }
     }
 }

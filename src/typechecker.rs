@@ -259,6 +259,10 @@ fn apply_subst_with_visited(
                 .collect();
             Type::SumType(name.clone(), new_args)
         }
+        Type::Array(elem_ty, size) => {
+            let new_elem_ty = apply_subst_with_visited(subst, elem_ty, visited);
+            Type::Array(Box::new(new_elem_ty), *size)
+        }
     }
 }
 
@@ -338,6 +342,10 @@ fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
             let new_args = args.iter().map(|arg| apply_row_subst(subst, arg)).collect();
             Type::SumType(name.clone(), new_args)
         }
+        Type::Array(elem_ty, size) => {
+            let new_elem_ty = apply_row_subst(subst, elem_ty);
+            Type::Array(Box::new(new_elem_ty), *size)
+        }
     }
 }
 
@@ -392,6 +400,9 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
             }
             set
         }
+        Type::Array(elem_ty, _size) => {
+            free_type_vars(elem_ty)
+        }
     }
 }
 
@@ -430,6 +441,9 @@ fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
                 set.extend(free_row_vars(arg));
             }
             set
+        }
+        Type::Array(elem_ty, _size) => {
+            free_row_vars(elem_ty)
         }
     }
 }
@@ -1261,6 +1275,68 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 // Constructor not registered - return a fresh type variable
                 // This maintains backward compatibility
                 Ok((env.fresh_var(), HashMap::new()))
+            }
+        }
+        
+        Expr::Array(elements) => {
+            if elements.is_empty() {
+                // Empty array - use fresh type variable for element type
+                let elem_ty = env.fresh_var();
+                Ok((Type::Array(Box::new(elem_ty), 0), HashMap::new()))
+            } else {
+                // Infer type of first element
+                let (first_ty, mut subst) = infer(&elements[0], env)?;
+                
+                // Check that all other elements have the same type
+                for elem in &elements[1..] {
+                    let (elem_ty, s) = infer(elem, env)?;
+                    subst = compose_subst(&s, &subst);
+                    let s2 = unify(&apply_subst(&subst, &first_ty), &apply_subst(&subst, &elem_ty))?;
+                    subst = compose_subst(&s2, &subst);
+                }
+                
+                let final_elem_ty = apply_subst(&subst, &first_ty);
+                let size = elements.len();
+                Ok((Type::Array(Box::new(final_elem_ty), size), subst))
+            }
+        }
+        
+        Expr::ArrayIndex(arr_expr, index_expr) => {
+            // Infer types of array and index
+            let (arr_ty, s1) = infer(arr_expr, env)?;
+            let (index_ty, s2) = infer(index_expr, env)?;
+            let mut subst = compose_subst(&s2, &s1);
+            
+            // Index must be Int
+            let s3 = unify(&apply_subst(&subst, &index_ty), &Type::Int)?;
+            subst = compose_subst(&s3, &subst);
+            
+            // Array must be Array type
+            let elem_ty = env.fresh_var();
+            let size_var = 0; // We don't know the size at this point, use 0 as placeholder
+            let expected_arr_ty = Type::Array(Box::new(elem_ty.clone()), size_var);
+            
+            // We need special handling for array unification because size may differ
+            // Extract the element type from the array
+            let arr_ty_subst = apply_subst(&subst, &arr_ty);
+            match arr_ty_subst {
+                Type::Array(actual_elem_ty, _size) => {
+                    let s4 = unify(&elem_ty, &actual_elem_ty)?;
+                    subst = compose_subst(&s4, &subst);
+                    Ok((apply_subst(&subst, &actual_elem_ty), subst))
+                }
+                Type::Var(_) => {
+                    // If it's still a type variable, unify with array type
+                    let s4 = unify(&arr_ty_subst, &expected_arr_ty)?;
+                    subst = compose_subst(&s4, &subst);
+                    Ok((apply_subst(&subst, &elem_ty), subst))
+                }
+                _ => {
+                    Err(TypeError::UnificationError(
+                        arr_ty_subst,
+                        expected_arr_ty
+                    ))
+                }
             }
         }
     }

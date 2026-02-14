@@ -202,6 +202,14 @@ pub enum Expr {
     
     /// Constructor application: Some 42, Cons 1 rest, Left x
     Constructor(String, Vec<Expr>),
+    
+    /// Fixed-size array construction: [|e1, e2, e3|]
+    /// All elements must be of the same type
+    Array(Vec<Expr>),
+    
+    /// Array indexing: arr[i]
+    /// Accesses element at index i (zero-based)
+    ArrayIndex(Box<Expr>, Box<Expr>),
 }
 
 /// Binary operators
@@ -329,6 +337,17 @@ impl fmt::Display for Expr {
                 }
                 Ok(())
             }
+            Expr::Array(elements) => {
+                write!(f, "[|")?;
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{elem}")?;
+                }
+                write!(f, "|]")
+            }
+            Expr::ArrayIndex(arr, index) => write!(f, "{arr}[{index}]"),
         }
     }
 }

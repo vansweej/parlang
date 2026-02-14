@@ -252,6 +252,20 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
                 output.push_str(&format!("  {node_id} -> {arg_id} [label=\"arg{}\"];\n", i));
             }
         }
+        Expr::Array(elements) => {
+            output.push_str(&format!("  {node_id} [label=\"Array\"];\n"));
+            for (i, elem) in elements.iter().enumerate() {
+                let elem_id = expr_to_dot(elem, output, gen);
+                output.push_str(&format!("  {node_id} -> {elem_id} [label=\"elem{}\"];\n", i));
+            }
+        }
+        Expr::ArrayIndex(arr, index) => {
+            output.push_str(&format!("  {node_id} [label=\"ArrayIndex\"];\n"));
+            let arr_id = expr_to_dot(arr, output, gen);
+            let index_id = expr_to_dot(index, output, gen);
+            output.push_str(&format!("  {node_id} -> {arr_id} [label=\"array\"];\n"));
+            output.push_str(&format!("  {node_id} -> {index_id} [label=\"index\"];\n"));
+        }
     }
     
     node_id
