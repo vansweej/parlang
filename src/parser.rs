@@ -55,13 +55,14 @@ where
             many1(combine::parser::char::digit())
         ))
     )
-    .map(|(sign, int_part, (_dot, _lookahead, frac_part)): (Option<char>, String, (char, char, String))| {
+    .and_then(|(sign, int_part, (_dot, _lookahead, frac_part)): (Option<char>, String, (char, char, String))| {
         let num_str = format!("{}{}.{}", 
             if sign.is_some() { "-" } else { "" },
             int_part,
             frac_part
         );
-        num_str.parse::<f64>().expect("valid float")
+        num_str.parse::<f64>()
+            .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("invalid float"))
     })
     .map(Expr::Float)
 }
