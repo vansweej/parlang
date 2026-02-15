@@ -42,6 +42,9 @@ pub enum Type {
     /// Reference type: Ref T
     /// Represents a mutable reference to a value of type T
     Ref(Box<Type>),
+    /// Range type: Range
+    /// Represents an inclusive integer range from start to end
+    Range,
 }
 
 /// Type variable identifier
@@ -128,6 +131,7 @@ impl fmt::Display for Type {
             Type::Ref(inner) => {
                 write!(f, "Ref {inner}")
             }
+            Type::Range => write!(f, "Range"),
         }
     }
 }
@@ -611,5 +615,25 @@ mod tests {
             ),
         };
         assert_eq!(format!("{scheme}"), "forall r0, r1. r0 -> r1");
+    }
+
+    // Tests for Range type
+    #[test]
+    fn test_type_range_equality() {
+        assert_eq!(Type::Range, Type::Range);
+        assert_ne!(Type::Range, Type::Int);
+        assert_ne!(Type::Range, Type::Bool);
+    }
+
+    #[test]
+    fn test_display_range() {
+        assert_eq!(format!("{}", Type::Range), "Range");
+    }
+
+    #[test]
+    fn test_type_range_clone() {
+        let t1 = Type::Range;
+        let t2 = t1.clone();
+        assert_eq!(t1, t2);
     }
 }

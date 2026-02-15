@@ -43,23 +43,27 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    // Parse optional sign, digits, decimal point, and fractional digits
-    let number = (
+    // Parse optional sign, digits, then check for ".digit" pattern
+    // This ensures we only consume input if we can parse a complete float
+    (
         optional(token('-')),
         many1(combine::parser::char::digit()),
-        token('.'),
-        many1(combine::parser::char::digit()),
-    ).and_then(|(sign, int_part, _, frac_part): (Option<char>, String, char, String)| {
+        // Use attempt to ensure backtracking if the dot+digits pattern fails
+        attempt((
+            token('.'),
+            combine::parser::combinator::look_ahead(combine::parser::char::digit()),
+            many1(combine::parser::char::digit())
+        ))
+    )
+    .map(|(sign, int_part, (_dot, _lookahead, frac_part)): (Option<char>, String, (char, char, String))| {
         let num_str = format!("{}{}.{}", 
             if sign.is_some() { "-" } else { "" },
             int_part,
             frac_part
         );
-        num_str.parse::<f64>()
-            .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("invalid float"))
-    });
-    
-    number.map(Expr::Float)
+        num_str.parse::<f64>().expect("valid float")
+    })
+    .map(Expr::Float)
 }
 
 /// Parse a byte literal (unsigned 8-bit integer with 'b' suffix)
@@ -837,7 +841,11 @@ parser! {
                     expr().skip(spaces())
                 ).map(|index_expr| (2, 0, String::new(), Some(index_expr)))),
                 // Tuple/field access: .number or .identifier
-                token('.').with(choice((
+                // But not ".." which is the range operator
+                attempt((
+                    token('.'),
+                    combine::parser::combinator::not_followed_by(token('.')),
+                ).with(choice((
                     // Try to parse a number first (tuple projection)
                     attempt(many1(combine::parser::char::digit()).and_then(|s: String| {
                         s.parse::<usize>()
@@ -846,7 +854,7 @@ parser! {
                     })),
                     // Otherwise parse an identifier (field access)
                     identifier().map(|name| (1, 0, name, None))
-                )))
+                ))))
             )))
         )
             .map(|(base, projs): (Expr, Vec<(u8, usize, String, Option<Expr>)>)| {
@@ -977,6 +985,35 @@ parser! {
     }
 }
 
+/// Parse range expressions.
+///
+/// This parser implements range creation with the `..` operator:
+/// - `a..b` creates an inclusive range from a to b
+///
+/// # Precedence
+/// Lower precedence than addition/subtraction, higher than comparisons.
+///
+/// # Examples
+/// - `1..10` -> `Range(1, 10)`
+/// - `0..100` -> `Range(0, 100)`
+parser! {
+    fn range_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        (
+            add_expr().skip(spaces()),
+            optional(attempt(string("..")).skip(spaces()).with(add_expr().skip(spaces())))
+        )
+            .map(|(left, rest)| {
+                if let Some(right) = rest {
+                    Expr::Range(Box::new(left), Box::new(right))
+                } else {
+                    left
+                }
+            })
+    }
+}
+
 /// Parse comparison expressions.
 ///
 /// This parser implements comparison operations:
@@ -1011,7 +1048,7 @@ parser! {
             attempt(token('>')).map(|_| BinOp::Gt),
         ));
 
-        (add_expr().skip(spaces()), optional(op.skip(spaces()).and(add_expr())))
+        (range_expr().skip(spaces()), optional(op.skip(spaces()).and(range_expr())))
             .map(|(left, rest)| {
                 if let Some((op, right)) = rest {
                     Expr::BinOp(op, Box::new(left), Box::new(right))

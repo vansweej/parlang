@@ -212,7 +212,7 @@ fn apply_subst_with_visited(
     visited: &mut HashSet<TypeVar>,
 ) -> Type {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit => ty.clone(),
+        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit | Type::Range => ty.clone(),
         Type::Var(v) => {
             if visited.contains(v) {
                 // Cycle detected, return the variable as-is
@@ -291,7 +291,7 @@ type RowSubstitution = HashMap<RowVar, Type>;
 /// The type with row variables substituted
 fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit | Type::Var(_) => ty.clone(),
+        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit | Type::Var(_) | Type::Range => ty.clone(),
         Type::Fun(arg, ret) => Type::Fun(
             Box::new(apply_row_subst(subst, arg)),
             Box::new(apply_row_subst(subst, ret)),
@@ -375,7 +375,7 @@ fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
 /// - For `{ age: t0 }`: returns `{t0}`
 fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit => HashSet::new(),
+        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit | Type::Range => HashSet::new(),
         Type::Var(v) => {
             let mut set = HashSet::new();
             set.insert(v.clone());
@@ -427,7 +427,7 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
 /// For the type `forall r0. { age: Int | r0 }`, after instantiation r0 is bound.
 fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit | Type::Var(_) | Type::Record(_) => HashSet::new(),
+        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit | Type::Var(_) | Type::Record(_) | Type::Range => HashSet::new(),
         Type::RecordRow(fields, row_var) => {
             let mut set = HashSet::new();
             set.insert(row_var.clone());
@@ -560,7 +560,7 @@ impl std::error::Error for TypeError {}
 /// Unification algorithm
 fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
     match (t1, t2) {
-        (Type::Int, Type::Int) | (Type::Bool, Type::Bool) | (Type::Char, Type::Char) | (Type::Float, Type::Float) | (Type::Byte, Type::Byte) | (Type::Unit, Type::Unit) => Ok(HashMap::new()),
+        (Type::Int, Type::Int) | (Type::Bool, Type::Bool) | (Type::Char, Type::Char) | (Type::Float, Type::Float) | (Type::Byte, Type::Byte) | (Type::Unit, Type::Unit) | (Type::Range, Type::Range) => Ok(HashMap::new()),
 
         (Type::Var(v), t) | (t, Type::Var(v)) => bind_var(v.clone(), t.clone()),
 
@@ -1437,6 +1437,20 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             
             // Return unit type
             Ok((Type::Unit, subst))
+        }
+        
+        Expr::Range(start_expr, end_expr) => {
+            // Type check: start and end must both be integers
+            let (start_ty, s1) = infer(start_expr, env)?;
+            let (end_ty, s2) = infer(end_expr, env)?;
+            
+            // Unify start with Int
+            let s3 = unify(&start_ty, &Type::Int)?;
+            // Unify end with Int
+            let s4 = unify(&end_ty, &Type::Int)?;
+            
+            let subst = compose_subst(&s4, &compose_subst(&s3, &compose_subst(&s2, &s1)));
+            Ok((Type::Range, subst))
         }
     }
 }
