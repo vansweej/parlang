@@ -24,6 +24,7 @@ A comprehensive guide to programming in ParLang, from basic concepts to advanced
 16. [Best Practices](#best-practices)
 17. [Common Mistakes to Avoid](#common-mistakes-to-avoid)
 18. [Example Files](#example-files)
+19. [Map (Key-Value Dictionaries)](#map-key-value-dictionaries)
 
 ---
 
@@ -2099,6 +2100,146 @@ let divmod = rec divmod -> fun p ->
 in divmod (17, 5)
 ```
 **Output:** `(3, 2)`
+
+---
+
+## Map (Key-Value Dictionaries)
+
+ParLang provides Map data structures as library implementations, demonstrating that complex data structures don't need to be language primitives. Maps store key-value pairs and support efficient lookup, insertion, and deletion.
+
+### Association List Map (Simple)
+
+The simplest map implementation using a list of tuples. Best for small maps (< 20 entries).
+
+**Creating and using a simple map:**
+
+```parlang
+type List a = Nil | Cons a (List a) in
+type Option a = Some a | None in
+type Tuple k v = Tuple k v in
+let empty = Nil in
+let insert = fun key -> fun value -> fun map ->
+  Cons (Tuple key value) map
+in
+let lookup = rec lookup -> fun key -> fun map ->
+  match map with
+  | Nil -> None
+  | Cons pair rest ->
+      (match pair with
+      | Tuple k v ->
+          if k == key then Some v
+          else lookup key rest)
+in
+let m = insert 1 42 (insert 2 30 empty) in
+lookup 1 m
+```
+**Output:** `Some(42)`
+
+### Binary Search Tree Map (Efficient)
+
+A more efficient map using a binary search tree. Keys are automatically sorted and lookups are faster.
+
+**Creating and using a tree map:**
+
+```parlang
+type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+type Option a = Some a | None in
+let empty = Empty in
+let insert = rec insert -> fun key -> fun value -> fun map ->
+  match map with
+  | Empty -> Node key value Empty Empty
+  | Node k v left right ->
+      if key == k then Node key value left right
+      else if key < k then Node k v (insert key value left) right
+      else Node k v left (insert key value right)
+in
+let lookup = rec lookup -> fun key -> fun map ->
+  match map with
+  | Empty -> None
+  | Node k v left right ->
+      if key == k then Some v
+      else if key < k then lookup key left
+      else lookup key right
+in
+let m = insert 5 50 (insert 3 30 (insert 7 70 empty)) in
+lookup 5 m
+```
+**Output:** `Some(50)`
+
+### Practical Map Operations
+
+**Counting frequencies:**
+
+```parlang
+type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+type List a = Nil | Cons a (List a) in
+type Option a = Some a | None in
+let empty = Empty in
+let insert = rec insert -> fun key -> fun value -> fun map ->
+  match map with
+  | Empty -> Node key value Empty Empty
+  | Node k v left right ->
+      if key == k then Node key value left right
+      else if key < k then Node k v (insert key value left) right
+      else Node k v left (insert key value right)
+in
+let lookup = rec lookup -> fun key -> fun map ->
+  match map with
+  | Empty -> None
+  | Node k v left right ->
+      if key == k then Some v
+      else if key < k then lookup key left
+      else lookup key right
+in
+let count = rec count -> fun items -> fun map ->
+  match items with
+  | Nil -> map
+  | Cons item rest ->
+      let current = (match lookup item map with
+      | Some n -> n
+      | None -> 0) in
+      count rest (insert item (current + 1) map)
+in
+let items = Cons 1 (Cons 2 (Cons 1 (Cons 3 (Cons 2 (Cons 1 Nil))))) in
+let frequencies = count items empty in
+lookup 1 frequencies
+```
+**Output:** `Some(3)`
+
+**Map operations (transforming values):**
+
+```parlang
+type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+let empty = Empty in
+let insert = rec insert -> fun key -> fun value -> fun map ->
+  match map with
+  | Empty -> Node key value Empty Empty
+  | Node k v left right ->
+      if key == k then Node key value left right
+      else if key < k then Node k v (insert key value left) right
+      else Node k v left (insert key value right)
+in
+let map_values = rec map_values -> fun f -> fun m ->
+  match m with
+  | Empty -> Empty
+  | Node k v left right ->
+      Node k (f v) (map_values f left) (map_values f right)
+in
+let fold = rec fold -> fun f -> fun acc -> fun m ->
+  match m with
+  | Empty -> acc
+  | Node k v left right ->
+      let acc1 = fold f acc left in
+      let acc2 = f acc1 k v in
+      fold f acc2 right
+in
+let m = insert 1 10 (insert 2 20 (insert 3 30 empty)) in
+let doubled = map_values (fun x -> x * 2) m in
+fold (fun acc -> fun k -> fun v -> acc + v) 0 doubled
+```
+**Output:** `120`
+
+For more details on Map operations and implementations, see [MAP_LIBRARY.md](MAP_LIBRARY.md).
 
 ---
 

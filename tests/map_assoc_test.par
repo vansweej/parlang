@@ -1,0 +1,94 @@
+type List a = Nil | Cons a (List a) in
+type Option a = Some a | None in
+type Tuple k v = Tuple k v in
+type Map k v = List (Tuple k v) in
+let empty = Nil in
+let insert = fun key -> fun value -> fun map ->
+  let delete_key = rec delete_key -> fun k -> fun m ->
+    match m with
+    | Nil -> Nil
+    | Cons pair rest ->
+        (match pair with
+        | Tuple pk pv -> 
+            if pk == k then rest
+            else Cons pair (delete_key k rest))
+  in
+  Cons (Tuple key value) (delete_key key map)
+in
+let lookup = rec lookup -> fun key -> fun map ->
+  match map with
+  | Nil -> None
+  | Cons pair rest ->
+      (match pair with
+      | Tuple k v ->
+          if k == key then Some v
+          else lookup key rest)
+in
+let delete = rec delete -> fun key -> fun map ->
+  match map with
+  | Nil -> Nil
+  | Cons pair rest ->
+      (match pair with
+      | Tuple k v ->
+          if k == key then rest
+          else Cons pair (delete key rest))
+in
+let member = fun key -> fun map ->
+  match lookup key map with
+  | Some _ -> true
+  | None -> false
+in
+let size = rec size -> fun map ->
+  match map with
+  | Nil -> 0
+  | Cons _ rest -> 1 + size rest
+in
+let map_values = rec map_values -> fun f -> fun m ->
+  match m with
+  | Nil -> Nil
+  | Cons pair rest ->
+      (match pair with
+      | Tuple k v -> Cons (Tuple k (f v)) (map_values f rest))
+in
+let filter = rec filter -> fun pred -> fun m ->
+  match m with
+  | Nil -> Nil
+  | Cons pair rest ->
+      (match pair with
+      | Tuple k v ->
+          if pred k v then Cons pair (filter pred rest)
+          else filter pred rest)
+in
+let fold = rec fold -> fun f -> fun acc -> fun m ->
+  match m with
+  | Nil -> acc
+  | Cons pair rest ->
+      (match pair with
+      | Tuple k v -> fold f (f acc k v) rest)
+in
+let not = fun b -> if b then false else true in
+let test1 = size empty == 0 in
+let m = insert 1 1 (insert 2 2 empty) in
+let test2 = (match lookup 1 m with
+| Some 1 -> true
+| _ -> false) in
+let m2 = insert 1 10 m in
+let test3 = (match lookup 1 m2 with
+| Some 10 -> true
+| _ -> false) in
+let m3 = delete 1 m2 in
+let test4 = (match lookup 1 m3 with
+| None -> true
+| _ -> false) in
+let test5 = if member 2 m then not (member 99 m) else false in
+let test6 = size m == 2 in
+let m4 = map_values (fun x -> x * 10) m in
+let test7 = (match lookup 1 m4 with
+| Some 10 -> true
+| _ -> false) in
+let m5 = filter (fun k -> fun v -> v > 1) m in
+let test8 = size m5 == 1 in
+let sum = fold (fun acc -> fun k -> fun v -> acc + v) 0 m in
+let test9 = sum == 3 in
+let all_pass = if test1 then if test2 then if test3 then if test4 then if test5 then if test6 then if test7 then if test8 then test9 else false else false else false else false else false else false else false else false in
+if all_pass then 1 else 0

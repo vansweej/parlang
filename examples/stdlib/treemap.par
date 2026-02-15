@@ -1,0 +1,160 @@
+type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+type Option a = Some a | None in
+type List a = Nil | Cons a (List a) in
+type Tuple k v = Tuple k v in
+let empty = Empty in
+let insert = rec insert -> fun key -> fun value -> fun map ->
+  match map with
+  | Empty -> Node key value Empty Empty
+  | Node k v left right ->
+      if key == k then Node key value left right
+      else if key < k then Node k v (insert key value left) right
+      else Node k v left (insert key value right)
+in
+let lookup = rec lookup -> fun key -> fun map ->
+  match map with
+  | Empty -> None
+  | Node k v left right ->
+      if key == k then Some v
+      else if key < k then lookup key left
+      else lookup key right
+in
+let find_min = rec find_min -> fun map ->
+  match map with
+  | Empty -> None
+  | Node k v left right ->
+      (match left with
+      | Empty -> Some (Tuple k v)
+      | Node _ _ _ _ -> find_min left)
+in
+let delete_min = rec delete_min -> fun map ->
+  match map with
+  | Empty -> Empty
+  | Node k v left right ->
+      (match left with
+      | Empty -> right
+      | Node _ _ _ _ -> Node k v (delete_min left) right)
+in
+let delete = rec delete -> fun key -> fun map ->
+  match map with
+  | Empty -> Empty
+  | Node k v left right ->
+      if key == k then
+        (match left with
+        | Empty -> right
+        | Node _ _ _ _ ->
+            (match right with
+            | Empty -> left
+            | Node _ _ _ _ ->
+                (match find_min right with
+                | Some pair ->
+                    (match pair with
+                    | Tuple min_k min_v ->
+                        Node min_k min_v left (delete_min right))
+                | None -> left)))
+      else if key < k then Node k v (delete key left) right
+      else Node k v left (delete key right)
+in
+let member = fun key -> fun map ->
+  match lookup key map with
+  | Some _ -> true
+  | None -> false
+in
+let size = rec size -> fun map ->
+  match map with
+  | Empty -> 0
+  | Node _ _ left right -> 1 + size left + size right
+in
+let keys = rec keys -> fun map ->
+  let append = rec append -> fun l1 -> fun l2 ->
+    match l1 with
+    | Nil -> l2
+    | Cons x xs -> Cons x (append xs l2)
+  in
+  match map with
+  | Empty -> Nil
+  | Node k v left right ->
+      let left_keys = keys left in
+      let right_keys = keys right in
+      append left_keys (Cons k right_keys)
+in
+let values = rec values -> fun map ->
+  let append = rec append -> fun l1 -> fun l2 ->
+    match l1 with
+    | Nil -> l2
+    | Cons x xs -> Cons x (append xs l2)
+  in
+  match map with
+  | Empty -> Nil
+  | Node k v left right ->
+      let left_vals = values left in
+      let right_vals = values right in
+      append left_vals (Cons v right_vals)
+in
+let to_list = rec to_list -> fun map ->
+  let append = rec append -> fun l1 -> fun l2 ->
+    match l1 with
+    | Nil -> l2
+    | Cons x xs -> Cons x (append xs l2)
+  in
+  match map with
+  | Empty -> Nil
+  | Node k v left right ->
+      let left_list = to_list left in
+      let right_list = to_list right in
+      append left_list (Cons (Tuple k v) right_list)
+in
+let from_list = rec from_list -> fun list ->
+  match list with
+  | Nil -> empty
+  | Cons pair rest ->
+      (match pair with
+      | Tuple k v -> insert k v (from_list rest))
+in
+let map_values = rec map_values -> fun f -> fun m ->
+  match m with
+  | Empty -> Empty
+  | Node k v left right ->
+      Node k (f v) (map_values f left) (map_values f right)
+in
+let filter = rec filter -> fun pred -> fun m ->
+  let merge = rec merge -> fun t1 -> fun t2 ->
+    match t1 with
+    | Empty -> t2
+    | Node k1 v1 l1 r1 ->
+        insert k1 v1 (merge r1 t2)
+  in
+  match m with
+  | Empty -> Empty
+  | Node k v left right ->
+      let filtered_left = filter pred left in
+      let filtered_right = filter pred right in
+      if pred k v then Node k v filtered_left filtered_right
+      else merge filtered_left filtered_right
+in
+let fold = rec fold -> fun f -> fun acc -> fun m ->
+  match m with
+  | Empty -> acc
+  | Node k v left right ->
+      let acc1 = fold f acc left in
+      let acc2 = f acc1 k v in
+      fold f acc2 right
+in
+let demo =
+  let m0 = empty in
+  let m1 = insert 5 50 m0 in
+  let m2 = insert 3 30 m1 in
+  let m3 = insert 7 70 m2 in
+  let m4 = insert 1 10 m3 in
+  let m5 = insert 9 90 m4 in
+  let val5 = lookup 5 m5 in
+  let val1 = lookup 1 m5 in
+  let val99 = lookup 99 m5 in
+  let all_keys = keys m5 in
+  let m6 = delete 5 m5 in
+  let keys6 = keys m6 in
+  let m7 = map_values (fun x -> x * 2) m6 in
+  let sum = fold (fun acc -> fun k -> fun v -> acc + v) 0 m7 in
+  sum
+in
+demo
