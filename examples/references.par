@@ -1,0 +1,111 @@
+let r = ref 42;
+let value = !r;
+
+let counter = ref 0;
+let dummy = counter := 10;
+let counterValue = !counter;
+
+let x = ref 1;
+let dummy = x := 2;
+let dummy = x := 3;
+let dummy = x := 4;
+let multipleUpdates = !x;
+
+let counter = ref 0;
+let increment = fun x -> counter := !counter + 1;
+let dummy1 = increment 0;
+let dummy2 = increment 0;
+let dummy3 = increment 0;
+let counterPattern = !counter;
+
+let r = ref 5;
+let alias = r;
+let dummy = r := 10;
+let aliasing = !alias;
+
+let make_counter = fun initial ->
+    let count = ref initial in
+    fun x -> (
+        let old = !count in
+        let dummy = count := old + 1 in
+        old
+    );
+let counter1 = make_counter 0;
+let counter2 = make_counter 100;
+let a = counter1 0;
+let b = counter1 0;
+let c = counter2 0;
+let d = counter2 0;
+let closureCapture = (b, d);
+
+let accumulator = fun initial ->
+    let sum = ref initial in
+    fun x -> (
+        let dummy = sum := !sum + x in
+        !sum
+    );
+let acc = accumulator 0;
+let a = acc 5;
+let b = acc 10;
+let c = acc 15;
+let accumulatorResult = c;
+
+let swap = fun r1 -> fun r2 ->
+    let temp = !r1 in
+    let dummy = r1 := !r2 in
+    r2 := temp;
+let x = ref 10;
+let y = ref 20;
+let dummy = swap x y;
+let swapResult = (!x, !y);
+
+let r = ref 5;
+let dummy = if !r > 0 
+    then r := !r * 2 
+    else r := 0;
+let conditionalMutation = !r;
+
+let count_down = rec f -> fun r ->
+    if !r == 0
+    then 0
+    else (
+        let dummy = r := !r - 1 in
+        1 + f r
+    );
+let counter = ref 5;
+let recursiveResult = count_down counter;
+
+let state = { count: ref 0, active: ref true };
+let dummy = state.count := 5;
+let dummy = state.active := false;
+let recordRefs = (!state.count, !state.active);
+
+let increment = fun r -> r := !r + 1;
+let decrement = fun r -> r := !r - 1;
+let apply_twice = fun f -> fun r -> (
+    let dummy = f r in
+    f r
+);
+let counter = ref 10;
+let dummy = apply_twice increment counter;
+let higherOrderResult = !counter;
+
+let r1 = ref 1;
+let r2 = ref 2;
+let r3 = ref 3;
+let dummy = r1 := 10;
+let dummy = r2 := 20;
+let dummy = r3 := 30;
+let multipleRefs = !r1 + !r2 + !r3;
+
+let r = ref (1, 2, 3);
+let tuple = !r;
+let tupleRefResult = tuple.0 + tuple.1 + tuple.2;
+
+let int_ref = ref 42;
+let bool_ref = ref true;
+let float_ref = ref 3.14;
+let char_ref = ref 'a';
+let differentTypes = (!int_ref, !bool_ref, !float_ref, !char_ref);
+
+42

@@ -354,3 +354,110 @@ fn test_ref_recursive() {
     
     assert_eq!(result, Value::Int(5));
 }
+
+#[test]
+fn test_ref_with_match() {
+    // Test references with match expressions
+    let code = r"
+        let r = ref 5 in
+        match !r with
+        | 0 -> 0
+        | n -> n * 2
+    ";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env).unwrap();
+    
+    assert_eq!(result, Value::Int(10));
+}
+
+#[test]
+fn test_ref_in_array() {
+    // Test references inside arrays
+    let code = r"
+        let r1 = ref 1 in
+        let r2 = ref 2 in
+        let r3 = ref 3 in
+        let arr = [|r1, r2, r3|] in
+        let dummy = arr[0] := 10 in
+        !r1
+    ";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env).unwrap();
+    
+    assert_eq!(result, Value::Int(10));
+}
+
+#[test]
+fn test_nested_ref() {
+    // Test reference to a reference
+    let code = r"
+        let inner = ref 42 in
+        let outer = ref inner in
+        let ref_val = !outer in
+        !ref_val
+    ";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env).unwrap();
+    
+    assert_eq!(result, Value::Int(42));
+}
+
+#[test]
+fn test_ref_assignment_chain() {
+    // Test chaining multiple assignments
+    let code = r"
+        let r = ref 0 in
+        let r2 = ref 0 in
+        let dummy = (r := 5, r2 := 10) in
+        !r + !r2
+    ";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env).unwrap();
+    
+    assert_eq!(result, Value::Int(15));
+}
+
+#[test]
+fn test_ref_char() {
+    // Test reference with character
+    let expr = parse("let r = ref 'x' in !r").unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env).unwrap();
+    
+    assert_eq!(result, Value::Char('x'));
+}
+
+#[test]
+fn test_ref_update_same_value() {
+    // Test updating reference with same value
+    let code = r"
+        let r = ref 10 in
+        let dummy = r := 10 in
+        !r
+    ";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env).unwrap();
+    
+    assert_eq!(result, Value::Int(10));
+}
+
+#[test]
+fn test_ref_with_arithmetic() {
+    // Test dereferencing in arithmetic expressions
+    let code = r"
+        let r1 = ref 10 in
+        let r2 = ref 20 in
+        !r1 + !r2 * 2
+    ";
+    let expr = parse(code).unwrap();
+    let env = Environment::new();
+    let result = eval(&expr, &env).unwrap();
+    
+    // Should be 10 + (20 * 2) = 50
+    assert_eq!(result, Value::Int(50));
+}
