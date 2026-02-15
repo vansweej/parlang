@@ -71,6 +71,8 @@ pub enum Literal {
     Bool(bool),
     /// Character literal
     Char(char),
+    /// Byte literal
+    Byte(u8),
 }
 
 /// Pattern for pattern matching
@@ -132,6 +134,9 @@ pub enum Expr {
     
     /// Floating point literal: 3.14, -2.5, 0.0
     Float(f64),
+    
+    /// Byte literal: 0b, 255b
+    Byte(u8),
     
     /// Variable reference: x, y, foo
     Var(String),
@@ -257,6 +262,7 @@ impl fmt::Display for Expr {
                 write!(f, "'")
             }
             Expr::Float(fl) => write!(f, "{fl}"),
+            Expr::Byte(b) => write!(f, "{}b", b),
             Expr::Var(name) => write!(f, "{name}"),
             Expr::BinOp(op, left, right) => write!(f, "({left} {op} {right})"),
             Expr::If(cond, then_branch, else_branch) => {
@@ -418,6 +424,7 @@ impl fmt::Display for Literal {
                 }
                 write!(f, "'")
             }
+            Literal::Byte(b) => write!(f, "{}b", b),
         }
     }
 }

@@ -155,6 +155,10 @@ fn analyze_pattern(
             // Char literals are not exhaustively checked currently
             // (there are too many possible char values)
         }
+        Pattern::Literal(Literal::Byte(_)) => {
+            // Byte literals are not exhaustively checked currently
+            // (there are 256 possible byte values)
+        }
         Pattern::Constructor(name, args) => {
             constructors.insert(name.clone());
             // Recursively analyze nested patterns
