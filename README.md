@@ -845,6 +845,9 @@ See the `examples/` directory for sample programs:
 - `stdlib.par` - Standard library with common functions
 - `math.par` - Mathematical utility functions
 - `use_stdlib.par` - Example of loading and using library functions
+- `references.par` - Reference (controlled mutation) examples with counters, closures, and state management
+- `arrays.par` - Array creation, indexing, and manipulation examples
+- `tuples.par` - Tuple creation, projection, and pattern matching
 - `type_aliases.par` - Basic type alias example
 - `type_alias_simple.par` - Simple function type alias
 - `type_alias_binary.par` - Binary operation type alias
