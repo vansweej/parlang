@@ -16,21 +16,43 @@ The main type representation:
 pub enum Type {
     Int,                        // Integer type
     Bool,                       // Boolean type
+    Char,                       // Character type
+    Float,                      // Floating point type
+    Byte,                       // Byte type (unsigned 8-bit integer)
+    Unit,                       // Unit type
     Fun(Box<Type>, Box<Type>),  // Function type: T1 -> T2
     Var(TypeVar),               // Type variable for polymorphism
+    Record(HashMap<String, Type>), // Record type
+    RecordRow(HashMap<String, Type>, RowVar), // Record with row polymorphism
+    Row(RowVar),                // Row variable
+    SumType(String, Vec<Type>), // Generic sum type
+    Array(Box<Type>, usize),    // Fixed-size array
+    Ref(Box<Type>),             // Reference type
 }
 ```
 
 **Variants:**
-- `Int`: Represents integer values (e.g., `42`, `-10`)
+- `Int`: Represents 64-bit signed integer values (e.g., `42`, `-10`)
 - `Bool`: Represents boolean values (`true`, `false`)
+- `Char`: Represents single Unicode characters (e.g., `'a'`, `'\n'`)
+- `Float`: Represents 64-bit floating point values (e.g., `3.14`, `-2.5`)
+- `Byte`: Represents unsigned 8-bit integer values (e.g., `0b`, `255b`, `42b`)
+- `Unit`: Represents the empty tuple `()`
 - `Fun(arg, ret)`: Represents function types where `arg` is the argument type and `ret` is the return type
 - `Var(TypeVar)`: Represents a type variable used during type inference
+- `Record(fields)`: Represents record types with named fields
+- `RecordRow(fields, row_var)`: Represents records with row polymorphism
+- `Row(RowVar)`: Represents a row variable
+- `SumType(name, args)`: Represents generic algebraic data types
+- `Array(elem_type, size)`: Represents fixed-size arrays
+- `Ref(inner)`: Represents mutable references
 
 **Examples:**
 ```rust
 Type::Int                                    // Int
 Type::Bool                                   // Bool
+Type::Byte                                   // Byte
+Type::Float                                  // Float
 Type::Fun(Box::new(Type::Int), 
           Box::new(Type::Bool))              // Int -> Bool
 Type::Var(TypeVar(0))                        // t0 (type variable)
@@ -91,6 +113,10 @@ All types implement `Display` for human-readable output:
 ```rust
 Type::Int                     // "Int"
 Type::Bool                    // "Bool"
+Type::Byte                    // "Byte"
+Type::Float                   // "Float"
+Type::Char                    // "Char"
+Type::Unit                    // "()"
 Type::Var(TypeVar(0))         // "t0"
 Type::Fun(Int, Bool)          // "Int -> Bool"
 Type::Fun(Fun(Int, Bool),
@@ -133,6 +159,9 @@ use parlang::types::{Type, TypeVar, TypeScheme};
 // Basic types
 let int_type = Type::Int;
 let bool_type = Type::Bool;
+let byte_type = Type::Byte;
+let float_type = Type::Float;
+let char_type = Type::Char;
 
 // Function type: Int -> Bool
 let func_type = Type::Fun(
@@ -146,6 +175,7 @@ let var_type = Type::Var(TypeVar(0));
 // Polymorphic type scheme
 let id_scheme = TypeScheme {
     vars: vec![TypeVar(0)],
+    row_vars: vec![],
     ty: Type::Fun(
         Box::new(Type::Var(TypeVar(0))),
         Box::new(Type::Var(TypeVar(0))),
@@ -176,10 +206,15 @@ println!("{}", scheme);                                 // "forall t0. t0 -> t0"
 
 The type representations support:
 
-1. **Basic Types**: Int and Bool for primitive values
+1. **Basic Types**: Int, Bool, Char, Float, Byte, and Unit for primitive values
 2. **Function Types**: First-class function types with proper associativity
 3. **Type Variables**: For representing unknown or polymorphic types
 4. **Type Schemes**: For expressing polymorphic types with universal quantification
+5. **Record Types**: Structured data with named fields
+6. **Row Polymorphism**: Flexible record types
+7. **Sum Types**: Algebraic data types with constructors
+8. **Array Types**: Fixed-size homogeneous collections
+9. **Reference Types**: Mutable references
 
 ## Testing
 

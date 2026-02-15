@@ -8,12 +8,13 @@ The type system is optional and can be enabled in the REPL using the `PARLANG_TY
 
 ## Basic Types
 
-ParLang has five basic types:
+ParLang has six basic types:
 
 - **Int**: Integer values (e.g., `42`, `-10`, `0`)
 - **Bool**: Boolean values (`true`, `false`)
 - **Char**: Character values (e.g., `'a'`, `'Z'`, `'\n'`)
 - **Float**: Floating point values (e.g., `3.14`, `-2.5`, `0.0`)
+- **Byte**: Unsigned 8-bit integer values (e.g., `0b`, `255b`, `42b`)
 - **Unit** (`()`): The unit type, representing the empty tuple
 
 ### Integer Type
@@ -135,6 +136,74 @@ Type: Float
 > let pi = 3.14159 in pi * 2.0
 Type: Float
 6.28318
+```
+
+### Byte Type
+
+The `Byte` type represents unsigned 8-bit integers (0-255). Byte literals are written with a `b` suffix.
+
+**Syntax:**
+```parlang
+0b       # zero
+42b      # byte value 42
+255b     # maximum byte value
+```
+
+**Supported Operations:**
+- Arithmetic: `+`, `-`, `*`, `/` (with overflow checking)
+- Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=`
+
+**Type Inference:**
+```parlang
+> 42b
+Type: Byte
+42b
+
+> fun x -> x + 10b
+Type: Byte -> Byte
+
+> 100b < 200b
+Type: Bool
+true
+```
+
+**Important Notes:**
+- Byte values must be in the range 0-255
+- Arithmetic operations that would overflow or underflow return an error
+- Byte, Int, and Float are separate types and cannot be mixed in arithmetic operations
+- Division by zero returns an error
+
+**Examples:**
+```parlang
+> 10b + 20b
+Type: Byte
+30b
+
+> 100b * 2b
+Type: Byte
+200b
+
+> let x = 42b in x + 8b
+Type: Byte
+50b
+
+> 200b + 100b
+Error: Byte overflow in addition
+
+> 10b - 20b
+Error: Byte overflow in subtraction
+```
+
+**Pattern Matching:**
+Byte literals can be used in pattern matching:
+```parlang
+> match 42b with | 0b -> false | 42b -> true | _ -> false
+Type: Bool
+true
+
+> match 100b with | x -> x + 50b
+Type: Byte
+150b
 ```
 
 ### Unit Type
