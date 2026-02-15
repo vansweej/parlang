@@ -286,6 +286,13 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             output.push_str(&format!("  {node_id} -> {ref_id} [label=\"ref\"];\n"));
             output.push_str(&format!("  {node_id} -> {value_id} [label=\"value\"];\n"));
         }
+        Expr::Range(start, end) => {
+            output.push_str(&format!("  {node_id} [label=\"Range\"];\n"));
+            let start_id = expr_to_dot(start, output, gen);
+            let end_id = expr_to_dot(end, output, gen);
+            output.push_str(&format!("  {node_id} -> {start_id} [label=\"start\"];\n"));
+            output.push_str(&format!("  {node_id} -> {end_id} [label=\"end\"];\n"));
+        }
     }
     
     node_id

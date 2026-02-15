@@ -227,6 +227,10 @@ pub enum Expr {
     /// Reference assignment: ref_expr := value_expr
     /// Mutates the value stored in a reference
     RefAssign(Box<Expr>, Box<Expr>),
+    
+    /// Range construction: start..end
+    /// Creates an inclusive integer range from start to end
+    Range(Box<Expr>, Box<Expr>),
 }
 
 /// Binary operators
@@ -369,6 +373,7 @@ impl fmt::Display for Expr {
             Expr::Ref(expr) => write!(f, "(ref {expr})"),
             Expr::Deref(expr) => write!(f, "(!{expr})"),
             Expr::RefAssign(ref_expr, value) => write!(f, "({ref_expr} := {value})"),
+            Expr::Range(start, end) => write!(f, "{start}..{end}"),
         }
     }
 }
