@@ -24,8 +24,6 @@ let contains = rec cont -> fun s -> fun ch ->
   | Cons c rest -> if c == ch then true else cont rest ch
 in
 
-let str_to_list = fun s -> s in
-
 let take = rec tk -> fun n -> fun s ->
   if n == 0 then Nil
   else match s with

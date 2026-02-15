@@ -143,8 +143,15 @@ where
     ))
 }
 
-/// Parse a raw string (for file paths and other uses where we need a String)
-/// Does not perform escape sequence processing.
+/// Parse a raw string for use in `load` expressions (file paths)
+/// 
+/// Unlike `string_literal()`, this parser returns a `String` directly without
+/// desugaring and does not process escape sequences. This is specifically for
+/// parsing file paths in `load "filepath" in expr` expressions, where we need
+/// the literal string value to open the file.
+/// 
+/// Use `string_literal()` for string literals in expressions that should desugar
+/// to `List Char`.
 fn raw_string<Input>() -> impl Parser<Input, Output = String>
 where
     Input: Stream<Token = char>,
