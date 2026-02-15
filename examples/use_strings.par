@@ -1,0 +1,24 @@
+type List a = Nil | Cons a (List a) in
+type Option a = Some a | None in
+
+load "examples/string.par" in
+
+let s1 = "Hello" in
+let s2 = "World" in
+let greeting = strcat (strcat s1 ", ") (strcat s2 "!") in
+
+let len = strlen greeting in
+
+let has_comma = contains greeting ',' in
+
+let first_char = char_at 0 greeting in
+
+let first5 = take 5 greeting in
+
+let after_comma = drop 7 greeting in
+
+let reversed = strrev Nil greeting in
+
+let cmp_result = strcmp "apple" "banana" in
+
+greeting
