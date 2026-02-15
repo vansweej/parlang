@@ -38,7 +38,34 @@ ParLang is a simple functional programming language with:
 true        # Boolean
 false       # Boolean
 'a'         # Character
+"hello"     # String (syntactic sugar for List Char)
 ```
+
+### Strings
+
+ParLang supports string literals as syntactic sugar for `List Char`:
+
+```parlang
+"hello"                           # String literal
+"world"                           # Another string
+""                                # Empty string
+"hello\nworld"                    # With escape sequences
+```
+
+**String operations (from `examples/string.par`):**
+```parlang
+load "examples/string.par" in
+
+strlen "hello"                    # Result: 5
+strcat "hello" " world"           # Result: "hello world"
+streq "hello" "hello"             # Result: true
+contains "hello" 'e'              # Result: true
+take 3 "hello"                    # Result: "hel"
+drop 2 "hello"                    # Result: "llo"
+char_at 1 "hello"                 # Result: Some('e')
+```
+
+Strings are implemented as `List Char`, so all list operations work on strings. See [String Documentation](docs/STRINGS.md) for comprehensive guide.
 
 ### Variables and Let Bindings
 

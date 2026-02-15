@@ -394,7 +394,8 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
                 .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}")))?;
             
             // Extract bindings from the loaded library
-            let lib_env = extract_bindings(&lib_expr, &Environment::new())?;
+            // Pass current environment so type constructors are available
+            let lib_env = extract_bindings(&lib_expr, env)?;
             // Merge with current environment
             let new_env = env.merge(&lib_env);
             // Continue extracting from the body
@@ -642,7 +643,8 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                 .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}")))?;
             
             // Extract bindings from the library file
-            let lib_env = extract_bindings(&lib_expr, &Environment::new())?;
+            // Pass current environment so type constructors are available
+            let lib_env = extract_bindings(&lib_expr, env)?;
             
             // Merge library bindings into current environment
             let extended_env = env.merge(&lib_env);

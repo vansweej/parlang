@@ -206,6 +206,157 @@ Type: Byte
 150b
 ```
 
+### String Type
+
+The `String` type is a type alias for `List Char`, representing strings as lists of characters. ParLang provides syntactic sugar for string literals.
+
+**Type Definition:**
+```parlang
+type String = List Char
+```
+
+**Syntax:**
+```parlang
+"hello"         # String literal
+"world"         # Another string
+""              # Empty string
+"hello\nworld"  # String with escape sequences
+```
+
+**String literals are syntactic sugar** - they automatically desugar to `List Char` at parse time:
+```parlang
+"abc"
+# Desugars to: Cons('a', Cons('b', Cons('c', Nil)))
+```
+
+**Supported Escape Sequences:**
+- `\n` - newline
+- `\t` - tab
+- `\r` - carriage return
+- `\\` - backslash
+- `\"` - double quote
+- `\'` - single quote
+- `\0` - null character
+
+**Type Inference:**
+```parlang
+> "hello"
+Type: List Char
+"hello"
+
+> let greet = fun name -> "Hello" in greet "World"
+Type: List Char
+"Hello"
+```
+
+**String Operations:**
+
+ParLang provides a comprehensive string standard library in `examples/string.par`:
+
+```parlang
+# Load string functions
+load "examples/string.par" in
+
+# String length
+strlen "hello"                    # Result: 5
+
+# String concatenation
+strcat "hello" " world"          # Result: "hello world"
+
+# String equality
+streq "hello" "hello"            # Result: true
+
+# Contains character
+contains "hello" 'e'             # Result: true
+
+# Take first n characters
+take 3 "hello"                   # Result: "hel"
+
+# Drop first n characters
+drop 2 "hello"                   # Result: "llo"
+
+# String reverse
+strrev Nil "hello"               # Result: "olleh"
+
+# Get character at index
+char_at 1 "hello"                # Result: Some('e')
+
+# Map over characters
+strmap toupper_char "hello"      # Transform characters
+
+# Filter characters
+strfilter isVowel "hello"        # Result: "eo"
+
+# String comparison (lexicographic)
+strcmp "abc" "abd"               # Result: -1 (less than)
+strcmp "xyz" "xyz"               # Result: 0 (equal)
+strcmp "zzz" "aaa"               # Result: 1 (greater than)
+```
+
+**Pattern Matching:**
+
+Since strings are lists, you can pattern match on them:
+
+```parlang
+> type List a = Nil | Cons a (List a) in
+  match "hello" with
+  | Nil -> "empty"
+  | Cons 'h' rest -> "starts with h"
+  | Cons c rest -> "starts with something else"
+Type: List Char
+"starts with h"
+```
+
+**Using Strings with List Operations:**
+
+Since strings are lists, all list operations work:
+
+```parlang
+# Using with existing List type
+type List a = Nil | Cons a (List a) in
+
+# First character
+match "hello" with
+| Cons c _ -> Some c
+| Nil -> None
+# Result: Some('h')
+
+# Map over string
+let strmap = rec map -> fun f -> fun s ->
+  match s with
+  | Nil -> Nil
+  | Cons c rest -> Cons (f c) (map f rest)
+in strmap toupper "hello"
+```
+
+**Implementation Notes:**
+- Strings are immutable (like all values in ParLang)
+- String operations have the same performance characteristics as list operations
+- Empty string `""` desugars to `Nil`
+- Unicode characters are fully supported (Rust's `char` type is Unicode)
+
+**Examples:**
+```parlang
+> "hello"
+Type: List Char
+"hello"
+
+> load "examples/string.par" in strlen "ParLang"
+Type: Int
+7
+
+> load "examples/string.par" in strcat "Hello, " "World!"
+Type: List Char
+"Hello, World!"
+
+> load "examples/string.par" in
+  let s1 = "functional" in
+  let s2 = "functional" in
+  streq s1 s2
+Type: Bool
+true
+```
+
 ### Unit Type
 
 The `()` type (pronounced "unit") represents the empty tuple. It has exactly one value: `()`.

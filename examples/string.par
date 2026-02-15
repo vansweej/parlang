@@ -1,0 +1,83 @@
+let strlen = rec len -> fun s ->
+  match s with
+  | Nil -> 0
+  | Cons _ rest -> 1 + len rest
+in
+
+let strcat = rec cat -> fun s1 -> fun s2 ->
+  match s1 with
+  | Nil -> s2
+  | Cons c rest -> Cons c (cat rest s2)
+in
+
+let streq = rec eq -> fun s1 -> fun s2 ->
+  match (s1, s2) with
+  | (Nil, Nil) -> true
+  | (Cons c1 r1, Cons c2 r2) -> 
+      if c1 == c2 then eq r1 r2 else false
+  | _ -> false
+in
+
+let contains = rec cont -> fun s -> fun ch ->
+  match s with
+  | Nil -> false
+  | Cons c rest -> if c == ch then true else cont rest ch
+in
+
+let take = rec tk -> fun n -> fun s ->
+  if n == 0 then Nil
+  else match s with
+    | Nil -> Nil
+    | Cons c rest -> Cons c (tk (n - 1) rest)
+in
+
+let drop = rec drp -> fun n -> fun s ->
+  if n == 0 then s
+  else match s with
+    | Nil -> Nil
+    | Cons _ rest -> drp (n - 1) rest
+in
+
+let strrev = rec rev -> fun acc -> fun s ->
+  match s with
+  | Nil -> acc
+  | Cons c rest -> rev (Cons c acc) rest
+in
+
+let char_at = rec at -> fun idx -> fun s ->
+  if idx == 0 then
+    match s with
+    | Nil -> None
+    | Cons c _ -> Some c
+  else match s with
+    | Nil -> None
+    | Cons _ rest -> at (idx - 1) rest
+in
+
+let strmap = rec map -> fun f -> fun s ->
+  match s with
+  | Nil -> Nil
+  | Cons c rest -> Cons (f c) (map f rest)
+in
+
+let strfilter = rec filt -> fun pred -> fun s ->
+  match s with
+  | Nil -> Nil
+  | Cons c rest ->
+      if pred c 
+      then Cons c (filt pred rest)
+      else filt pred rest
+in
+
+let strcmp = rec cmp -> fun s1 -> fun s2 ->
+  match (s1, s2) with
+  | (Nil, Nil) -> 0
+  | (Nil, _) -> -1
+  | (_, Nil) -> 1
+  | (Cons c1 r1, Cons c2 r2) ->
+      if c1 < c2 then -1
+      else if c1 > c2 then 1
+      else cmp r1 r2
+in
+
+0

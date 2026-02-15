@@ -108,6 +108,217 @@ true
 false
 ```
 
+**Characters:**
+```parlang
+'a'
+'Z'
+'\n'
+```
+
+**Expected Output:**
+```
+'a'
+'Z'
+'\n'
+```
+
+**Strings:**
+```parlang
+"hello"
+"world"
+""
+```
+
+**Expected Output:**
+```
+"hello"
+"world"
+""
+```
+
+---
+
+## String Literals and Operations
+
+ParLang supports string literals as syntactic sugar for `List Char`.
+
+### Basic String Literals
+
+```parlang
+"hello"                    # String literal
+"world"                    # Another string
+""                         # Empty string
+```
+
+**Result (all are List Char):**
+```
+Cons('h', Cons('e', Cons('l', Cons('l', Cons('o', Nil)))))
+Cons('w', Cons('o', Cons('r', Cons('l', Cons('d', Nil)))))
+Nil
+```
+
+### String Escape Sequences
+
+```parlang
+"hello\nworld"            # Newline
+"tab\there"               # Tab
+"quote\"inside"           # Escaped quote
+"backslash\\"             # Escaped backslash
+"single'quote"            # Single quote
+```
+
+**Output (with escape sequences interpreted):**
+```
+Cons('h', Cons('e', Cons('l', Cons('l', Cons('o', Cons('\n', Cons('w', Cons('o', Cons('r', Cons('l', Cons('d', Nil)))))))))))
+...
+```
+
+### String Standard Library
+
+Load the string library for string manipulation functions:
+
+```parlang
+load "examples/string.par" in
+
+# String length
+strlen "hello"
+# Result: 5
+
+# String concatenation
+strcat "hello" " world"
+# Result: "hello world"
+
+# String equality
+streq "hello" "hello"
+# Result: true
+
+streq "hello" "world"
+# Result: false
+
+# Contains character
+contains "hello" 'e'
+# Result: true
+
+contains "hello" 'z'
+# Result: false
+```
+
+### Advanced String Operations
+
+```parlang
+load "examples/string.par" in
+
+# Take first n characters
+take 3 "hello world"
+# Result: "hel"
+
+# Drop first n characters
+drop 6 "hello world"
+# Result: "world"
+
+# String reverse
+strrev Nil "hello"
+# Result: "olleh"
+
+# Get character at index (0-based)
+char_at 1 "hello"
+# Result: Some('e')
+
+char_at 10 "hello"
+# Result: None
+```
+
+### String Comparison
+
+```parlang
+load "examples/string.par" in
+
+# Lexicographic comparison
+strcmp "abc" "abd"
+# Result: -1 (abc < abd)
+
+strcmp "xyz" "xyz"
+# Result: 0 (equal)
+
+strcmp "zzz" "aaa"
+# Result: 1 (zzz > aaa)
+```
+
+### Pattern Matching on Strings
+
+Since strings are lists of characters, you can pattern match on them:
+
+```parlang
+type List a = Nil | Cons a (List a) in
+
+match "hello" with
+| Nil -> "empty string"
+| Cons 'h' rest -> "starts with h"
+| Cons c rest -> "starts with other character"
+# Result: "starts with h"
+
+# Check for empty string
+let is_empty = fun s ->
+  match s with
+  | Nil -> true
+  | _ -> false
+in is_empty ""
+# Result: true
+```
+
+### Building Strings Programmatically
+
+```parlang
+type List a = Nil | Cons a (List a) in
+
+# Build a string from characters
+Cons 'h' (Cons 'i' Nil)
+# Result: "hi"
+
+# This is exactly what "hi" desugars to
+"hi"
+# Result: "hi"
+```
+
+### String in Functions
+
+```parlang
+load "examples/string.par" in
+
+# Function that greets
+let greet = fun name ->
+  strcat "Hello, " (strcat name "!")
+in
+
+greet "Alice"
+# Result: "Hello, Alice!"
+
+# Function that checks if string starts with character
+let starts_with = fun s -> fun c ->
+  match s with
+  | Nil -> false
+  | Cons first _ -> first == c
+in
+
+starts_with "hello" 'h'
+# Result: true
+```
+
+### Unicode Support
+
+ParLang strings support full Unicode:
+
+```parlang
+"Hello, 世界"              # Chinese characters
+"emoji: 🎉"                # Emoji
+"Γειά σου κόσμε"          # Greek
+
+# All work as expected with strlen, strcat, etc.
+load "examples/string.par" in
+strlen "🎉"
+# Result: 1 (one Unicode character)
+```
+
 ---
 
 ## Arithmetic Operations

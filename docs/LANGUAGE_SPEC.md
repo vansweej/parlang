@@ -138,7 +138,90 @@ Two boolean constants:
 boolean ::= "true" | "false"
 ```
 
-#### 2.2.5 Operators
+#### 2.2.5 Character Literals
+
+Character literals represent single Unicode characters enclosed in single quotes.
+
+**Syntax:**
+```
+character ::= "'" (char | escape_sequence) "'"
+```
+
+**Escape Sequences:**
+- `\n` - newline (U+000A)
+- `\t` - tab (U+0009)
+- `\r` - carriage return (U+000D)
+- `\\` - backslash
+- `\'` - single quote
+- `\"` - double quote
+
+**Examples:**
+```parlang
+'a'
+'Z'
+'0'
+'\n'
+'\t'
+'世'
+'🎉'
+```
+
+**Type:** All character literals have type `Char`.
+
+#### 2.2.6 String Literals
+
+String literals represent sequences of characters (List Char) and are enclosed in double quotes.
+
+**Syntax:**
+```
+string ::= '"' (string_char | escape_sequence)* '"'
+string_char ::= [^"\\]
+```
+
+**Escape Sequences:**
+- `\n` - newline (U+000A)
+- `\t` - tab (U+0009)
+- `\r` - carriage return (U+000D)
+- `\\` - backslash
+- `\"` - double quote
+- `\'` - single quote
+- `\0` - null character (U+0000)
+
+**Examples:**
+```parlang
+"hello"
+"world"
+""
+"hello\nworld"
+"tab\there"
+"quote\"inside"
+```
+
+**Type:** All string literals have type `List Char`.
+
+**Desugaring:**
+
+String literals are syntactic sugar and desugar to `List Char` construction at parse time:
+
+```parlang
+"abc"
+# Desugars to:
+Cons('a', Cons('b', Cons('c', Nil)))
+
+""
+# Desugars to:
+Nil
+```
+
+**Operations:**
+- All list operations work on strings
+- String-specific operations available in `examples/string.par`
+- Pattern matching works as with any list
+
+**Unicode Support:**
+String literals support full Unicode (UTF-8 encoding).
+
+#### 2.2.7 Operators
 
 **Arithmetic Operators:**
 ```
@@ -163,17 +246,17 @@ boolean ::= "true" | "false"
 ->   Function arrow (separates parameter from body)
 ```
 
-#### 2.2.6 Delimiters
+#### 2.2.8 Delimiters
 
 ```
 (    Left parenthesis
 )    Right parenthesis
 =    Assignment (in let bindings)
 ;    Semicolon (separates sequential let bindings)
-"    String delimiter (for file paths in load expressions)
+"    String delimiter (for string literals and file paths in load expressions)
 ```
 
-#### 2.2.7 Whitespace
+#### 2.2.9 Whitespace
 
 Whitespace characters (space, tab, newline, carriage return) separate tokens but are otherwise ignored.
 
@@ -272,10 +355,16 @@ comparison_op ::= "==" | "!=" | "<=" | ">=" | '<' | '>'
 (* Literals *)
 integer ::= '-'? digit+
 boolean ::= "true" | "false"
-string_literal ::= '"' [^"]* '"'
+character ::= "'" (char | escape_sequence) "'"
+string ::= '"' (string_char | escape_sequence)* '"'
 identifier ::= letter (letter | digit | '_')*
 
+(* Escape sequences *)
+escape_sequence ::= '\\' ('n' | 't' | 'r' | '\\' | '"' | "'" | '0')
+
 (* Character classes *)
+string_char ::= [^"\\]
+char ::= [^'\\]
 letter ::= 'a'..'z' | 'A'..'Z'
 digit ::= '0'..'9'
 ```
