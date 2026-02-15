@@ -953,7 +953,7 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Sub, Value::Byte(a), Value::Byte(b)) => {
             a.checked_sub(b)
                 .map(Value::Byte)
-                .ok_or_else(|| EvalError::TypeError("Byte overflow in subtraction".to_string()))
+                .ok_or_else(|| EvalError::TypeError("Byte underflow in subtraction".to_string()))
         }
         (BinOp::Mul, Value::Byte(a), Value::Byte(b)) => {
             a.checked_mul(b)
