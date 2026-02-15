@@ -121,8 +121,31 @@ where
     .map(Expr::Char)
 }
 
-/// Parse a string literal
-fn string_literal<Input>() -> impl Parser<Input, Output = String>
+/// Parse a single character inside a string literal, handling escape sequences
+fn string_char<Input>() -> impl Parser<Input, Output = char>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    choice((
+        // Handle escape sequences
+        attempt(token('\\').with(choice((
+            token('n').map(|_| '\n'),
+            token('t').map(|_| '\t'),
+            token('r').map(|_| '\r'),
+            token('\\').map(|_| '\\'),
+            token('"').map(|_| '"'),
+            token('\'').map(|_| '\''),
+            token('0').map(|_| '\0'),
+        )))),
+        // Regular character (not quote or backslash)
+        combine::satisfy(|c: char| c != '"' && c != '\\'),
+    ))
+}
+
+/// Parse a raw string (for file paths and other uses where we need a String)
+/// Does not perform escape sequence processing.
+fn raw_string<Input>() -> impl Parser<Input, Output = String>
 where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
@@ -131,6 +154,52 @@ where
         token('"'),
         token('"'),
         many(combine::satisfy(|c: char| c != '"')),
+    )
+}
+
+/// Parse a string literal and desugar it to List Char (Cons/Nil constructors)
+/// 
+/// String literals are syntactic sugar for lists of characters:
+/// - "abc" desugars to: Cons 'a' (Cons 'b' (Cons 'c' Nil))
+/// - "" desugars to: Nil
+///
+/// This function parses the string and builds the appropriate nested Constructor/App structure.
+fn string_literal<Input>() -> impl Parser<Input, Output = Expr>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    between(
+        token('"'),
+        token('"'),
+        many(string_char()),
+    )
+    .map(|chars: Vec<char>| {
+        // Desugar string to List Char
+        // Empty string becomes Nil
+        // "abc" becomes Cons 'a' (Cons 'b' (Cons 'c' Nil))
+        desugar_string_to_list(chars)
+    })
+}
+
+/// Helper function to desugar a vector of characters into a List Char expression
+/// 
+/// Builds nested Cons and Nil constructors:
+/// - [] -> Nil
+/// - ['a', 'b', 'c'] -> Cons 'a' (Cons 'b' (Cons 'c' Nil))
+///
+/// In AST form:
+/// - Nil is: Constructor("Nil", [])
+/// - Cons 'a' rest is: Constructor("Cons", [Char('a'), rest])
+fn desugar_string_to_list(chars: Vec<char>) -> Expr {
+    // Build from right to left, starting with Nil
+    chars.into_iter().rev().fold(
+        // Base case: Nil constructor
+        Expr::Constructor("Nil".to_string(), vec![]),
+        |acc, c| {
+            // Cons char acc
+            Expr::Constructor("Cons".to_string(), vec![Expr::Char(c), acc])
+        }
     )
 }
 
@@ -288,6 +357,7 @@ parser! {
     {
         choice((
             attempt(bool_literal()),
+            attempt(string_literal()),  // String before char to avoid quote conflicts
             attempt(char_literal()),
             attempt(float()),
             attempt(byte()),
@@ -567,7 +637,7 @@ parser! {
     {
         (
             string("load").skip(spaces()),
-            string_literal().skip(spaces()),
+            raw_string().skip(spaces()),
             optional((string("in").skip(spaces()), expr())),
         )
             .map(|(_, filepath, body_opt)| {
@@ -1936,6 +2006,125 @@ mod tests {
     #[test]
     fn test_parse_tuple_complex() {
         let result = parse("let swap = fun p -> (p.1, p.0) in swap (5, 10)");
+        assert!(result.is_ok());
+    }
+
+    // String literal tests
+    #[test]
+    fn test_parse_string_literal() {
+        let result = parse(r#""hello""#);
+        assert!(result.is_ok());
+        // Should desugar to: Cons 'h' (Cons 'e' (Cons 'l' (Cons 'l' (Cons 'o' Nil))))
+        if let Ok(expr) = result {
+            // Verify it's a Constructor "Cons"
+            assert!(matches!(expr, Expr::Constructor(name, _) if name == "Cons"));
+        }
+    }
+
+    #[test]
+    fn test_parse_empty_string() {
+        let result = parse(r#""""#);
+        assert!(result.is_ok());
+        // Empty string should desugar to: Nil
+        if let Ok(expr) = result {
+            assert_eq!(expr, Expr::Constructor("Nil".to_string(), vec![]));
+        }
+    }
+
+    #[test]
+    fn test_parse_string_escape_newline() {
+        let result = parse(r#""hello\nworld""#);
+        assert!(result.is_ok());
+        // Should parse with a newline character in the middle
+    }
+
+    #[test]
+    fn test_parse_string_escape_tab() {
+        let result = parse(r#""tab\there""#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_string_escape_quote() {
+        let result = parse(r#""quote\"inside""#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_string_escape_backslash() {
+        let result = parse(r#""backslash\\""#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_string_escape_single_quote() {
+        let result = parse(r#""single\'quote""#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_string_in_let() {
+        let result = parse(r#"let s = "hello" in s"#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_string_comparison() {
+        let result = parse(r#""hello" == "hello""#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_string_in_function() {
+        let result = parse(r#"let greet = fun name -> "Hello" in greet "World""#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_string_desugaring_abc() {
+        // Verify that "abc" parses into the correct List Char structure
+        let result = parse(r#""abc""#);
+        assert!(result.is_ok());
+        if let Ok(expr) = result {
+            // Should be: Cons 'a' (Cons 'b' (Cons 'c' Nil))
+            match expr {
+                Expr::Constructor(name, args) if name == "Cons" => {
+                    assert_eq!(args.len(), 2);
+                    // First arg should be 'a'
+                    assert_eq!(args[0], Expr::Char('a'));
+                    // Second arg should be Cons 'b' ...
+                    match &args[1] {
+                        Expr::Constructor(name2, args2) if name2 == "Cons" => {
+                            assert_eq!(args2.len(), 2);
+                            assert_eq!(args2[0], Expr::Char('b'));
+                            // Third should be Cons 'c' Nil
+                            match &args2[1] {
+                                Expr::Constructor(name3, args3) if name3 == "Cons" => {
+                                    assert_eq!(args3.len(), 2);
+                                    assert_eq!(args3[0], Expr::Char('c'));
+                                    // Fourth should be Nil
+                                    assert_eq!(args3[1], Expr::Constructor("Nil".to_string(), vec![]));
+                                }
+                                _ => panic!("Expected third Cons"),
+                            }
+                        }
+                        _ => panic!("Expected second Cons"),
+                    }
+                }
+                _ => panic!("Expected Constructor"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_unicode_in_string() {
+        let result = parse(r#""hello 世界""#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_unicode_emoji_in_string() {
+        let result = parse(r#""emoji: 🎉""#);
         assert!(result.is_ok());
     }
 }
