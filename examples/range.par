@@ -1,0 +1,56 @@
+let simpleRange = 1..10;
+
+let negativeRange = -5..5;
+
+let largeRange = 0..1000;
+
+let descendingRange = 100..1;
+
+let zeroRange = 0..0;
+
+let startValue = 10;
+let endValue = 20;
+let computedRange = startValue..endValue;
+
+let makeRange = fun start -> fun end -> start..end;
+let range1 = makeRange 5 15;
+let range2 = makeRange 20 30;
+
+let zeroToN = fun n -> 0..n;
+let hundred = zeroToN 100;
+
+let centeredRange = fun center -> fun radius -> (center - radius)..(center + radius);
+let centered = centeredRange 50 10;
+
+let areEqual = 1..10 == 1..10;
+
+let areDifferent = 1..10 != 2..10;
+
+let compareRanges = fun r1 -> fun r2 -> r1 == r2;
+let isSame = compareRanges (1..10) (1..10);
+
+let conditionalRange = fun condition -> 
+    if condition then 1..10 else 10..20;
+
+let result1 = conditionalRange true;
+let result2 = conditionalRange false;
+
+let computedStart = 5 * 2;
+let computedEnd = 10 + 15;
+let expressionRange = computedStart..computedEnd;
+
+let addRange = fun x -> (x - 10)..(x + 10);
+let dynamicRange = addRange 50;
+
+let nestedRanges = 
+    let r1 = 1..5 in
+    let r2 = 6..10 in
+    let r3 = 11..15 in
+    r3;
+
+let recursiveRange = rec f -> fun n -> 
+    if n <= 0 then 0..0 else 0..n;
+
+let finalRange = recursiveRange 25;
+
+finalRange
