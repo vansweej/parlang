@@ -1335,3 +1335,253 @@ fn test_char_comparison_chain() {
     assert_eq!(parse_and_eval(code), Ok(Value::Bool(true)));
 }
 
+// String literal tests
+#[test]
+fn test_string_literal_eval() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        "hello"
+    "#;
+    let result = parse_and_eval(code);
+    assert!(result.is_ok());
+    // Should evaluate to a Variant representing a list of chars
+}
+
+#[test]
+fn test_empty_string_eval() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        ""
+    "#;
+    let result = parse_and_eval(code);
+    assert!(result.is_ok());
+    if let Ok(Value::Variant(name, args)) = result {
+        assert_eq!(name, "Nil");
+        assert_eq!(args.len(), 0);
+    }
+}
+
+#[test]
+fn test_string_length() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strlen "hello"
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(5)));
+}
+
+#[test]
+fn test_string_length_empty() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strlen ""
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(0)));
+}
+
+#[test]
+fn test_string_concatenation() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strlen (strcat "hello" " world")
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(11)));
+}
+
+#[test]
+fn test_string_equality_true() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        streq "hello" "hello"
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn test_string_equality_false() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        streq "hello" "world"
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Bool(false)));
+}
+
+#[test]
+fn test_string_contains_true() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        contains "hello" 'e'
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Bool(true)));
+}
+
+#[test]
+fn test_string_contains_false() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        contains "hello" 'z'
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Bool(false)));
+}
+
+#[test]
+fn test_string_take() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strlen (take 3 "hello")
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(3)));
+}
+
+#[test]
+fn test_string_drop() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strlen (drop 2 "hello")
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(3)));
+}
+
+#[test]
+fn test_string_char_at_found() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        char_at 1 "hello"
+    "#;
+    let result = parse_and_eval(code);
+    assert!(result.is_ok());
+    // Should be Some('e')
+    if let Ok(Value::Variant(name, args)) = result {
+        assert_eq!(name, "Some");
+        assert_eq!(args.len(), 1);
+        if let Value::Char(c) = args[0] {
+            assert_eq!(c, 'e');
+        }
+    }
+}
+
+#[test]
+fn test_string_char_at_not_found() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        char_at 10 "hello"
+    "#;
+    let result = parse_and_eval(code);
+    assert!(result.is_ok());
+    // Should be None
+    if let Ok(Value::Variant(name, args)) = result {
+        assert_eq!(name, "None");
+        assert_eq!(args.len(), 0);
+    }
+}
+
+#[test]
+fn test_string_strcmp_less() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strcmp "abc" "abd"
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(-1)));
+}
+
+#[test]
+fn test_string_strcmp_equal() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strcmp "abc" "abc"
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(0)));
+}
+
+#[test]
+fn test_string_strcmp_greater() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strcmp "abd" "abc"
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(1)));
+}
+
+#[test]
+fn test_string_escape_newline() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strlen "hello\nworld"
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(11)));
+}
+
+#[test]
+fn test_string_escape_tab() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strlen "a\tb"
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(3)));
+}
+
+#[test]
+fn test_string_unicode() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        type Option a = Some a | None in
+        load "examples/string.par" in
+        strlen "hello 世界"
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(8)));
+}
+
+#[test]
+fn test_string_pattern_match() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        match "hi" with
+        | Nil -> 0
+        | Cons c rest -> 1
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(1)));
+}
+
+#[test]
+fn test_string_pattern_match_empty() {
+    let code = r#"
+        type List a = Nil | Cons a (List a) in
+        match "" with
+        | Nil -> 0
+        | Cons c rest -> 1
+    "#;
+    assert_eq!(parse_and_eval(code), Ok(Value::Int(0)));
+}
+
