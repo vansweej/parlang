@@ -513,6 +513,52 @@ match result with
 
 See [docs/GENERIC_TYPES.md](docs/GENERIC_TYPES.md) for comprehensive documentation and examples.
 
+### Map (Key-Value Store)
+
+ParLang provides Map data structures as **library implementations**, not language primitives. This demonstrates the expressiveness of ParLang's type system.
+
+**Association List Map** (simple, for small maps):
+```parlang
+type List a = Nil | Cons a (List a) in
+type Option a = Some a | None in
+type Tuple k v = Tuple k v in
+type Map k v = List (Tuple k v) in
+let empty = Nil in
+let insert = fun key -> fun value -> fun map ->
+  Cons (Tuple key value) map
+in
+let m = insert 1 42 (insert 2 30 empty) in
+lookup 1 m  # Some 42
+```
+
+**Binary Search Tree Map** (efficient, for medium maps):
+```parlang
+type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+let empty = Empty in
+let insert = rec insert -> fun key -> fun value -> fun map ->
+  match map with
+  | Empty -> Node key value Empty Empty
+  | Node k v left right ->
+      if key == k then Node key value left right
+      else if key < k then Node k v (insert key value left) right
+      else Node k v left (insert key value right)
+in
+let m = insert 5 50 (insert 3 30 (insert 7 70 empty)) in
+keys m  # [3, 5, 7] - automatically sorted!
+```
+
+**Available Operations**:
+- `insert : k -> v -> Map k v -> Map k v`
+- `lookup : k -> Map k v -> Option v`
+- `delete : k -> Map k v -> Map k v`
+- `member : k -> Map k v -> Bool`
+- `size : Map k v -> Int`
+- `map_values : (v1 -> v2) -> Map k v1 -> Map k v2`
+- `filter : (k -> v -> Bool) -> Map k v -> Map k v`
+- `fold : (acc -> k -> v -> acc) -> acc -> Map k v -> acc`
+
+See [docs/MAP_LIBRARY.md](docs/MAP_LIBRARY.md) for complete documentation.
+
 ### Binary Operations
 ```
 1 + 2        # Addition: 3
