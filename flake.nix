@@ -17,7 +17,7 @@
           pkgs = import nixpkgs {
             inherit system overlays;
           };
-          manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
+          manifest = (pkgs.lib.importTOML ./crates/parlang/Cargo.toml).package;
 
           rustVersion = "latest";
           rustToolchain = pkgs.rust-bin.stable.${rustVersion}.default;

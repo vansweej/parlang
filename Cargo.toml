@@ -1,29 +1,18 @@
-[package]
-name = "parlang"
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+default-members = ["crates/parlang"]
+
+[workspace.package]
 version = "0.2.0"
 edition = "2021"
-authors = ["parlang contributors"]
-description = "A small ML-alike functional language written in Rust"
-license = "MIT"
 
-[dependencies]
+[workspace.dependencies]
 combine = "4.6"
 clap = { version = "4.5", features = ["derive"] }
 rustyline = "14.0"
 
-[dev-dependencies]
-
-[[bin]]
-name = "parlang"
-path = "src/main.rs"
-
-[lib]
-name = "parlang"
-path = "src/lib.rs"
-
-[lints.clippy]
-# Enforce stricter linting for better code quality
+[workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
-# Allow some pedantic lints that are too strict for this project
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
