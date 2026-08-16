@@ -15,7 +15,12 @@ pub mod dot;
 
 pub use dot::core_to_dot;
 
-// core-modules: phase2
+pub mod builder;
+pub mod error;
+
+pub use error::{BuildError, BuildResult};
+
+// core-modules: phase3
 /// Returns the crate's semantic version string.
 #[must_use]
 pub const fn version() -> &'static str {
