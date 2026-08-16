@@ -9,6 +9,14 @@ use clap::Parser;
 struct Cli {
     /// Path to the `.par` source file to evaluate.
     path: std::path::PathBuf,
+
+    /// Dump the parsed AST as text IR to stdout, then exit (skips evaluation).
+    #[arg(long, conflicts_with = "dump_dot")]
+    dump: bool,
+
+    /// Dump the parsed AST as Graphviz DOT to stdout, then exit (skips evaluation).
+    #[arg(long)]
+    dump_dot: bool,
 }
 
 fn main() -> ExitCode {
@@ -30,6 +38,15 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+
+    if cli.dump {
+        println!("{expr}");
+        return ExitCode::SUCCESS;
+    }
+    if cli.dump_dot {
+        println!("{}", parlang::dot::ast_to_dot(&expr));
+        return ExitCode::SUCCESS;
+    }
 
     let env = parlang::Environment::new();
     match parlang::eval(&expr, &env) {

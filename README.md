@@ -817,11 +817,14 @@ cargo run -- examples/simple.par
 Dump the Abstract Syntax Tree (AST) to a DOT file for visualization:
 
 ```bash
-# Dump AST to a DOT file (Graphviz format)
-cargo run -- examples/simple.par --dump-ast ast.dot
+# Dump the AST as text IR to stdout
+cargo run -- examples/simple.par --dump
 
-# Or using short form
-cargo run -- examples/simple.par -d ast.dot
+# Dump the AST as Graphviz DOT to stdout
+cargo run -- examples/simple.par --dump-dot
+
+# Produce a DOT file by redirecting stdout
+cargo run -- examples/simple.par --dump-dot > ast.dot
 ```
 
 Then render the DOT file to an image using Graphviz:

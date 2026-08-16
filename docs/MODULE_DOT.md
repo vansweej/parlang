@@ -401,7 +401,7 @@ Many editors have Graphviz plugins:
 
 Visualize complex nested expressions:
 ```bash
-parlang examples/factorial.par --dump-ast factorial.dot
+parlang examples/factorial.par --dump-dot > factorial.dot
 dot -Tpng factorial.dot -o factorial.png
 ```
 
@@ -411,7 +411,7 @@ View the image to see the recursive structure clearly.
 
 When parser output doesn't match expectations:
 ```bash
-echo "let x = 1 in let y = 2 in x + y" | parlang --dump-ast debug.dot
+echo "let x = 1 in let y = 2 in x + y" | parlang --dump-dot > debug.dot
 ```
 
 Visualize the AST to verify correct parsing.
@@ -430,7 +430,7 @@ Include AST diagrams in documentation:
 # Generate diagrams for all examples
 for f in examples/*.par; do
   name=$(basename "$f" .par)
-  parlang "$f" --dump-ast "docs/images/${name}_ast.dot"
+  parlang "$f" --dump-dot > "docs/images/${name}_ast.dot"
   dot -Tsvg "docs/images/${name}_ast.dot" -o "docs/images/${name}_ast.svg"
 done
 ```
@@ -563,4 +563,4 @@ The DOT module provides a simple but powerful way to visualize ParLang ASTs. By 
 - **Education**: Teaching tool for AST concepts
 - **Documentation**: Diagrams for technical documentation
 
-The module is self-contained, well-tested, and integrates seamlessly with the ParLang CLI through the `--dump-ast` option.
+The module is self-contained, well-tested, and integrates seamlessly with the ParLang CLI through the `write_ast_to_dot_file` function and the `--dump-dot` option.
