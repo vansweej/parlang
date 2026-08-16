@@ -103,8 +103,6 @@ fn repl() {
     let mut env = Environment::new();
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
 
-
-
     loop {
         // Accumulate multiline input
         let mut lines = Vec::new();
