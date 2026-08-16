@@ -499,7 +499,7 @@ ParLang now has **full support for generic types** with proper type inference an
 
 **Type inference for generic types:**
 ```
-# With PARLANG_TYPECHECK=1 enabled
+# Types are inferred and checked automatically
 
 > type Option a = Some a | None in Some 42
 Type: Option Int
@@ -656,14 +656,9 @@ ParLang includes an optional Hindley-Milner type inference system that can catch
 
 ### Enabling Type Checking
 
-Type checking is optional and can be enabled in the REPL by setting the `PARLANG_TYPECHECK` environment variable:
+Type checking is mandatory: every expression is type-checked with Hindley-Milner inference before evaluation, so type errors are caught before your program runs:
 
 ```bash
-# Enable type checking for a single session
-PARLANG_TYPECHECK=1 cargo run
-
-# Or export it for all sessions
-export PARLANG_TYPECHECK=1
 cargo run
 ```
 
