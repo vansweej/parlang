@@ -48,6 +48,11 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
+    if let Err(err) = parlang::typecheck(&expr) {
+        eprintln!("type error: {err}");
+        return ExitCode::FAILURE;
+    }
+
     let env = parlang::Environment::new();
     match parlang::eval(&expr, &env) {
         Ok(value) => {

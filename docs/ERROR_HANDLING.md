@@ -42,7 +42,7 @@ pub enum ParseError {
 
 ### 2. Type Errors
 
-Errors that occur during type checking (when `PARLANG_TYPECHECK=1`):
+Errors that occur during type checking (which now runs on every program):
 
 ```rust
 pub enum TypeError {
@@ -250,7 +250,7 @@ Type error: RecursionRequiresAnnotation
 
 **Workaround:** Disable type checking:
 ```bash
-# Without PARLANG_TYPECHECK, recursion works at runtime
+# Recursion works at runtime once the program type-checks
 cargo run examples/factorial.par
 ```
 
@@ -486,7 +486,7 @@ let safe_divide = fun x -> fun y ->
 Type checking can catch many errors before runtime:
 
 ```bash
-PARLANG_TYPECHECK=1 cargo run
+cargo run
 ```
 
 ### Use Smaller Test Cases

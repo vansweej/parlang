@@ -175,10 +175,10 @@ sumTree myTree
 
 ### With Type Checking Enabled
 
-When type checking is enabled (`PARLANG_TYPECHECK=1`), the REPL displays the inferred generic type:
+Type checking runs on every program, and the REPL displays the inferred generic type:
 
 ```bash
-$ PARLANG_TYPECHECK=1 cargo run
+$ cargo run
 ```
 
 ```parlang

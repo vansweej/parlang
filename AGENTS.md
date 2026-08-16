@@ -41,11 +41,12 @@ nix develop . --command <cmd>
 cargo run                                       # REPL
 cargo run -- examples/simple.par               # run a file
 cargo run -- examples/simple.par --dump-dot > ast.dot  # dump AST as DOT to stdout
-PARLANG_TYPECHECK=1 cargo run                  # enable HM type checking
+cargo run                                       # HM type checking runs automatically
 ```
 
-Type checking is **off by default**. The `PARLANG_TYPECHECK=1` env var affects
-both REPL/CLI output and the expected output of many integration tests.
+Type checking is **mandatory**: Hindley-Milner inference runs before evaluation
+in both the REPL and file/CLI modes, and shapes the expected output of many
+integration tests.
 
 ## Module map (`src/`)
 

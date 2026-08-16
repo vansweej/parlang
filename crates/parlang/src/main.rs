@@ -8,7 +8,6 @@ use clap::{Parser, Subcommand};
 use parlang::{dot, eval, extract_bindings, parse, typecheck, Environment};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
-use std::env;
 use std::fs;
 use std::process;
 
@@ -70,6 +69,12 @@ fn main() {
                             return;
                         }
 
+                        // Type check before evaluating
+                        if let Err(e) = typecheck(&expr) {
+                            eprintln!("type error: {e}");
+                            process::exit(1);
+                        }
+
                         // Execute the program
                         let env = Environment::new();
                         match eval(&expr, &env).map_err(|e| e.to_string()) {
@@ -97,12 +102,6 @@ fn main() {
 fn repl() {
     let mut env = Environment::new();
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
-
-    // Check if type checking is enabled
-    let type_check_enabled = env::var("PARLANG_TYPECHECK").is_ok();
-    if type_check_enabled {
-        println!("Type checking enabled (PARLANG_TYPECHECK is set)");
-    }
 
     loop {
         // Accumulate multiline input
@@ -173,14 +172,12 @@ fn repl() {
 
             match parse(input) {
                 Ok(expr) => {
-                    // Type check if enabled
-                    if type_check_enabled {
-                        match typecheck(&expr) {
-                            Ok(ty) => println!("Type: {ty}"),
-                            Err(e) => {
-                                eprintln!("Type error: {e}");
-                                continue;
-                            }
+                    // Type check before evaluating (mandatory)
+                    match typecheck(&expr) {
+                        Ok(ty) => println!("Type: {ty}"),
+                        Err(e) => {
+                            eprintln!("Type error: {e}");
+                            continue;
                         }
                     }
 

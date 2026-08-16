@@ -43,9 +43,9 @@ Thank you for your interest in contributing to ParLang! This document provides g
    cargo run
    ```
 
-5. **Run with type checking enabled**:
+5. **Run it** (type checking runs automatically):
    ```bash
-   PARLANG_TYPECHECK=1 cargo run
+   cargo run
    ```
 
 ## Code Quality Guidelines
