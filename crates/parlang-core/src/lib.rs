@@ -10,7 +10,12 @@ pub mod term;
 pub use base_type::BaseType;
 pub use term::{Lit, Term};
 
-// core-modules: phase1
+pub mod display;
+pub mod dot;
+
+pub use dot::core_to_dot;
+
+// core-modules: phase2
 /// Returns the crate's semantic version string.
 #[must_use]
 pub const fn version() -> &'static str {
