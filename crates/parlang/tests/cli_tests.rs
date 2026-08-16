@@ -1,8 +1,8 @@
+use std::env;
 /// CLI integration tests
 /// These tests verify the command-line interface functionality
 use std::fs;
 use std::process::Command;
-use std::env;
 
 #[test]
 fn test_cli_file_execution() {
@@ -77,10 +77,8 @@ fn test_cli_eval_error() {
 }
 
 #[test]
-fn test_cli_dump_ast() {
-    // Create a temporary test file
-    let test_file = env::temp_dir().join("test_ast.par");
-    let dot_file = env::temp_dir().join("test_ast.dot");
+fn test_cli_dump_text() {
+    let test_file = env::temp_dir().join("test_dump_text.par");
     fs::write(&test_file, "1 + 2").unwrap();
 
     let output = Command::new("cargo")
@@ -89,38 +87,49 @@ fn test_cli_dump_ast() {
             "--quiet",
             "--",
             test_file.to_str().unwrap(),
-            "--dump-ast",
-            dot_file.to_str().unwrap(),
+            "--dump",
         ])
         .output()
         .expect("Failed to execute command");
 
-    // Check that DOT file was created
-    let dot_exists = fs::metadata(&dot_file).is_ok();
-
-    // Clean up
     let _ = fs::remove_file(&test_file);
-    let _ = fs::remove_file(&dot_file);
 
     assert!(output.status.success());
-    assert!(dot_exists, "DOT file should have been created");
-    
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("AST dumped to"));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("(1 + 2)"), "stdout was: {stdout}");
 }
 
 #[test]
-fn test_cli_dump_ast_without_file() {
-    // Try to dump AST without providing a source file
-    let dot_file = env::temp_dir().join("test.dot");
+fn test_cli_dump_dot() {
+    let test_file = env::temp_dir().join("test_dump_dot.par");
+    fs::write(&test_file, "1 + 2").unwrap();
+
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", "--dump-ast", dot_file.to_str().unwrap()])
+        .args(&[
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--dump-dot",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    let _ = fs::remove_file(&test_file);
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("digraph AST"), "stdout was: {stdout}");
+}
+
+#[test]
+fn test_cli_dump_requires_file() {
+    let output = Command::new("cargo")
+        .args(&["run", "--quiet", "--", "--dump"])
         .output()
         .expect("Failed to execute command");
 
     assert!(!output.status.success());
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("requires a file argument") || stderr.contains("REPL") || output.status.code() != Some(0));
 }
 
 #[test]
