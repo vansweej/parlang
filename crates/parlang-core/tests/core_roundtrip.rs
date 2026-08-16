@@ -42,9 +42,6 @@ fn constructor_and_apps_text_dump() -> Result<(), BuildError> {
     let g = apps(var("g")?, vec![var("p")?, unit()]);
     let term = let_("p", con("Pair", vec![int(1), bool_(true)])?, g)?;
 
-    assert_eq!(
-        term.to_text(),
-        "(let p = Pair(1, true) in ((g p) ()))"
-    );
+    assert_eq!(term.to_text(), "(let p = Pair(1, true) in ((g p) ()))");
     Ok(())
 }

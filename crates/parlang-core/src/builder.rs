@@ -66,7 +66,11 @@ pub fn letrec(name: &str, value: Term, body: Term) -> BuildResult<Term> {
     if name.is_empty() {
         return Err(BuildError::EmptyName);
     }
-    Ok(Term::LetRec(name.to_string(), Box::new(value), Box::new(body)))
+    Ok(Term::LetRec(
+        name.to_string(),
+        Box::new(value),
+        Box::new(body),
+    ))
 }
 
 /// A constructor application.

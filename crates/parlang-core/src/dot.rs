@@ -5,6 +5,8 @@
 //! header is `digraph Core` (not `digraph AST`) so this dumper's output never
 //! collides with the surface golden tests.
 
+use std::fmt::Write as _;
+
 use crate::term::{Lit, Term};
 
 /// Renders a Core term as a Graphviz DOT document.
@@ -48,10 +50,10 @@ fn escape_label(raw: &str) -> String {
 fn emit(term: &Term, ids: &mut NodeIdGenerator, out: &mut String) -> String {
     let id = ids.next();
     let label = escape_label(&node_label(term));
-    out.push_str(&format!("  {id} [label=\"{label}\"];\n"));
+    let _ = writeln!(out, "  {id} [label=\"{label}\"];");
     for child in children(term) {
         let child_id = emit(child, ids, out);
-        out.push_str(&format!("  {id} -> {child_id};\n"));
+        let _ = writeln!(out, "  {id} -> {child_id};");
     }
     id
 }

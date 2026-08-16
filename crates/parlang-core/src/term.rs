@@ -1,4 +1,4 @@
-//! Core term representation for the ParLang compiler core (Arc B).
+//! Core term representation for the `ParLang` compiler core (Arc B).
 //!
 //! This module defines the small-Core term language: [`Term`] and [`Lit`].
 //! It is a *desugared* intermediate representation, not the surface AST —
