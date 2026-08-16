@@ -4,6 +4,23 @@
 //! It currently exposes only [`version`]; the `parlang-driver` crate does NOT
 //! depend on it yet. This is scaffolding, not dead weight.
 
+pub mod base_type;
+pub mod term;
+
+pub use base_type::BaseType;
+pub use term::{Lit, Term};
+
+pub mod display;
+pub mod dot;
+
+pub use dot::core_to_dot;
+
+pub mod builder;
+pub mod error;
+
+pub use error::{BuildError, BuildResult};
+
+// core-modules: phase3
 /// Returns the crate's semantic version string.
 #[must_use]
 pub const fn version() -> &'static str {
