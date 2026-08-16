@@ -4,7 +4,7 @@ ParLang uses a Hindley-Milner type system with automatic type inference.
 
 ## Overview
 
-The type system is optional and can be enabled in the REPL using the `PARLANG_TYPECHECK` environment variable. When enabled, all expressions are type-checked before evaluation, catching type errors at compile time rather than runtime.
+The type system is mandatory: all expressions are type-checked before evaluation in both the REPL and file/CLI modes, catching type errors at compile time rather than runtime.
 
 ## Basic Types
 
@@ -699,7 +699,22 @@ Type checking and evaluation are separate phases:
 1. **Type Checking (optional)**: Verifies that the program is well-typed
 2. **Evaluation**: Executes the program
 
-When `PARLANG_TYPECHECK` is enabled, type checking happens before evaluation. If type checking fails, evaluation is skipped.
+Type checking always happens before evaluation. If type checking fails, evaluation is skipped.
+
+## Tracked Type-Inference Debt
+
+Type checking is now mandatory, but five Algorithm W inference arms are currently
+vacuous stubs: they return a fresh, unconstrained type variable instead of doing
+real inference, so programs relying solely on these constructs are accepted without
+genuine verification. Implementing them is deferred to later Arc B/F work. The guard
+test in `crates/parlang/tests/mandatory_typecheck_guard.rs` covers the well-typed
+programs that reach the binary run paths today.
+
+- `Match` — pattern-match inference and exhaustiveness interaction
+- `Seq` — sequential bindings
+- `Tuple` — tuple construction inference (non-empty case)
+- `TupleProj` — tuple projection inference
+- `Load` — `load "file.par"` module inference
 
 ## Type Errors
 
@@ -798,20 +813,13 @@ The type checker currently assigns type variables to tuples and pattern matching
 
 ### In the REPL
 
-Enable type checking by setting the environment variable:
+Type checking runs automatically. Just start the REPL:
 
 ```bash
-export PARLANG_TYPECHECK=1
 cargo run
 ```
 
-Or for a single session:
-
-```bash
-PARLANG_TYPECHECK=1 cargo run
-```
-
-When enabled, the REPL will display the inferred type before evaluating:
+The REPL displays the inferred type before evaluating:
 
 ```parlang
 > fun x -> x + 1
@@ -899,7 +907,7 @@ rec factorial -> fun n ->
 # Error: RecursionRequiresAnnotation
 ```
 
-**Workaround**: You can still evaluate recursive functions by disabling type checking (don't set `PARLANG_TYPECHECK=1`).
+**Workaround**: Use fixpoint types or explicit type annotations so recursive functions type-check (type checking can no longer be disabled).
 
 **Why**: Typing recursive functions requires either:
 - Fixpoint types (fix: (a -> a) -> a)
