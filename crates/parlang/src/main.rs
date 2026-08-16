@@ -1,16 +1,16 @@
 /// `ParLang`: A small ML-alike functional language interpreter
-/// 
+///
 /// This executable provides:
 /// - REPL mode for interactive evaluation
 /// - File execution mode for running .par files
-/// - AST dumping to DOT format for visualization
+/// - AST dumping to stdout as text IR (--dump) or Graphviz DOT (--dump-dot)
 use clap::{Parser, Subcommand};
-use parlang::{parse, eval, extract_bindings, dot, Environment, typecheck};
+use parlang::{dot, eval, extract_bindings, parse, typecheck, Environment};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use std::env;
 use std::fs;
 use std::process;
-use std::env;
 
 #[derive(Parser)]
 #[command(name = "parlang")]
@@ -22,9 +22,13 @@ struct Cli {
     /// Input file to execute (.par file)
     file: Option<String>,
 
-    /// Dump AST to DOT file (Graphviz format)
-    #[arg(short, long, value_name = "FILE")]
-    dump_ast: Option<String>,
+    /// Dump the parsed AST as text IR to stdout, then exit (skips evaluation).
+    #[arg(long, conflicts_with = "dump_dot", requires = "file")]
+    dump: bool,
+
+    /// Dump the parsed AST as Graphviz DOT to stdout, then exit (skips evaluation).
+    #[arg(long, requires = "file")]
+    dump_dot: bool,
 }
 
 #[derive(Subcommand)]
@@ -37,9 +41,12 @@ fn main() {
     let cli = Cli::parse();
 
     // Handle REPL command or no arguments
-    if cli.command.is_some() || (cli.file.is_none() && cli.dump_ast.is_none()) {
+    if cli.command.is_some() || cli.file.is_none() {
         // REPL mode
-        println!("ParLang v{} - A small ML-alike functional language", env!("CARGO_PKG_VERSION"));
+        println!(
+            "ParLang v{} - A small ML-alike functional language",
+            env!("CARGO_PKG_VERSION")
+        );
         println!("Type expressions to evaluate them. Press Ctrl+C to exit.");
         println!();
         repl();
@@ -53,17 +60,14 @@ fn main() {
                 // Parse the file
                 match parse(&contents) {
                     Ok(expr) => {
-                        // Dump AST if requested
-                        if let Some(dot_file) = &cli.dump_ast {
-                            match dot::write_ast_to_dot_file(&expr, dot_file) {
-                                Ok(()) => {
-                                    eprintln!("AST dumped to: {dot_file}");
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to write DOT file '{dot_file}': {e}");
-                                    process::exit(1);
-                                }
-                            }
+                        // Terminal dump modes: print AST then skip evaluation.
+                        if cli.dump {
+                            println!("{expr}");
+                            return;
+                        }
+                        if cli.dump_dot {
+                            println!("{}", dot::ast_to_dot(&expr));
+                            return;
                         }
 
                         // Execute the program
@@ -87,16 +91,13 @@ fn main() {
                 process::exit(1);
             }
         }
-    } else if cli.dump_ast.is_some() {
-        eprintln!("Error: --dump-ast requires a file argument");
-        process::exit(1);
     }
 }
 
 fn repl() {
     let mut env = Environment::new();
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
-    
+
     // Check if type checking is enabled
     let type_check_enabled = env::var("PARLANG_TYPECHECK").is_ok();
     if type_check_enabled {
@@ -111,12 +112,12 @@ fn repl() {
         loop {
             // Read line with history support
             let prompt = if is_first_line { "> " } else { "... " };
-            
+
             let readline = rl.readline(prompt);
             match readline {
                 Ok(line) => {
                     let trimmed = line.trim();
-                    
+
                     // Empty line signals end of input (if we have at least one line)
                     if trimmed.is_empty() {
                         if !is_first_line {
@@ -126,23 +127,23 @@ fn repl() {
                         // First line is empty, just continue to next prompt
                         continue;
                     }
-                    
+
                     // Add the line to history if it's the first line
                     if is_first_line {
                         if let Err(e) = rl.add_history_entry(line.as_str()) {
                             eprintln!("Warning: Failed to add entry to history: {e}");
                         }
                     }
-                    
+
                     // Add the line to our accumulator (with newline to match old behavior)
                     lines.push(line + "\n");
                     is_first_line = false;
-                    
+
                     // Try to parse the accumulated input after each line
                     // If it's parseable, auto-submit without requiring a blank line
                     let accumulated = lines.concat();
                     let accumulated_trimmed = accumulated.trim();
-                    
+
                     if parse(accumulated_trimmed).is_ok() {
                         // Input is complete and parseable, submit it
                         break;
@@ -167,7 +168,7 @@ fn repl() {
 
         // Join all lines and try to parse/evaluate
         if !lines.is_empty() {
-            let input = lines.concat();  // Preserves newlines
+            let input = lines.concat(); // Preserves newlines
             let input = input.trim();
 
             match parse(input) {
@@ -182,7 +183,7 @@ fn repl() {
                             }
                         }
                     }
-                    
+
                     match eval(&expr, &env) {
                         Ok(value) => {
                             println!("{value}");
@@ -199,7 +200,7 @@ fn repl() {
                         }
                         Err(e) => eprintln!("Evaluation error: {e}"),
                     }
-                },
+                }
                 Err(e) => eprintln!("Parse error: {e}"),
             }
         }
