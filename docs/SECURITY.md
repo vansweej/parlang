@@ -154,9 +154,9 @@ ParLang's type system provides strong guarantees:
    - No use-after-free bugs
    - No data races (single-threaded execution)
 
-**Note**: Type checking is optional. For maximum safety, always enable type checking:
+**Note**: Type checking is always on: every program is type-checked before it runs.
 ```bash
-PARLANG_TYPECHECK=1 parlang script.par
+parlang script.par
 ```
 
 ### Denial of Service Vectors
@@ -337,10 +337,7 @@ let z = 3;
 Type checking adds overhead. If performance is critical and code is trusted:
 
 ```bash
-# With type checking: slower, safer
-PARLANG_TYPECHECK=1 parlang script.par
-
-# Without type checking: faster, less safe
+# Type checking always runs before evaluation
 parlang script.par
 ```
 
@@ -391,7 +388,6 @@ fn run_parlang_safely(script: &str, timeout: Duration) -> Result<String, Error> 
         .arg(format!("{}s", timeout.as_secs()))
         .arg("parlang")
         .arg(script)
-        .env("PARLANG_TYPECHECK", "1")
         .output()?;
     
     if output.status.success() {
@@ -424,8 +420,6 @@ ulimit -s 8192      # 8MB stack
 ulimit -v 1048576   # 1GB virtual memory
 ulimit -t 30        # 30 second CPU time
 
-# Enable type checking
-export PARLANG_TYPECHECK=1
 
 # Run in restricted directory
 cd /safe/parlang/workspace

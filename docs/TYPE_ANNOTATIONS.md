@@ -74,7 +74,7 @@ Type variables (lowercase identifiers) can be used in annotations for polymorphi
 
 ## Type Checking with Annotations
 
-When type checking is enabled (`PARLANG_TYPECHECK=1`), the type checker:
+Because type checking is mandatory, on every run the type checker:
 
 1. **Infers the type** of the expression using Hindley-Milner type inference
 2. **Checks the annotation** against the inferred type
@@ -83,7 +83,6 @@ When type checking is enabled (`PARLANG_TYPECHECK=1`), the type checker:
 ### Correct Annotation Example
 
 ```parlang
-> PARLANG_TYPECHECK=1
 > let x : Int = 42 in x + 1
 Type: Int
 43
@@ -94,7 +93,6 @@ The annotation `: Int` matches the inferred type `Int`, so this succeeds.
 ### Type Mismatch Example
 
 ```parlang
-> PARLANG_TYPECHECK=1
 > let x : Bool = 42 in x
 Type error: Cannot unify types: Int and Bool
 ```
@@ -164,7 +162,7 @@ let x : Int = 5 in
 Enable type checking to see inferred types and catch errors:
 
 ```bash
-PARLANG_TYPECHECK=1 cargo run -- examples/type_annotations.par
+cargo run -- examples/type_annotations.par
 ```
 
 ## Current Limitations
