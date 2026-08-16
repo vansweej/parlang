@@ -102,9 +102,13 @@ struct Cli {
     /// Input file to execute (.par file)
     file: Option<String>,
 
-    /// Dump AST to DOT file (Graphviz format)
-    #[arg(short, long, value_name = "FILE")]
-    dump_ast: Option<String>,
+    /// Dump the parsed AST as text IR to stdout, then exit.
+    #[arg(long, conflicts_with = "dump_dot", requires = "file")]
+    dump: bool,
+
+    /// Dump the parsed AST as Graphviz DOT to stdout, then exit.
+    #[arg(long, requires = "file")]
+    dump_dot: bool,
 }
 
 #[derive(Subcommand)]
@@ -130,9 +134,9 @@ parlang examples/simple.par
 
 **AST Visualization**:
 ```bash
-parlang <FILE> --dump-ast <OUTPUT>     # Execute and dump AST to DOT file
-parlang <FILE> -d <OUTPUT>             # Short form
-parlang script.par --dump-ast ast.dot  # Example
+parlang <FILE> --dump         # Dump AST as text IR to stdout, then exit
+parlang <FILE> --dump-dot     # Dump AST as Graphviz DOT to stdout, then exit
+parlang script.par --dump-dot > ast.dot  # Example: produce a DOT file
 ```
 
 **Help and Version**:
@@ -159,7 +163,8 @@ Arguments:
   [FILE]  Input file to execute (.par file)
 
 Options:
-  -d, --dump-ast <FILE>  Dump AST to DOT file (Graphviz format)
+  --dump                 Dump the parsed AST as text IR to stdout, then exit
+  --dump-dot             Dump the parsed AST as Graphviz DOT to stdout, then exit
   -h, --help             Print help
   -V, --version          Print version
 ```
@@ -184,14 +189,13 @@ flowchart TD
     READ -->|success| PARSE_FILE[Parse file contents]
     READ -->|error| FILE_ERROR[Print error message]
     
-    PARSE_FILE -->|parse ok| DUMP{--dump-ast<br/>specified?}
+    PARSE_FILE -->|parse ok| DUMP{--dump / --dump-dot?}
     PARSE_FILE -->|parse error| PARSE_ERROR[Print error]
     
-    DUMP -->|yes| WRITE_DOT[Write AST to DOT file]
+    DUMP -->|yes| WRITE_DOT[Print AST to stdout,<br/>skip evaluation]
     DUMP -->|no| EXECUTE
     
-    WRITE_DOT -->|success| EXECUTE[Execute contents]
-    WRITE_DOT -->|error| DOT_ERROR[Print error message]
+    WRITE_DOT --> EXIT_0
     
     EXECUTE -->|success| PRINT[Print result]
     EXECUTE -->|error| EXEC_ERROR[Print error message]
@@ -199,7 +203,6 @@ flowchart TD
     PRINT --> EXIT_0
     FILE_ERROR --> EXIT_1[Exit code 1]
     PARSE_ERROR --> EXIT_1
-    DOT_ERROR --> EXIT_1
     EXEC_ERROR --> EXIT_1
 ```
 
@@ -228,24 +231,24 @@ flowchart TD
 
 **Commands**: 
 - `parlang script.par`
-- `parlang script.par --dump-ast ast.dot`
+- `parlang script.par --dump-dot > ast.dot`
 - `cargo run -- script.par`
 
 **Behavior**:
 - Reads the specified file
 - Parses the entire file contents as a single expression
-- **Optional**: If `--dump-ast` is specified, writes the AST to a DOT file before execution
+- **Optional**: If `--dump` or `--dump-dot` is specified, prints the AST to stdout and exits before evaluation
 - Evaluates the expression in a fresh environment
 - Prints the final result value
 - Exits with code 0 on success, code 1 on any error
 
 ### 3. AST Visualization (DOT Format)
 
-The `--dump-ast` option allows you to visualize the Abstract Syntax Tree of your ParLang programs.
+The `--dump-dot` option allows you to visualize the Abstract Syntax Tree of your ParLang programs.
 
 **Usage**:
 ```bash
-parlang examples/simple.par --dump-ast simple.dot
+parlang examples/simple.par --dump-dot > simple.dot
 ```
 
 **Output**: A Graphviz DOT file representing the AST structure that can be rendered with:

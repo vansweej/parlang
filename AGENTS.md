@@ -40,7 +40,7 @@ nix develop . --command <cmd>
 ```bash
 cargo run                                       # REPL
 cargo run -- examples/simple.par               # run a file
-cargo run -- examples/simple.par --dump-ast ast.dot  # dump AST (Graphviz DOT)
+cargo run -- examples/simple.par --dump-dot > ast.dot  # dump AST as DOT to stdout
 PARLANG_TYPECHECK=1 cargo run                  # enable HM type checking
 ```
 
