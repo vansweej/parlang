@@ -254,10 +254,6 @@ fn apply_subst_with_visited(
                 .collect();
             Type::SumType(name.clone(), new_args)
         }
-        Type::Ref(inner_ty) => {
-            let new_inner_ty = apply_subst_with_visited(subst, inner_ty, visited);
-            Type::Ref(Box::new(new_inner_ty))
-        }
     }
 }
 
@@ -343,10 +339,6 @@ fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
             let new_args = args.iter().map(|arg| apply_row_subst(subst, arg)).collect();
             Type::SumType(name.clone(), new_args)
         }
-        Type::Ref(inner_ty) => {
-            let new_inner_ty = apply_row_subst(subst, inner_ty);
-            Type::Ref(Box::new(new_inner_ty))
-        }
     }
 }
 
@@ -406,7 +398,6 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
             }
             set
         }
-        Type::Ref(inner_ty) => free_type_vars(inner_ty),
     }
 }
 
@@ -453,7 +444,6 @@ fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
             }
             set
         }
-        Type::Ref(inner_ty) => free_row_vars(inner_ty),
     }
 }
 
@@ -1185,75 +1175,6 @@ fn infer_constructor(
     }
 }
 
-/// Type inference for `!ref_expr` (extracted from `infer` to keep its line
-/// count down).
-fn infer_deref(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), TypeError> {
-    // Type of !ref_expr is T where ref_expr has type Ref T
-    let (ref_ty, subst) = infer(expr, env)?;
-
-    // Create a fresh type variable for the inner type
-    let inner_ty = env.fresh_var();
-    let expected_ref_ty = Type::Ref(Box::new(inner_ty.clone()));
-
-    // Unify the inferred type with Ref inner_ty
-    let ref_ty_subst = apply_subst(&subst, &ref_ty);
-    let s2 = match &ref_ty_subst {
-        Type::Ref(actual_inner) => unify(&inner_ty, actual_inner)?,
-        Type::Var(_) => unify(&ref_ty_subst, &expected_ref_ty)?,
-        _ => {
-            return Err(TypeError::UnificationError(
-                Box::new(ref_ty_subst),
-                Box::new(expected_ref_ty),
-            ));
-        }
-    };
-
-    let final_subst = compose_subst(&s2, &subst);
-    Ok((apply_subst(&final_subst, &inner_ty), final_subst))
-}
-
-/// Type inference for `ref_expr := value_expr` (extracted from `infer` to
-/// keep its line count down).
-fn infer_ref_assign(
-    ref_expr: &Expr,
-    value_expr: &Expr,
-    env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
-    // Type check: ref_expr must have type Ref T, value_expr must have type T
-    // Result type is unit ()
-    let (ref_ty, s1) = infer(ref_expr, env)?;
-    let (val_ty, s2) = infer(value_expr, env)?;
-    let mut subst = compose_subst(&s2, &s1);
-
-    // Extract the inner type from the reference
-    let ref_ty_subst = apply_subst(&subst, &ref_ty);
-    let inner_ty = match &ref_ty_subst {
-        Type::Ref(inner) => inner.as_ref().clone(),
-        Type::Var(_) => {
-            // If it's a type variable, create a fresh variable for the inner type
-            let fresh_inner = env.fresh_var();
-            let expected_ref_ty = Type::Ref(Box::new(fresh_inner.clone()));
-            let s3 = unify(&ref_ty_subst, &expected_ref_ty)?;
-            subst = compose_subst(&s3, &subst);
-            fresh_inner
-        }
-        _ => {
-            return Err(TypeError::UnificationError(
-                Box::new(ref_ty_subst),
-                Box::new(Type::Ref(Box::new(env.fresh_var()))),
-            ));
-        }
-    };
-
-    // Unify the value type with the inner type of the reference
-    let val_ty_subst = apply_subst(&subst, &val_ty);
-    let s3 = unify(&val_ty_subst, &apply_subst(&subst, &inner_ty))?;
-    subst = compose_subst(&s3, &subst);
-
-    // Return unit type
-    Ok((Type::Unit, subst))
-}
-
 /// Type inference for `if cond then then_br else else_br` (extracted from
 /// `infer` to keep its line count down).
 fn infer_if(
@@ -1497,16 +1418,6 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
         }
 
         Expr::Constructor(name, args) => infer_constructor(name, args, env),
-
-        Expr::Ref(expr) => {
-            // Type of ref expr is Ref T where T is the type of expr
-            let (ty, subst) = infer(expr, env)?;
-            Ok((Type::Ref(Box::new(ty)), subst))
-        }
-
-        Expr::Deref(expr) => infer_deref(expr, env),
-
-        Expr::RefAssign(ref_expr, value_expr) => infer_ref_assign(ref_expr, value_expr, env),
 
         Expr::Range(start_expr, end_expr) => {
             // Type check: start and end must both be integers

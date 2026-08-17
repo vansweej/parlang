@@ -336,22 +336,6 @@ fn dot_constructor(
     }
 }
 
-/// Emit DOT for a `RefAssign` node (extracted from `expr_to_dot` to keep
-/// its line count down).
-fn dot_ref_assign(
-    node_id: &str,
-    ref_expr: &Expr,
-    value: &Expr,
-    output: &mut String,
-    gen: &mut NodeIdGenerator,
-) {
-    let _ = writeln!(output, "  {node_id} [label=\"RefAssign\"];");
-    let ref_id = expr_to_dot(ref_expr, output, gen);
-    let value_id = expr_to_dot(value, output, gen);
-    let _ = writeln!(output, "  {node_id} -> {ref_id} [label=\"ref\"];");
-    let _ = writeln!(output, "  {node_id} -> {value_id} [label=\"value\"];");
-}
-
 /// Emit DOT for a `Range` node (extracted from `expr_to_dot` to keep its
 /// line count down).
 fn dot_range(
@@ -474,17 +458,6 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             body,
         } => dot_type_def(&node_id, name, type_params, constructors, body, output, gen),
         Expr::Constructor(name, args) => dot_constructor(&node_id, name, args, output, gen),
-        Expr::Ref(expr) => {
-            let _ = writeln!(output, "  {node_id} [label=\"Ref\"];");
-            let expr_id = expr_to_dot(expr, output, gen);
-            let _ = writeln!(output, "  {node_id} -> {expr_id} [label=\"value\"];");
-        }
-        Expr::Deref(expr) => {
-            let _ = writeln!(output, "  {node_id} [label=\"Deref\"];");
-            let expr_id = expr_to_dot(expr, output, gen);
-            let _ = writeln!(output, "  {node_id} -> {expr_id} [label=\"ref\"];");
-        }
-        Expr::RefAssign(ref_expr, value) => dot_ref_assign(&node_id, ref_expr, value, output, gen),
         Expr::Range(start, end) => dot_range(&node_id, start, end, output, gen),
     }
 

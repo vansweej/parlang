@@ -223,7 +223,7 @@ where
 /// Reserved keywords that cannot be used as identifiers
 const KEYWORDS: &[&str] = &[
     "let", "in", "if", "then", "else", "fun", "true", "false", "load", "rec", "match", "with",
-    "type", "ref",
+    "type",
 ];
 
 /// Parse an identifier (variable name) - ensures it's not a keyword
@@ -830,18 +830,6 @@ parser! {
 }
 
 parser! {
-    fn ref_expr[Input]()(Input) -> Expr
-    where [Input: Stream<Token = char>]
-    {
-        (
-            string("ref").skip(spaces()),
-            app_expr(),
-        )
-            .map(|(_, expr)| Expr::Ref(Box::new(expr)))
-    }
-}
-
-parser! {
     fn primary[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
@@ -854,7 +842,6 @@ parser! {
             attempt(match_expr()),
             attempt(rec_expr()),
             attempt(fun_expr()),
-            attempt(ref_expr()),  // Add ref expression
             attempt(atom()),
         ))
     }
@@ -895,24 +882,10 @@ parser! {
 }
 
 parser! {
-    fn deref_expr[Input]()(Input) -> Expr
-    where [Input: Stream<Token = char>]
-    {
-        choice((
-            // Parse dereference: !expr
-            attempt((token('!').skip(spaces()), proj_expr())
-                .map(|(_, expr)| Expr::Deref(Box::new(expr)))),
-            // Otherwise just parse projection expression
-            proj_expr()
-        ))
-    }
-}
-
-parser! {
     fn app_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
-        (deref_expr().skip(spaces()), many(deref_expr().skip(spaces())))
+        (proj_expr().skip(spaces()), many(proj_expr().skip(spaces())))
             .map(|(func, args): (Expr, Vec<Expr>)| {
                 // Special handling for constructor applications
                 // If func is a constructor, combine it with all arguments
@@ -1102,16 +1075,8 @@ parser! {
     fn expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
-        // Parse assignment: ref_expr := value_expr
-        // Right-associative to support chained assignments
-        (cmp_expr().skip(spaces()), optional(string(":=").skip(spaces()).with(cmp_expr())))
-            .map(|(left, rest)| {
-                if let Some(right) = rest {
-                    Expr::RefAssign(Box::new(left), Box::new(right))
-                } else {
-                    left
-                }
-            })
+        // Top-level expression: delegates to the comparison layer.
+        cmp_expr()
     }
 }
 

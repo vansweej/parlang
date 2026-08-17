@@ -203,18 +203,6 @@ pub enum Expr {
     /// Constructor application: Some 42, Cons 1 rest, Left x
     Constructor(String, Vec<Expr>),
 
-    /// Reference creation: ref expr
-    /// Creates a mutable reference to a value
-    Ref(Box<Expr>),
-
-    /// Reference dereference: !expr
-    /// Reads the value from a reference
-    Deref(Box<Expr>),
-
-    /// Reference assignment: `ref_expr` := `value_expr`
-    /// Mutates the value stored in a reference
-    RefAssign(Box<Expr>, Box<Expr>),
-
     /// Range construction: start..end
     /// Creates an inclusive integer range from start to end
     Range(Box<Expr>, Box<Expr>),
@@ -378,9 +366,6 @@ impl fmt::Display for Expr {
                 }
                 Ok(())
             }
-            Expr::Ref(expr) => write!(f, "(ref {expr})"),
-            Expr::Deref(expr) => write!(f, "(!{expr})"),
-            Expr::RefAssign(ref_expr, value) => write!(f, "({ref_expr} := {value})"),
             Expr::Range(start, end) => write!(f, "{start}..{end}"),
         }
     }
