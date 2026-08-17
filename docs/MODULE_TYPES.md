@@ -25,7 +25,6 @@ pub enum Type {
     RecordRow(HashMap<String, Type>, RowVar), // Record with row polymorphism
     Row(RowVar),                // Row variable
     SumType(String, Vec<Type>), // Generic sum type
-    Ref(Box<Type>),             // Reference type
 }
 ```
 
@@ -41,7 +40,6 @@ pub enum Type {
 - `RecordRow(fields, row_var)`: Represents records with row polymorphism
 - `Row(RowVar)`: Represents a row variable
 - `SumType(name, args)`: Represents generic algebraic data types
-- `Ref(inner)`: Represents mutable references
 
 **Examples:**
 ```rust
@@ -206,7 +204,6 @@ The type representations support:
 5. **Record Types**: Structured data with named fields
 6. **Row Polymorphism**: Flexible record types
 7. **Sum Types**: Algebraic data types with constructors
-8. **Reference Types**: Mutable references
 
 ## Testing
 

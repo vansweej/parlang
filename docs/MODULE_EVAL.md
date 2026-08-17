@@ -1476,12 +1476,6 @@ Expr::Match(scrutinee, arms) => {
 }
 ```
 
-### 5. Mutable References
-
-```rust
-Value::Ref(Rc<RefCell<Value>>)  // Shared mutable references
-```
-
 ## Integration with Other Modules
 
 ```mermaid
