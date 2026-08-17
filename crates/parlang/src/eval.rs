@@ -31,10 +31,10 @@ pub enum Value {
     /// Tuple of values
     Tuple(Vec<Value>),
     /// Record value: field name -> value
-    /// Uses HashMap for O(1) field access at runtime
+    /// Uses `HashMap` for O(1) field access at runtime
     Record(HashMap<String, Value>),
     /// Variant value (sum type instance)
-    /// Variant: (constructor_name, payload_values)
+    /// Variant: (`constructor_name`, `payload_values`)
     /// e.g., Some(42) -> Variant("Some", vec![Int(42)])
     ///       None -> Variant("None", vec![])
     ///       Cons(1, rest) -> Variant("Cons", vec![Int(1), <list>])
@@ -45,7 +45,7 @@ pub enum Value {
     /// All elements must be of the same type
     Array(usize, Vec<Value>),
     /// Reference to a value
-    /// Reference: (unique_id, RefCell for interior mutability)
+    /// Reference: (`unique_id`, `RefCell` for interior mutability)
     /// e.g., ref 42 -> Reference(0, RefCell(Int(42)))
     /// Allows mutation through a reference
     Reference(usize, Rc<RefCell<Value>>),
@@ -61,7 +61,7 @@ impl fmt::Display for Value {
             Value::Int(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Float(fl) => write!(f, "{fl}"),
-            Value::Byte(b) => write!(f, "{}b", b),
+            Value::Byte(b) => write!(f, "{b}b"),
             Value::Char(c) => {
                 write!(f, "'")?;
                 match c {
@@ -101,14 +101,14 @@ impl fmt::Display for Value {
                 write!(f, "}}")
             }
             Value::Variant(ctor, args) => {
-                write!(f, "{}", ctor)?;
+                write!(f, "{ctor}")?;
                 if !args.is_empty() {
                     write!(f, "(")?;
                     for (i, arg) in args.iter().enumerate() {
                         if i > 0 {
                             write!(f, ", ")?;
                         }
-                        write!(f, "{}", arg)?;
+                        write!(f, "{arg}")?;
                     }
                     write!(f, ")")?;
                 }
@@ -129,7 +129,7 @@ impl fmt::Display for Value {
                 write!(f, "<ref #{id}: {}>", cell.borrow())
             }
             Value::Range(start, end) => {
-                write!(f, "{}..{}", start, end)
+                write!(f, "{start}..{end}")
             }
         }
     }
@@ -251,13 +251,12 @@ impl fmt::Display for EvalError {
                 write!(f, "Expected record, got {got}")
             }
             EvalError::UnknownConstructor(name) => {
-                write!(f, "Unknown constructor: {}", name)
+                write!(f, "Unknown constructor: {name}")
             }
             EvalError::ConstructorArityMismatch(name, expected, got) => {
                 write!(
                     f,
-                    "Constructor {} expects {} arguments, got {}",
-                    name, expected, got
+                    "Constructor {name} expects {expected} arguments, got {got}"
                 )
             }
             EvalError::PatternMatchNonExhaustive => {
@@ -786,7 +785,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     available.sort();
                     EvalError::FieldNotFound(field_name.clone(), available)
                 }),
-                other => Err(EvalError::RecordExpected(format!("{:?}", other))),
+                other => Err(EvalError::RecordExpected(format!("{other:?}"))),
             }
         }
 
@@ -863,8 +862,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             // Check that index is non-negative
             if index < 0 {
                 return Err(EvalError::IndexOutOfBounds(format!(
-                    "Array index {} is negative",
-                    index
+                    "Array index {index} is negative"
                 )));
             }
 
@@ -875,8 +873,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     // Check bounds
                     if idx >= size {
                         Err(EvalError::IndexOutOfBounds(format!(
-                            "Array index {} out of bounds for array of size {}",
-                            idx, size
+                            "Array index {idx} out of bounds for array of size {size}"
                         )))
                     } else {
                         Ok(values[idx].clone())
@@ -1045,8 +1042,7 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         }
 
         (op, left, right) => Err(EvalError::TypeError(format!(
-            "Type error in binary operation {:?}: cannot apply to {:?} and {:?}",
-            op, left, right
+            "Type error in binary operation {op:?}: cannot apply to {left:?} and {right:?}"
         ))),
     }
 }

@@ -1,6 +1,6 @@
 /// Abstract Syntax Tree definitions for the `ParLang` language
 ///
-/// This module defines the Abstract Syntax Tree (AST) structure for ParLang,
+/// This module defines the Abstract Syntax Tree (AST) structure for `ParLang`,
 /// representing the parsed structure of programs before evaluation or type checking.
 ///
 /// # Overview
@@ -224,7 +224,7 @@ pub enum Expr {
     /// Reads the value from a reference
     Deref(Box<Expr>),
 
-    /// Reference assignment: ref_expr := value_expr
+    /// Reference assignment: `ref_expr` := `value_expr`
     /// Mutates the value stored in a reference
     RefAssign(Box<Expr>, Box<Expr>),
 
@@ -266,7 +266,7 @@ impl fmt::Display for Expr {
                 write!(f, "'")
             }
             Expr::Float(fl) => write!(f, "{fl}"),
-            Expr::Byte(b) => write!(f, "{}b", b),
+            Expr::Byte(b) => write!(f, "{b}b"),
             Expr::Var(name) => write!(f, "{name}"),
             Expr::BinOp(op, left, right) => write!(f, "({left} {op} {right})"),
             Expr::If(cond, then_branch, else_branch) => {
@@ -343,26 +343,26 @@ impl fmt::Display for Expr {
                 constructors,
                 body,
             } => {
-                write!(f, "(type {}", name)?;
+                write!(f, "(type {name}")?;
                 for param in type_params {
-                    write!(f, " {}", param)?;
+                    write!(f, " {param}")?;
                 }
                 write!(f, " =")?;
                 for (i, (ctor, types)) in constructors.iter().enumerate() {
                     if i > 0 {
                         write!(f, " |")?;
                     }
-                    write!(f, " {}", ctor)?;
+                    write!(f, " {ctor}")?;
                     for ty in types {
-                        write!(f, " {}", ty)?;
+                        write!(f, " {ty}")?;
                     }
                 }
-                write!(f, " in {})", body)
+                write!(f, " in {body})")
             }
             Expr::Constructor(name, args) => {
-                write!(f, "{}", name)?;
+                write!(f, "{name}")?;
                 for arg in args {
-                    write!(f, " {}", arg)?;
+                    write!(f, " {arg}")?;
                 }
                 Ok(())
             }
@@ -405,13 +405,13 @@ impl fmt::Display for TypeExpr {
 impl fmt::Display for TypeAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeAnnotation::Concrete(name) => write!(f, "{}", name),
-            TypeAnnotation::Var(name) => write!(f, "{}", name),
-            TypeAnnotation::Fun(arg, ret) => write!(f, "({} -> {})", arg, ret),
+            TypeAnnotation::Concrete(name) => write!(f, "{name}"),
+            TypeAnnotation::Var(name) => write!(f, "{name}"),
+            TypeAnnotation::Fun(arg, ret) => write!(f, "({arg} -> {ret})"),
             TypeAnnotation::App(name, args) => {
-                write!(f, "{}", name)?;
+                write!(f, "{name}")?;
                 for arg in args {
-                    write!(f, " {}", arg)?;
+                    write!(f, " {arg}")?;
                 }
                 Ok(())
             }
@@ -436,7 +436,7 @@ impl fmt::Display for Literal {
                 }
                 write!(f, "'")
             }
-            Literal::Byte(b) => write!(f, "{}b", b),
+            Literal::Byte(b) => write!(f, "{b}b"),
         }
     }
 }
@@ -468,9 +468,9 @@ impl fmt::Display for Pattern {
                 write!(f, "}}")
             }
             Pattern::Constructor(name, patterns) => {
-                write!(f, "{}", name)?;
+                write!(f, "{name}")?;
                 for pattern in patterns {
-                    write!(f, " {}", pattern)?;
+                    write!(f, " {pattern}")?;
                 }
                 Ok(())
             }
