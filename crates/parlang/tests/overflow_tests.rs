@@ -210,11 +210,11 @@ fn test_arithmetic_overflow_in_function_application() {
 fn test_arithmetic_overflow_in_recursive_function() {
     // Overflow within recursive call
     // This test is ignored because factorial(100) causes stack overflow
-    let code = r#"
+    let code = r"
         let factorial = rec fact -> fun n ->
             if n == 0 then 1 else n * fact (n - 1)
         in factorial 100
-    "#;
+    ";
     let result = parse_and_eval(code);
     // Should either overflow or stack overflow (both are acceptable)
     assert!(result.is_err());

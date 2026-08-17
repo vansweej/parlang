@@ -12,7 +12,7 @@ fn test_cli_file_execution() {
 
     // Execute the file with the CLI
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file.to_str().unwrap()])
+        .args(["run", "--quiet", "--", test_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
@@ -29,7 +29,7 @@ fn test_cli_file_not_found() {
     // Try to execute a non-existent file
     let nonexistent = env::temp_dir().join("nonexistent_file.par");
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", nonexistent.to_str().unwrap()])
+        .args(["run", "--quiet", "--", nonexistent.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
@@ -45,7 +45,7 @@ fn test_cli_parse_error() {
     fs::write(&test_file, "let x = in y").unwrap();
 
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file.to_str().unwrap()])
+        .args(["run", "--quiet", "--", test_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
@@ -64,7 +64,7 @@ fn test_cli_eval_error() {
     fs::write(&test_file, "1 / 0").unwrap();
 
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file.to_str().unwrap()])
+        .args(["run", "--quiet", "--", test_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
@@ -82,7 +82,7 @@ fn test_cli_dump_text() {
     fs::write(&test_file, "1 + 2").unwrap();
 
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--quiet",
             "--",
@@ -105,7 +105,7 @@ fn test_cli_dump_dot() {
     fs::write(&test_file, "1 + 2").unwrap();
 
     let output = Command::new("cargo")
-        .args(&[
+        .args([
             "run",
             "--quiet",
             "--",
@@ -125,7 +125,7 @@ fn test_cli_dump_dot() {
 #[test]
 fn test_cli_dump_requires_file() {
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", "--dump"])
+        .args(["run", "--quiet", "--", "--dump"])
         .output()
         .expect("Failed to execute command");
 
@@ -146,7 +146,7 @@ fn test_cli_complex_program() {
     fs::write(&test_file, program).unwrap();
 
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file.to_str().unwrap()])
+        .args(["run", "--quiet", "--", test_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
@@ -171,7 +171,7 @@ x + y + z
     fs::write(&test_file, program).unwrap();
 
     let output = Command::new("cargo")
-        .args(&["run", "--quiet", "--", test_file.to_str().unwrap()])
+        .args(["run", "--quiet", "--", test_file.to_str().unwrap()])
         .output()
         .expect("Failed to execute command");
 
