@@ -248,23 +248,100 @@ pub enum BinOp {
     Ge,  // >=
 }
 
+/// Format a char literal with its escape sequences (extracted from the
+/// `Expr` Display impl to keep its line count down).
+fn fmt_char_literal(f: &mut fmt::Formatter, c: char) -> fmt::Result {
+    write!(f, "'")?;
+    match c {
+        '\n' => write!(f, "\\n")?,
+        '\t' => write!(f, "\\t")?,
+        '\r' => write!(f, "\\r")?,
+        '\\' => write!(f, "\\\\")?,
+        '\'' => write!(f, "\\'")?,
+        _ => write!(f, "{c}")?,
+    }
+    write!(f, "'")
+}
+
+/// Format a `Seq` (semicolon-separated top-level bindings) expression
+/// (extracted from the `Expr` Display impl to keep its line count down).
+fn fmt_seq(
+    f: &mut fmt::Formatter,
+    bindings: &[(String, Option<TypeAnnotation>, Expr)],
+    body: &Expr,
+) -> fmt::Result {
+    write!(f, "(")?;
+    for (i, (name, ty_ann, value)) in bindings.iter().enumerate() {
+        if i > 0 {
+            write!(f, "; ")?;
+        }
+        if let Some(ty) = ty_ann {
+            write!(f, "let {name} : {ty} = {value}")?;
+        } else {
+            write!(f, "let {name} = {value}")?;
+        }
+    }
+    write!(f, "; {body})")
+}
+
+/// Format a `TypeDef` (sum-type declaration) expression (extracted from the
+/// `Expr` Display impl to keep its line count down).
+fn fmt_type_def(
+    f: &mut fmt::Formatter,
+    name: &str,
+    type_params: &[String],
+    constructors: &[(String, Vec<TypeAnnotation>)],
+    body: &Expr,
+) -> fmt::Result {
+    write!(f, "(type {name}")?;
+    for param in type_params {
+        write!(f, " {param}")?;
+    }
+    write!(f, " =")?;
+    for (i, (ctor, types)) in constructors.iter().enumerate() {
+        if i > 0 {
+            write!(f, " |")?;
+        }
+        write!(f, " {ctor}")?;
+        for ty in types {
+            write!(f, " {ty}")?;
+        }
+    }
+    write!(f, " in {body})")
+}
+
+/// Format an array literal (extracted from the `Expr` Display impl to keep
+/// its line count down).
+fn fmt_array(f: &mut fmt::Formatter, elements: &[Expr]) -> fmt::Result {
+    write!(f, "[|")?;
+    for (i, elem) in elements.iter().enumerate() {
+        if i > 0 {
+            write!(f, ", ")?;
+        }
+        write!(f, "{elem}")?;
+    }
+    write!(f, "|]")
+}
+
+/// Format a record literal (extracted from the `Expr` Display impl to keep
+/// its line count down).
+fn fmt_record(f: &mut fmt::Formatter, fields: &[(String, Expr)]) -> fmt::Result {
+    write!(f, "{{")?;
+    for (i, (name, expr)) in fields.iter().enumerate() {
+        if i > 0 {
+            write!(f, ", ")?;
+        }
+        write!(f, "{name}: {expr}")?;
+    }
+    write!(f, "}}")
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Expr::Int(n) => write!(f, "{n}"),
             Expr::Bool(b) => write!(f, "{b}"),
-            Expr::Char(c) => {
-                write!(f, "'")?;
-                match c {
-                    '\n' => write!(f, "\\n")?,
-                    '\t' => write!(f, "\\t")?,
-                    '\r' => write!(f, "\\r")?,
-                    '\\' => write!(f, "\\\\")?,
-                    '\'' => write!(f, "\\'")?,
-                    _ => write!(f, "{c}")?,
-                }
-                write!(f, "'")
-            }
+            Expr::Char(c) => fmt_char_literal(f, *c),
             Expr::Float(fl) => write!(f, "{fl}"),
             Expr::Byte(b) => write!(f, "{b}b"),
             Expr::Var(name) => write!(f, "{name}"),
@@ -288,20 +365,7 @@ impl fmt::Display for Expr {
             }
             Expr::App(func, arg) => write!(f, "({func} {arg})"),
             Expr::Load(filepath, body) => write!(f, "(load \"{filepath}\" in {body})"),
-            Expr::Seq(bindings, body) => {
-                write!(f, "(")?;
-                for (i, (name, ty_ann, value)) in bindings.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, "; ")?;
-                    }
-                    if let Some(ty) = ty_ann {
-                        write!(f, "let {name} : {ty} = {value}")?;
-                    } else {
-                        write!(f, "let {name} = {value}")?;
-                    }
-                }
-                write!(f, "; {body})")
-            }
+            Expr::Seq(bindings, body) => fmt_seq(f, bindings, body),
             Expr::Rec(name, body) => write!(f, "(rec {name} -> {body})"),
             Expr::Match(scrutinee, arms) => {
                 write!(f, "(match {scrutinee} with")?;
@@ -324,16 +388,7 @@ impl fmt::Display for Expr {
             Expr::TypeAlias(name, ty_expr, body) => {
                 write!(f, "(type {name} = {ty_expr} in {body})")
             }
-            Expr::Record(fields) => {
-                write!(f, "{{")?;
-                for (i, (name, expr)) in fields.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{name}: {expr}")?;
-                }
-                write!(f, "}}")
-            }
+            Expr::Record(fields) => fmt_record(f, fields),
             Expr::FieldAccess(record, field) => {
                 write!(f, "{record}.{field}")
             }
@@ -342,23 +397,7 @@ impl fmt::Display for Expr {
                 type_params,
                 constructors,
                 body,
-            } => {
-                write!(f, "(type {name}")?;
-                for param in type_params {
-                    write!(f, " {param}")?;
-                }
-                write!(f, " =")?;
-                for (i, (ctor, types)) in constructors.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, " |")?;
-                    }
-                    write!(f, " {ctor}")?;
-                    for ty in types {
-                        write!(f, " {ty}")?;
-                    }
-                }
-                write!(f, " in {body})")
-            }
+            } => fmt_type_def(f, name, type_params, constructors, body),
             Expr::Constructor(name, args) => {
                 write!(f, "{name}")?;
                 for arg in args {
@@ -366,16 +405,7 @@ impl fmt::Display for Expr {
                 }
                 Ok(())
             }
-            Expr::Array(elements) => {
-                write!(f, "[|")?;
-                for (i, elem) in elements.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{elem}")?;
-                }
-                write!(f, "|]")
-            }
+            Expr::Array(elements) => fmt_array(f, elements),
             Expr::ArrayIndex(arr, index) => write!(f, "{arr}[{index}]"),
             Expr::Ref(expr) => write!(f, "(ref {expr})"),
             Expr::Deref(expr) => write!(f, "(!{expr})"),
