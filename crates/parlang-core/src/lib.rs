@@ -4,7 +4,8 @@
 //! tree-walking VM (Arc C) that evaluates it: see [`eval`], [`Value`],
 //! [`Environment`], and [`EvalError`]. Branching and primitives use reserved
 //! constructor names dispatched by the VM (`if`, `+`, `-`, `*`, `/`, `<`,
-//! `eq`); recursion uses [`Value::RecClosure`]. The evaluation model is
+//! `eq`, `strlen`, `strcat`); recursion uses [`Value::RecClosure`]. `strlen`
+//! and `strcat` are host string primitives. The evaluation model is
 //! specified in `docs/CORE_OPERATIONAL_SEMANTICS.md` and
 //! `docs/adr/0001-arc-c-eval-model.md`. The `parlang-driver` crate does NOT
 //! depend on this crate yet.
@@ -28,7 +29,9 @@ pub use error::{BuildError, BuildResult};
 pub mod eval;
 pub use eval::{eval, Environment, EvalError, EvalResult, Value};
 
-// core-modules: phase4
+pub mod prelude;
+pub use prelude::{prelude, PreludeError};
+// core-modules: phase5
 /// Returns the crate's semantic version string.
 #[must_use]
 pub const fn version() -> &'static str {
