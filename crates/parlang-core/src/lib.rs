@@ -1,8 +1,13 @@
-//! `parlang-core` — intentionally empty skeleton crate.
+//! `parlang-core` — the `ParLang` compiler core (Arc B IR + Arc C VM).
 //!
-//! This is a deliberate placeholder reserved for a future Arc B compiler core.
-//! It currently exposes only [`version`]; the `parlang-driver` crate does NOT
-//! depend on it yet. This is scaffolding, not dead weight.
+//! Defines the small-Core [`Term`] IR (Arc B) and a strict, call-by-value
+//! tree-walking VM (Arc C) that evaluates it: see [`eval`], [`Value`],
+//! [`Environment`], and [`EvalError`]. Branching and primitives use reserved
+//! constructor names dispatched by the VM (`if`, `+`, `-`, `*`, `/`, `<`,
+//! `eq`); recursion uses [`Value::RecClosure`]. The evaluation model is
+//! specified in `docs/CORE_OPERATIONAL_SEMANTICS.md` and
+//! `docs/adr/0001-arc-c-eval-model.md`. The `parlang-driver` crate does NOT
+//! depend on this crate yet.
 
 pub mod base_type;
 pub mod term;
@@ -20,7 +25,10 @@ pub mod error;
 
 pub use error::{BuildError, BuildResult};
 
-// core-modules: phase3
+pub mod eval;
+pub use eval::{eval, Environment, EvalError, EvalResult, Value};
+
+// core-modules: phase4
 /// Returns the crate's semantic version string.
 #[must_use]
 pub const fn version() -> &'static str {
