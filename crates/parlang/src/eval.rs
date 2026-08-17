@@ -850,13 +850,10 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             let index_val = eval(index_expr, env)?;
 
             // Check that the index is an integer
-            let index = match index_val {
-                Value::Int(i) => i,
-                _ => {
-                    return Err(EvalError::TypeError(
-                        "Array index must be an integer".to_string(),
-                    ))
-                }
+            let Value::Int(index) = index_val else {
+                return Err(EvalError::TypeError(
+                    "Array index must be an integer".to_string(),
+                ));
             };
 
             // Check that index is non-negative
@@ -869,7 +866,11 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             // Check that the value is an array
             match arr_val {
                 Value::Array(size, values) => {
-                    let idx = index as usize;
+                    let Ok(idx) = usize::try_from(index) else {
+                        return Err(EvalError::IndexOutOfBounds(format!(
+                            "Array index {index} out of bounds for array of size {size}"
+                        )));
+                    };
                     // Check bounds
                     if idx >= size {
                         Err(EvalError::IndexOutOfBounds(format!(
@@ -1006,8 +1007,10 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Ge, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a >= b)),
 
         // Comparison operations for Float
-        (BinOp::Eq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a == b)),
-        (BinOp::Neq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a != b)),
+        // Bit-exact comparison (not epsilon-based): ParLang's == on floats is
+        // defined as exact equality, mirroring parlang-core's eval_eq approach.
+        (BinOp::Eq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a.to_bits() == b.to_bits())),
+        (BinOp::Neq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a.to_bits() != b.to_bits())),
         (BinOp::Lt, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
         (BinOp::Le, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
         (BinOp::Gt, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a > b)),
