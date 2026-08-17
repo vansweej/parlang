@@ -617,7 +617,11 @@ fn eval_load(filepath: &str, body: &Expr, env: &Environment) -> Result<Value, Ev
 
 /// Evaluate a `match scrutinee with arms` expression (extracted from `eval`
 /// to keep its line count down).
-fn eval_match(scrutinee: &Expr, arms: &[(Pattern, Expr)], env: &Environment) -> Result<Value, EvalError> {
+fn eval_match(
+    scrutinee: &Expr,
+    arms: &[(Pattern, Expr)],
+    env: &Environment,
+) -> Result<Value, EvalError> {
     // Check exhaustiveness of patterns
     let patterns: Vec<Pattern> = arms.iter().map(|(p, _)| p.clone()).collect();
     let exhaustiveness = check_exhaustiveness(&patterns, env);
@@ -722,7 +726,11 @@ fn eval_constructor(ctor_name: &str, args: &[Expr], env: &Environment) -> Result
 
 /// Evaluate `arr_expr[index_expr]` (extracted from `eval` to keep its line
 /// count down).
-fn eval_array_index(arr_expr: &Expr, index_expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
+fn eval_array_index(
+    arr_expr: &Expr,
+    index_expr: &Expr,
+    env: &Environment,
+) -> Result<Value, EvalError> {
     // Evaluate the array and index expressions
     let arr_val = eval(arr_expr, env)?;
     let index_val = eval(index_expr, env)?;
@@ -801,7 +809,11 @@ fn eval_record(fields: &[(String, Expr)], env: &Environment) -> Result<Value, Ev
 
 /// Evaluate `record_expr.field_name` (extracted from `eval` to keep its
 /// line count down).
-fn eval_field_access(record_expr: &Expr, field_name: &str, env: &Environment) -> Result<Value, EvalError> {
+fn eval_field_access(
+    record_expr: &Expr,
+    field_name: &str,
+    env: &Environment,
+) -> Result<Value, EvalError> {
     // Evaluate the record expression
     let record_value = eval(record_expr, env)?;
 
@@ -818,7 +830,11 @@ fn eval_field_access(record_expr: &Expr, field_name: &str, env: &Environment) ->
 
 /// Evaluate `ref_expr := value_expr` (extracted from `eval` to keep its
 /// line count down).
-fn eval_ref_assign(ref_expr: &Expr, value_expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
+fn eval_ref_assign(
+    ref_expr: &Expr,
+    value_expr: &Expr,
+    env: &Environment,
+) -> Result<Value, EvalError> {
     // Assign a new value to a reference
     let ref_val = eval(ref_expr, env)?;
     let new_val = eval(value_expr, env)?;
@@ -831,6 +847,24 @@ fn eval_ref_assign(ref_expr: &Expr, value_expr: &Expr, env: &Environment) -> Res
         }
         _ => Err(EvalError::TypeError(
             "Reference assignment requires a reference".to_string(),
+        )),
+    }
+}
+
+/// Evaluate `if cond then then_branch else else_branch` (extracted from
+/// `eval` to keep its line count down).
+fn eval_if(
+    cond: &Expr,
+    then_branch: &Expr,
+    else_branch: &Expr,
+    env: &Environment,
+) -> Result<Value, EvalError> {
+    let cond_val = eval(cond, env)?;
+    match cond_val {
+        Value::Bool(true) => eval(then_branch, env),
+        Value::Bool(false) => eval(else_branch, env),
+        _ => Err(EvalError::TypeError(
+            "If condition must be a boolean".to_string(),
         )),
     }
 }
@@ -866,16 +900,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             eval_binop(*op, left_val, right_val)
         }
 
-        Expr::If(cond, then_branch, else_branch) => {
-            let cond_val = eval(cond, env)?;
-            match cond_val {
-                Value::Bool(true) => eval(then_branch, env),
-                Value::Bool(false) => eval(else_branch, env),
-                _ => Err(EvalError::TypeError(
-                    "If condition must be a boolean".to_string(),
-                )),
-            }
-        }
+        Expr::If(cond, then_branch, else_branch) => eval_if(cond, then_branch, else_branch, env),
 
         Expr::Let(name, _ty_ann, value, body) => {
             let val = eval(value, env)?;
@@ -925,9 +950,16 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
 
         Expr::Record(fields) => eval_record(fields, env),
 
-        Expr::FieldAccess(record_expr, field_name) => eval_field_access(record_expr, field_name, env),
+        Expr::FieldAccess(record_expr, field_name) => {
+            eval_field_access(record_expr, field_name, env)
+        }
 
-        Expr::TypeDef { name, type_params: _, constructors, body } => eval_type_def(name, constructors, body, env),
+        Expr::TypeDef {
+            name,
+            type_params: _,
+            constructors,
+            body,
+        } => eval_type_def(name, constructors, body, env),
 
         Expr::Constructor(ctor_name, args) => eval_constructor(ctor_name, args, env),
 
@@ -1051,8 +1083,12 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         // Comparison operations for Float
         // Bit-exact comparison (not epsilon-based): ParLang's == on floats is
         // defined as exact equality, mirroring parlang-core's eval_eq approach.
-        (BinOp::Eq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a.to_bits() == b.to_bits())),
-        (BinOp::Neq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a.to_bits() != b.to_bits())),
+        (BinOp::Eq, Value::Float(a), Value::Float(b)) => {
+            Ok(Value::Bool(a.to_bits() == b.to_bits()))
+        }
+        (BinOp::Neq, Value::Float(a), Value::Float(b)) => {
+            Ok(Value::Bool(a.to_bits() != b.to_bits()))
+        }
         (BinOp::Lt, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a < b)),
         (BinOp::Le, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
         (BinOp::Gt, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a > b)),

@@ -769,11 +769,17 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
         (Type::SumType(name1, args1), Type::SumType(name2, args2)) => {
             // Sum types must have the same name and same number of type arguments
             if name1 != name2 {
-                return Err(TypeError::UnificationError(Box::new(t1.clone()), Box::new(t2.clone())));
+                return Err(TypeError::UnificationError(
+                    Box::new(t1.clone()),
+                    Box::new(t2.clone()),
+                ));
             }
 
             if args1.len() != args2.len() {
-                return Err(TypeError::UnificationError(Box::new(t1.clone()), Box::new(t2.clone())));
+                return Err(TypeError::UnificationError(
+                    Box::new(t1.clone()),
+                    Box::new(t2.clone()),
+                ));
             }
 
             // Unify all type arguments
@@ -788,7 +794,10 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
             Ok(subst)
         }
 
-        _ => Err(TypeError::UnificationError(Box::new(t1.clone()), Box::new(t2.clone()))),
+        _ => Err(TypeError::UnificationError(
+            Box::new(t1.clone()),
+            Box::new(t2.clone()),
+        )),
     }
 }
 
@@ -890,43 +899,43 @@ fn resolve_type_annotation(
 /// substitutions (extracted from `infer_binop` to keep its line count down).
 fn infer_arith_binop(
     left_ty: Type,
-    right_ty: Type,
-    s1: Substitution,
-    s2: Substitution,
+    right_ty: &Type,
+    s1: &Substitution,
+    s2: &Substitution,
 ) -> Result<(Type, Substitution), TypeError> {
     // Arithmetic operations work on Int, Float, and Byte
     // Check if left type is Int, Float, or Byte
     match &left_ty {
         Type::Int => {
-            let s3 = unify(&right_ty, &Type::Int)?;
-            let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+            let s3 = unify(right_ty, &Type::Int)?;
+            let subst = compose_subst(&s3, &compose_subst(s2, s1));
             Ok((Type::Int, subst))
         }
         Type::Float => {
-            let s3 = unify(&right_ty, &Type::Float)?;
-            let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+            let s3 = unify(right_ty, &Type::Float)?;
+            let subst = compose_subst(&s3, &compose_subst(s2, s1));
             Ok((Type::Float, subst))
         }
         Type::Byte => {
-            let s3 = unify(&right_ty, &Type::Byte)?;
-            let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+            let s3 = unify(right_ty, &Type::Byte)?;
+            let subst = compose_subst(&s3, &compose_subst(s2, s1));
             Ok((Type::Byte, subst))
         }
         Type::Var(_) => {
             // Try to unify with right type first
-            let s3 = unify(&left_ty, &right_ty)?;
+            let s3 = unify(&left_ty, right_ty)?;
             let unified_ty = apply_subst(&s3, &left_ty);
 
             // Now check if unified type is Int, Float, or Byte
             match &unified_ty {
                 Type::Int | Type::Float | Type::Byte => {
-                    let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+                    let subst = compose_subst(&s3, &compose_subst(s2, s1));
                     Ok((unified_ty, subst))
                 }
                 Type::Var(_) => {
                     // Still a type variable, default to Int for arithmetic operations
                     let s4 = unify(&unified_ty, &Type::Int)?;
-                    let subst = compose_subst(&s4, &compose_subst(&s3, &compose_subst(&s2, &s1)));
+                    let subst = compose_subst(&s4, &compose_subst(&s3, &compose_subst(s2, s1)));
                     Ok((Type::Int, subst))
                 }
                 _ => Err(TypeError::UnificationError(
@@ -946,48 +955,48 @@ fn infer_arith_binop(
 /// and substitutions (extracted from `infer_binop` to keep its line count down).
 fn infer_ordering_binop(
     left_ty: Type,
-    right_ty: Type,
-    s1: Substitution,
-    s2: Substitution,
+    right_ty: &Type,
+    s1: &Substitution,
+    s2: &Substitution,
 ) -> Result<(Type, Substitution), TypeError> {
     // Ordering comparisons work for Int, Char, Float, and Byte
     // Check if left type is Int, Char, Float, or Byte
     match &left_ty {
         Type::Int => {
-            let s3 = unify(&right_ty, &Type::Int)?;
-            let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+            let s3 = unify(right_ty, &Type::Int)?;
+            let subst = compose_subst(&s3, &compose_subst(s2, s1));
             Ok((Type::Bool, subst))
         }
         Type::Char => {
-            let s3 = unify(&right_ty, &Type::Char)?;
-            let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+            let s3 = unify(right_ty, &Type::Char)?;
+            let subst = compose_subst(&s3, &compose_subst(s2, s1));
             Ok((Type::Bool, subst))
         }
         Type::Float => {
-            let s3 = unify(&right_ty, &Type::Float)?;
-            let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+            let s3 = unify(right_ty, &Type::Float)?;
+            let subst = compose_subst(&s3, &compose_subst(s2, s1));
             Ok((Type::Bool, subst))
         }
         Type::Byte => {
-            let s3 = unify(&right_ty, &Type::Byte)?;
-            let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+            let s3 = unify(right_ty, &Type::Byte)?;
+            let subst = compose_subst(&s3, &compose_subst(s2, s1));
             Ok((Type::Bool, subst))
         }
         Type::Var(_) => {
             // Try to unify with right type first
-            let s3 = unify(&left_ty, &right_ty)?;
+            let s3 = unify(&left_ty, right_ty)?;
             let unified_ty = apply_subst(&s3, &left_ty);
 
             // Now check if unified type is Int, Char, Float, or Byte
             match &unified_ty {
                 Type::Int | Type::Char | Type::Float | Type::Byte => {
-                    let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+                    let subst = compose_subst(&s3, &compose_subst(s2, s1));
                     Ok((Type::Bool, subst))
                 }
                 Type::Var(_) => {
                     // Still a type variable, default to Int for ordering operations
                     let s4 = unify(&unified_ty, &Type::Int)?;
-                    let subst = compose_subst(&s4, &compose_subst(&s3, &compose_subst(&s2, &s1)));
+                    let subst = compose_subst(&s4, &compose_subst(&s3, &compose_subst(s2, s1)));
                     Ok((Type::Bool, subst))
                 }
                 _ => Err(TypeError::UnificationError(
@@ -1018,10 +1027,10 @@ fn infer_binop(
 
     match op {
         BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-            infer_arith_binop(left_ty, right_ty, s1, s2)
+            infer_arith_binop(left_ty, &right_ty, &s1, &s2)
         }
         BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
-            infer_ordering_binop(left_ty, right_ty, s1, s2)
+            infer_ordering_binop(left_ty, &right_ty, &s1, &s2)
         }
         BinOp::Eq | BinOp::Neq => {
             // Equality works on any type, but both sides must match
@@ -1036,7 +1045,7 @@ fn infer_binop(
 /// `infer` to keep its line count down).
 fn infer_let(
     name: &str,
-    ty_ann_opt: &Option<crate::ast::TypeAnnotation>,
+    ty_ann_opt: Option<&crate::ast::TypeAnnotation>,
     value: &Expr,
     body: &Expr,
     env: &mut TypeEnv,
@@ -1438,6 +1447,30 @@ fn infer_rec(
     Ok((final_ty, final_subst))
 }
 
+/// Type inference for `fun param [: Ty] -> body` (extracted from `infer` to
+/// keep its line count down).
+fn infer_fun(
+    param: &str,
+    ty_ann_opt: Option<&crate::ast::TypeAnnotation>,
+    body: &Expr,
+    env: &mut TypeEnv,
+) -> Result<(Type, Substitution), TypeError> {
+    // Use annotated type if provided, otherwise create fresh variable
+    let param_ty = if let Some(ty_ann) = ty_ann_opt {
+        resolve_type_annotation(ty_ann, env)?
+    } else {
+        env.fresh_var()
+    };
+
+    let mut env1 = env.clone();
+    env1 = env1.extend(param.to_string(), param_ty.clone());
+
+    let (body_ty, s1) = infer(body, &mut env1)?;
+    let param_ty = apply_subst(&s1, &param_ty);
+
+    Ok((Type::Fun(Box::new(param_ty), Box::new(body_ty)), s1))
+}
+
 /// Type inference for expressions
 ///
 /// # Errors
@@ -1469,24 +1502,11 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
 
         Expr::If(cond, then_br, else_br) => infer_if(cond, then_br, else_br, env),
 
-        Expr::Let(name, ty_ann_opt, value, body) => infer_let(name, ty_ann_opt, value, body, env),
-
-        Expr::Fun(param, ty_ann_opt, body) => {
-            // Use annotated type if provided, otherwise create fresh variable
-            let param_ty = if let Some(ty_ann) = ty_ann_opt {
-                resolve_type_annotation(ty_ann, env)?
-            } else {
-                env.fresh_var()
-            };
-
-            let mut env1 = env.clone();
-            env1 = env1.extend(param.clone(), param_ty.clone());
-
-            let (body_ty, s1) = infer(body, &mut env1)?;
-            let param_ty = apply_subst(&s1, &param_ty);
-
-            Ok((Type::Fun(Box::new(param_ty), Box::new(body_ty)), s1))
+        Expr::Let(name, ty_ann_opt, value, body) => {
+            infer_let(name, ty_ann_opt.as_ref(), value, body, env)
         }
+
+        Expr::Fun(param, ty_ann_opt, body) => infer_fun(param, ty_ann_opt.as_ref(), body, env),
 
         Expr::App(func, arg) => infer_app(func, arg, env),
 
@@ -1557,7 +1577,9 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             Ok((Type::Record(field_types), subst))
         }
 
-        Expr::FieldAccess(record_expr, field_name) => infer_field_access(record_expr, field_name, env),
+        Expr::FieldAccess(record_expr, field_name) => {
+            infer_field_access(record_expr, field_name, env)
+        }
 
         Expr::TypeDef {
             name,

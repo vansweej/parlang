@@ -204,7 +204,7 @@ fn dot_type_def(
 fn dot_let(
     node_id: &str,
     name: &str,
-    ty_ann: &Option<crate::ast::TypeAnnotation>,
+    ty_ann: Option<&crate::ast::TypeAnnotation>,
     value: &Expr,
     body: &Expr,
     output: &mut String,
@@ -227,7 +227,7 @@ fn dot_let(
 fn dot_fun(
     node_id: &str,
     param: &str,
-    ty_ann: &Option<crate::ast::TypeAnnotation>,
+    ty_ann: Option<&crate::ast::TypeAnnotation>,
     body: &Expr,
     output: &mut String,
     gen: &mut NodeIdGenerator,
@@ -408,6 +408,16 @@ fn dot_tuple(node_id: &str, elements: &[Expr], output: &mut String, gen: &mut No
     }
 }
 
+/// Emit DOT for an `App` (function application) node (extracted from
+/// `expr_to_dot` to keep its line count down).
+fn dot_app(node_id: &str, func: &Expr, arg: &Expr, output: &mut String, gen: &mut NodeIdGenerator) {
+    let _ = writeln!(output, "  {node_id} [label=\"App\"];");
+    let func_id = expr_to_dot(func, output, gen);
+    let arg_id = expr_to_dot(arg, output, gen);
+    let _ = writeln!(output, "  {node_id} -> {func_id} [label=\"func\"];");
+    let _ = writeln!(output, "  {node_id} -> {arg_id} [label=\"arg\"];");
+}
+
 fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> String {
     let node_id = gen.next();
 
@@ -454,15 +464,13 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             let _ = writeln!(output, "  {node_id} -> {then_id} [label=\"then\"];");
             let _ = writeln!(output, "  {node_id} -> {else_id} [label=\"else\"];");
         }
-        Expr::Let(name, ty_ann, value, body) => dot_let(&node_id, name, ty_ann, value, body, output, gen),
-        Expr::Fun(param, ty_ann, body) => dot_fun(&node_id, param, ty_ann, body, output, gen),
-        Expr::App(func, arg) => {
-            let _ = writeln!(output, "  {node_id} [label=\"App\"];");
-            let func_id = expr_to_dot(func, output, gen);
-            let arg_id = expr_to_dot(arg, output, gen);
-            let _ = writeln!(output, "  {node_id} -> {func_id} [label=\"func\"];");
-            let _ = writeln!(output, "  {node_id} -> {arg_id} [label=\"arg\"];");
+        Expr::Let(name, ty_ann, value, body) => {
+            dot_let(&node_id, name, ty_ann.as_ref(), value, body, output, gen);
         }
+        Expr::Fun(param, ty_ann, body) => {
+            dot_fun(&node_id, param, ty_ann.as_ref(), body, output, gen);
+        }
+        Expr::App(func, arg) => dot_app(&node_id, func, arg, output, gen),
         Expr::Load(filepath, body) => dot_load(&node_id, filepath, body, output, gen),
         Expr::Seq(bindings, body) => dot_seq(&node_id, bindings, body, output, gen),
         Expr::Rec(name, body) => dot_rec(&node_id, name, body, output, gen),
@@ -473,7 +481,9 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             let tuple_id = expr_to_dot(tuple, output, gen);
             let _ = writeln!(output, "  {node_id} -> {tuple_id} [label=\"tuple\"];");
         }
-        Expr::TypeAlias(name, ty_expr, body) => dot_type_alias(&node_id, name, ty_expr, body, output, gen),
+        Expr::TypeAlias(name, ty_expr, body) => {
+            dot_type_alias(&node_id, name, ty_expr, body, output, gen);
+        }
         Expr::Record(fields) => dot_record(&node_id, fields, output, gen),
         Expr::FieldAccess(record, field) => dot_field_access(&node_id, record, field, output, gen),
         Expr::TypeDef {

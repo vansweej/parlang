@@ -383,8 +383,6 @@ fn test_record_type_error_field_not_found() {
         Err(TypeError::RecordFieldMismatch) => {
             // Also acceptable - unification fails due to field mismatch
         }
-        other => panic!(
-            "Expected FieldNotFound or RecordFieldMismatch type error, got {other:?}"
-        ),
+        other => panic!("Expected FieldNotFound or RecordFieldMismatch type error, got {other:?}"),
     }
 }

@@ -23,9 +23,7 @@ type ProgramBinding = (String, Option<TypeAnnotation>, Expr);
 /// Helper function to check if a string starts with an uppercase ASCII character.
 /// Used to distinguish concrete types (Int, Bool) from type variables (a, b).
 fn starts_with_uppercase(s: &str) -> bool {
-    s.as_bytes()
-        .first()
-        .is_some_and(u8::is_ascii_uppercase)
+    s.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
 }
 
 /// Parse an integer literal
