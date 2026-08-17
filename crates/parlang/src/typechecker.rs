@@ -7,7 +7,7 @@ use std::fmt;
 /// Sum type constructor information
 #[derive(Debug, Clone)]
 pub struct ConstructorInfo {
-    /// Type parameters (e.g., ["a", "b"] for Either a b)
+    /// Type parameters (e.g., `["a", "b"]` for `Either a b`)
     pub type_params: Vec<String>,
     /// Payload types for this constructor
     pub payload_types: Vec<crate::ast::TypeAnnotation>,
@@ -74,6 +74,7 @@ impl TypeEnv {
     }
 
     /// Extend environment with a monomorphic binding
+    #[must_use]
     pub fn extend(&self, name: String, ty: Type) -> Self {
         let mut new_env = self.clone();
         new_env.bind(
@@ -388,7 +389,8 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
         | Type::Float
         | Type::Byte
         | Type::Unit
-        | Type::Range => HashSet::new(),
+        | Type::Range
+        | Type::Row(_) => HashSet::new(),
         Type::Var(v) => {
             let mut set = HashSet::new();
             set.insert(v.clone());
@@ -413,7 +415,6 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
             }
             set
         }
-        Type::Row(_) => HashSet::new(),
         Type::SumType(_name, args) => {
             let mut set = HashSet::new();
             for arg in args {
@@ -859,6 +860,13 @@ fn resolve_type_annotation(
 }
 
 /// Type inference for expressions
+///
+/// # Errors
+///
+/// Returns a `TypeError` if `expr` contains an unbound variable, a type
+/// mismatch that cannot be unified, an occurs-check failure, a constructor
+/// applied with the wrong number of arguments, or any other static typing
+/// violation detected during inference.
 pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), TypeError> {
     match expr {
         Expr::Int(_) => Ok((Type::Int, HashMap::new())),
@@ -1257,10 +1265,10 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             body,
         } => {
             // Register constructors in the environment
-            for (ctor_name, _payload_types) in constructors {
+            for (ctor_name, payload_types) in constructors {
                 let info = ConstructorInfo {
                     type_params: type_params.clone(),
-                    payload_types: _payload_types.clone(),
+                    payload_types: payload_types.clone(),
                     sum_type_name: name.clone(),
                 };
                 env.register_constructor(ctor_name.clone(), info);
@@ -1466,6 +1474,11 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
 }
 
 /// Public API for type checking
+///
+/// # Errors
+///
+/// Returns a `TypeError` if `expr` fails to type-check; see [`infer`] for the
+/// specific error conditions.
 pub fn typecheck(expr: &Expr) -> Result<Type, TypeError> {
     let mut env = TypeEnv::new();
     let (ty, subst) = infer(expr, &mut env)?;

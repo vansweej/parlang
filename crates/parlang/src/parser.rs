@@ -195,7 +195,7 @@ where
 ///
 /// Builds nested Cons and Nil constructors:
 /// - [] -> Nil
-/// - ['a', 'b', 'c'] -> Cons 'a' (Cons 'b' (Cons 'c' Nil))
+/// - `['a', 'b', 'c']` -> Cons 'a' (Cons 'b' (Cons 'c' Nil))
 ///
 /// In AST form:
 /// - Nil is: Constructor("Nil", [])

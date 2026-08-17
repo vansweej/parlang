@@ -155,12 +155,13 @@ fn test_type_preserving_evaluation() {
     ];
 
     for (source, expected_type) in programs {
+        use parlang::{eval, Environment};
+
         let expr = parse(source).unwrap();
         let ty = typecheck(&expr).unwrap();
         assert_eq!(ty, expected_type, "Failed for program: {source}");
 
         // Also verify it evaluates without runtime errors
-        use parlang::{eval, Environment};
         let result = eval(&expr, &Environment::new());
         assert!(result.is_ok(), "Evaluation failed for program: {source}");
     }

@@ -405,8 +405,7 @@ impl fmt::Display for TypeExpr {
 impl fmt::Display for TypeAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeAnnotation::Concrete(name) => write!(f, "{name}"),
-            TypeAnnotation::Var(name) => write!(f, "{name}"),
+            TypeAnnotation::Concrete(name) | TypeAnnotation::Var(name) => write!(f, "{name}"),
             TypeAnnotation::Fun(arg, ret) => write!(f, "({arg} -> {ret})"),
             TypeAnnotation::App(name, args) => {
                 write!(f, "{name}")?;
