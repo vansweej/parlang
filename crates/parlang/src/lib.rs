@@ -1,5 +1,4 @@
 #![recursion_limit = "512"]
-#![allow(clippy::all, clippy::pedantic, clippy::nursery)]
 
 /// `ParLang`: A small ML-alike functional language written in Rust
 ///
