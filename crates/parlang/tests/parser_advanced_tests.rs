@@ -505,3 +505,23 @@ fn test_load_expression() {
     let result = parse(code);
     assert!(result.is_ok());
 }
+
+// Removed-Syntax Regression Tests
+
+#[test]
+fn test_byte_suffix_no_longer_produces_a_byte_literal() {
+    // Byte literals (a digit sequence with a `b` suffix, e.g. `42b`) were
+    // removed from the surface language. The suffix is no longer special:
+    // `42b` now parses as the integer 42 juxtaposed with the variable `b`,
+    // i.e. function application, which fails later as an unbound variable.
+    //
+    // This test exists so that reintroducing a `b`-suffix parser cannot pass
+    // silently — the byte test suite was deleted with the feature, so nothing
+    // else pins this behavior.
+    let expr = parse("42b").expect("`42b` should still parse (as application)");
+    let rendered = format!("{expr}");
+    assert_eq!(
+        rendered, "(42 b)",
+        "expected `42b` to parse as application of 42 to variable b, got {rendered}"
+    );
+}

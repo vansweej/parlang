@@ -153,10 +153,8 @@ fn analyze_pattern(
         Pattern::Literal(Literal::Int(n)) => {
             int_literals.insert(*n);
         }
-        Pattern::Literal(Literal::Char(_) | Literal::Byte(_))
-        | Pattern::Wildcard
-        | Pattern::Var(_) => {
-            // Char and Byte literals are not exhaustively checked currently
+        Pattern::Literal(Literal::Char(_)) | Pattern::Wildcard | Pattern::Var(_) => {
+            // Char literals are not exhaustively checked currently
             // (too many possible values); Wildcard/Var are catch-all patterns,
             // handled separately.
         }

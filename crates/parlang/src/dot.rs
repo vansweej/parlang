@@ -432,9 +432,6 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
         Expr::Float(fl) => {
             let _ = writeln!(output, "  {node_id} [label=\"Float\\n{fl}\"];");
         }
-        Expr::Byte(b) => {
-            let _ = writeln!(output, "  {node_id} [label=\"Byte\\n{b}b\"];");
-        }
         Expr::Var(name) => {
             let _ = writeln!(
                 output,
@@ -571,7 +568,6 @@ fn pattern_to_dot(pattern: &Pattern, output: &mut String, gen: &mut NodeIdGenera
                     };
                     format!("Literal\\nChar '{char_label}'")
                 }
-                Literal::Byte(b) => format!("Literal\\nByte {b}b"),
             };
             let _ = writeln!(output, "  {node_id} [label=\"{label}\"];");
         }

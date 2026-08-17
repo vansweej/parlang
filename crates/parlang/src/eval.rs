@@ -24,7 +24,6 @@ pub enum Value {
     Bool(bool),
     Char(char),
     Float(f64),
-    Byte(u8),
     Closure(String, Expr, Environment),
     /// Recursive closure: function name, parameter name, body, environment
     RecClosure(String, String, Expr, Environment),
@@ -61,7 +60,6 @@ impl fmt::Display for Value {
             Value::Int(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Float(fl) => write!(f, "{fl}"),
-            Value::Byte(b) => write!(f, "{b}b"),
             Value::Char(c) => {
                 write!(f, "'")?;
                 match c {
@@ -473,7 +471,6 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
                 (Literal::Int(n1), Value::Int(n2)) if n1 == n2 => Some(env.clone()),
                 (Literal::Bool(b1), Value::Bool(b2)) if b1 == b2 => Some(env.clone()),
                 (Literal::Char(c1), Value::Char(c2)) if c1 == c2 => Some(env.clone()),
-                (Literal::Byte(b1), Value::Byte(b2)) if b1 == b2 => Some(env.clone()),
                 _ => None,
             }
         }
@@ -887,8 +884,6 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
         Expr::Char(c) => Ok(Value::Char(*c)),
         Expr::Float(f) => Ok(Value::Float(*f)),
 
-        Expr::Byte(b) => Ok(Value::Byte(*b)),
-
         Expr::Var(name) => env
             .lookup(name)
             .cloned()
@@ -1049,29 +1044,6 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
             }
         }
 
-        // Arithmetic operations for Byte with overflow checking
-        (BinOp::Add, Value::Byte(a), Value::Byte(b)) => a
-            .checked_add(b)
-            .map(Value::Byte)
-            .ok_or_else(|| EvalError::TypeError("Byte overflow in addition".to_string())),
-        (BinOp::Sub, Value::Byte(a), Value::Byte(b)) => a
-            .checked_sub(b)
-            .map(Value::Byte)
-            .ok_or_else(|| EvalError::TypeError("Byte underflow in subtraction".to_string())),
-        (BinOp::Mul, Value::Byte(a), Value::Byte(b)) => a
-            .checked_mul(b)
-            .map(Value::Byte)
-            .ok_or_else(|| EvalError::TypeError("Byte overflow in multiplication".to_string())),
-        (BinOp::Div, Value::Byte(a), Value::Byte(b)) => {
-            if b == 0 {
-                Err(EvalError::DivisionByZero)
-            } else {
-                a.checked_div(b)
-                    .map(Value::Byte)
-                    .ok_or_else(|| EvalError::TypeError("Byte overflow in division".to_string()))
-            }
-        }
-
         // Comparison operations for Int
         (BinOp::Eq, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a == b)),
         (BinOp::Neq, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a != b)),
@@ -1105,14 +1077,6 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Le, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a <= b)),
         (BinOp::Gt, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a > b)),
         (BinOp::Ge, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a >= b)),
-
-        // Comparison operations for Byte
-        (BinOp::Eq, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a == b)),
-        (BinOp::Neq, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a != b)),
-        (BinOp::Lt, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a < b)),
-        (BinOp::Le, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a <= b)),
-        (BinOp::Gt, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a > b)),
-        (BinOp::Ge, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a >= b)),
 
         // Comparison operations for Range
         (BinOp::Eq, Value::Range(start1, end1), Value::Range(start2, end2)) => {

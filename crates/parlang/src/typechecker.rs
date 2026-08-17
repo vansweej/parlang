@@ -213,13 +213,7 @@ fn apply_subst_with_visited(
     visited: &mut HashSet<TypeVar>,
 ) -> Type {
     match ty {
-        Type::Int
-        | Type::Bool
-        | Type::Char
-        | Type::Float
-        | Type::Byte
-        | Type::Unit
-        | Type::Range => ty.clone(),
+        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Unit | Type::Range => ty.clone(),
         Type::Var(v) => {
             if visited.contains(v) {
                 // Cycle detected, return the variable as-is
@@ -296,7 +290,6 @@ fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
         | Type::Bool
         | Type::Char
         | Type::Float
-        | Type::Byte
         | Type::Unit
         | Type::Var(_)
         | Type::Range => ty.clone(),
@@ -387,7 +380,6 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
         | Type::Bool
         | Type::Char
         | Type::Float
-        | Type::Byte
         | Type::Unit
         | Type::Range
         | Type::Row(_) => HashSet::new(),
@@ -441,7 +433,6 @@ fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
         | Type::Bool
         | Type::Char
         | Type::Float
-        | Type::Byte
         | Type::Unit
         | Type::Var(_)
         | Type::Record(_)
@@ -690,7 +681,6 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
         | (Type::Bool, Type::Bool)
         | (Type::Char, Type::Char)
         | (Type::Float, Type::Float)
-        | (Type::Byte, Type::Byte)
         | (Type::Unit, Type::Unit)
         | (Type::Range, Type::Range) => Ok(HashMap::new()),
 
@@ -903,8 +893,8 @@ fn infer_arith_binop(
     s1: &Substitution,
     s2: &Substitution,
 ) -> Result<(Type, Substitution), TypeError> {
-    // Arithmetic operations work on Int, Float, and Byte
-    // Check if left type is Int, Float, or Byte
+    // Arithmetic operations work on Int and Float
+    // Check if left type is Int or Float
     match &left_ty {
         Type::Int => {
             let s3 = unify(right_ty, &Type::Int)?;
@@ -916,19 +906,14 @@ fn infer_arith_binop(
             let subst = compose_subst(&s3, &compose_subst(s2, s1));
             Ok((Type::Float, subst))
         }
-        Type::Byte => {
-            let s3 = unify(right_ty, &Type::Byte)?;
-            let subst = compose_subst(&s3, &compose_subst(s2, s1));
-            Ok((Type::Byte, subst))
-        }
         Type::Var(_) => {
             // Try to unify with right type first
             let s3 = unify(&left_ty, right_ty)?;
             let unified_ty = apply_subst(&s3, &left_ty);
 
-            // Now check if unified type is Int, Float, or Byte
+            // Now check if unified type is Int or Float
             match &unified_ty {
-                Type::Int | Type::Float | Type::Byte => {
+                Type::Int | Type::Float => {
                     let subst = compose_subst(&s3, &compose_subst(s2, s1));
                     Ok((unified_ty, subst))
                 }
@@ -959,8 +944,8 @@ fn infer_ordering_binop(
     s1: &Substitution,
     s2: &Substitution,
 ) -> Result<(Type, Substitution), TypeError> {
-    // Ordering comparisons work for Int, Char, Float, and Byte
-    // Check if left type is Int, Char, Float, or Byte
+    // Ordering comparisons work for Int, Char, and Float
+    // Check if left type is Int, Char, or Float
     match &left_ty {
         Type::Int => {
             let s3 = unify(right_ty, &Type::Int)?;
@@ -977,19 +962,14 @@ fn infer_ordering_binop(
             let subst = compose_subst(&s3, &compose_subst(s2, s1));
             Ok((Type::Bool, subst))
         }
-        Type::Byte => {
-            let s3 = unify(right_ty, &Type::Byte)?;
-            let subst = compose_subst(&s3, &compose_subst(s2, s1));
-            Ok((Type::Bool, subst))
-        }
         Type::Var(_) => {
             // Try to unify with right type first
             let s3 = unify(&left_ty, right_ty)?;
             let unified_ty = apply_subst(&s3, &left_ty);
 
-            // Now check if unified type is Int, Char, Float, or Byte
+            // Now check if unified type is Int, Char, or Float
             match &unified_ty {
-                Type::Int | Type::Char | Type::Float | Type::Byte => {
+                Type::Int | Type::Char | Type::Float => {
                     let subst = compose_subst(&s3, &compose_subst(s2, s1));
                     Ok((Type::Bool, subst))
                 }
@@ -1488,8 +1468,6 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
         Expr::Char(_) => Ok((Type::Char, HashMap::new())),
 
         Expr::Float(_) => Ok((Type::Float, HashMap::new())),
-
-        Expr::Byte(_) => Ok((Type::Byte, HashMap::new())),
 
         Expr::Var(name) => {
             let ty = env

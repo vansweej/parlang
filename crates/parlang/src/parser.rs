@@ -85,22 +85,6 @@ where
         .map(Expr::Float)
 }
 
-/// Parse a byte literal (unsigned 8-bit integer with 'b' suffix)
-fn byte<Input>() -> impl Parser<Input, Output = Expr>
-where
-    Input: Stream<Token = char>,
-    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
-{
-    // Parse digits followed by 'b' suffix
-    (many1(combine::parser::char::digit()), token('b'))
-        .and_then(|(s, _): (String, char)| {
-            s.parse::<u8>().map_err(|_| {
-                StreamErrorFor::<Input>::unexpected_static_message("byte out of range (0-255)")
-            })
-        })
-        .map(Expr::Byte)
-}
-
 /// Parse a boolean literal
 fn bool_literal<Input>() -> impl Parser<Input, Output = Expr>
 where
@@ -378,7 +362,6 @@ parser! {
             attempt(string_literal()),  // String before char to avoid quote conflicts
             attempt(char_literal()),
             attempt(float()),
-            attempt(byte()),
             attempt(int()),
             attempt(array()),
             attempt(record()),
@@ -734,18 +717,6 @@ parser! {
                 )
                 .map(|c| Pattern::Literal(Literal::Char(c)))
             ),
-            // Byte literal pattern: 0b, 255b (must come before integer)
-            attempt({
-                (
-                    many1(combine::parser::char::digit()),
-                    token('b')
-                )
-                .and_then(|(s, _): (String, char)| {
-                    s.parse::<u8>()
-                        .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("byte out of range (0-255)"))
-                })
-                .map(|b| Pattern::Literal(Literal::Byte(b)))
-            }),
             // Integer literal pattern: 0, 1, 42, -10
             attempt({
                 // Parse integer literal in pattern
@@ -801,18 +772,6 @@ parser! {
                 )
                 .map(|c| Pattern::Literal(Literal::Char(c)))
             ),
-            // Byte literals (must come before integers)
-            attempt({
-                (
-                    many1(combine::parser::char::digit()),
-                    token('b')
-                )
-                .and_then(|(s, _): (String, char)| {
-                    s.parse::<u8>()
-                        .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("byte out of range (0-255)"))
-                })
-                .map(|b| Pattern::Literal(Literal::Byte(b)))
-            }),
             // Integer literals
             attempt({
                 let number = many1(combine::parser::char::digit()).and_then(|s: String| {

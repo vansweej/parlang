@@ -12,8 +12,6 @@ pub enum Type {
     Char,
     /// Floating point type
     Float,
-    /// Byte type (unsigned 8-bit integer)
-    Byte,
     /// Unit type: ()
     /// Represents the type of the empty tuple, used for side effects
     Unit,
@@ -74,7 +72,6 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "Bool"),
             Type::Char => write!(f, "Char"),
             Type::Float => write!(f, "Float"),
-            Type::Byte => write!(f, "Byte"),
             Type::Unit => write!(f, "()"),
             Type::Fun(arg, ret) => {
                 // Add parentheses around function arguments if they are also functions
@@ -171,11 +168,9 @@ mod tests {
         assert_eq!(Type::Int, Type::Int);
         assert_eq!(Type::Bool, Type::Bool);
         assert_eq!(Type::Float, Type::Float);
-        assert_eq!(Type::Byte, Type::Byte);
         assert_ne!(Type::Int, Type::Bool);
         assert_ne!(Type::Int, Type::Float);
         assert_ne!(Type::Float, Type::Bool);
-        assert_ne!(Type::Byte, Type::Int);
     }
 
     #[test]
@@ -225,11 +220,6 @@ mod tests {
     #[test]
     fn test_display_float() {
         assert_eq!(format!("{}", Type::Float), "Float");
-    }
-
-    #[test]
-    fn test_display_byte() {
-        assert_eq!(format!("{}", Type::Byte), "Byte");
     }
 
     #[test]
