@@ -561,6 +561,280 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
     }
 }
 
+/// Evaluate a function application `func arg` (extracted from `eval` to keep
+/// its line count down).
+fn eval_app(func: &Expr, arg: &Expr, env: &Environment) -> Result<Value, EvalError> {
+    let func_val = eval(func, env)?;
+    let arg_val = eval(arg, env)?;
+
+    match func_val {
+        Value::Closure(param, body, closure_env) => {
+            let new_env = closure_env.extend(param, arg_val);
+            eval(&body, &new_env)
+        }
+        Value::RecClosure(rec_name, param, body, closure_env) => {
+            // Create an environment with the recursive function bound to itself
+            let rec_val = Value::RecClosure(
+                rec_name.clone(),
+                param.clone(),
+                body.clone(),
+                closure_env.clone(),
+            );
+            let env_with_rec = closure_env.extend(rec_name.clone(), rec_val);
+            let new_env = env_with_rec.extend(param.clone(), arg_val);
+
+            // Evaluate the body - TCO happens naturally via iteration below
+            // when the body is a tail call
+            eval_with_tco(&body, &new_env, &rec_name, &param, &closure_env)
+        }
+        _ => Err(EvalError::TypeError(
+            "Application requires a function".to_string(),
+        )),
+    }
+}
+
+/// Evaluate `load "path" in body` (extracted from `eval` to keep its line
+/// count down).
+fn eval_load(filepath: &str, body: &Expr, env: &Environment) -> Result<Value, EvalError> {
+    // Read the file contents
+    let content = fs::read_to_string(Path::new(filepath))
+        .map_err(|e| EvalError::LoadError(format!("Failed to read file '{filepath}': {e}")))?;
+
+    // Parse the file contents
+    let lib_expr = crate::parser::parse(&content)
+        .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}")))?;
+
+    // Extract bindings from the library file
+    // Pass current environment so type constructors are available
+    let lib_env = extract_bindings(&lib_expr, env)?;
+
+    // Merge library bindings into current environment
+    let extended_env = env.merge(&lib_env);
+
+    // Evaluate the body in the extended environment
+    eval(body, &extended_env)
+}
+
+/// Evaluate a `match scrutinee with arms` expression (extracted from `eval`
+/// to keep its line count down).
+fn eval_match(scrutinee: &Expr, arms: &[(Pattern, Expr)], env: &Environment) -> Result<Value, EvalError> {
+    // Check exhaustiveness of patterns
+    let patterns: Vec<Pattern> = arms.iter().map(|(p, _)| p.clone()).collect();
+    let exhaustiveness = check_exhaustiveness(&patterns, env);
+
+    if !exhaustiveness.is_exhaustive() {
+        // Print warning to stderr for non-exhaustive patterns
+        if let ExhaustivenessResult::NonExhaustive(missing) = exhaustiveness {
+            eprintln!("Warning: pattern match is non-exhaustive");
+            eprintln!("  Missing cases: {}", missing.join(", "));
+        }
+    }
+
+    // Evaluate the scrutinee expression
+    let val = eval(scrutinee, env)?;
+
+    // Try to match against each pattern arm in order
+    for (pattern, result_expr) in arms {
+        if let Some(new_env) = match_pattern(pattern, &val, env) {
+            // Pattern matched, evaluate the result expression with the extended environment
+            return eval(result_expr, &new_env);
+        }
+    }
+
+    // No pattern matched - use the dedicated error variant
+    Err(EvalError::PatternMatchNonExhaustive)
+}
+
+/// Evaluate `tuple_expr.index` (extracted from `eval` to keep its line count
+/// down).
+fn eval_tuple_proj(tuple_expr: &Expr, index: usize, env: &Environment) -> Result<Value, EvalError> {
+    // Evaluate the tuple expression
+    let tuple_val = eval(tuple_expr, env)?;
+
+    // Check that the value is a tuple
+    match tuple_val {
+        Value::Tuple(values) => {
+            // Check bounds
+            if index >= values.len() {
+                Err(EvalError::IndexOutOfBounds(format!(
+                    "Tuple index {} out of bounds for tuple of size {}",
+                    index,
+                    values.len()
+                )))
+            } else {
+                Ok(values[index].clone())
+            }
+        }
+        _ => Err(EvalError::TypeError(
+            "Tuple projection requires a tuple".to_string(),
+        )),
+    }
+}
+
+/// Evaluate a `type Name = ... in body` declaration, registering its
+/// constructors (extracted from `eval` to keep its line count down).
+fn eval_type_def(
+    name: &str,
+    constructors: &[(String, Vec<crate::ast::TypeAnnotation>)],
+    body: &Expr,
+    env: &Environment,
+) -> Result<Value, EvalError> {
+    // Register all constructors in the environment
+    let mut new_env = env.clone();
+
+    for (ctor_name, ctor_types) in constructors {
+        let ctor_info = ConstructorInfo {
+            type_name: name.to_string(),
+            arity: ctor_types.len(),
+        };
+        new_env.register_constructor(ctor_name.clone(), ctor_info);
+    }
+
+    // Evaluate body in extended environment
+    eval(body, &new_env)
+}
+
+/// Evaluate a sum-type constructor application (extracted from `eval` to
+/// keep its line count down).
+fn eval_constructor(ctor_name: &str, args: &[Expr], env: &Environment) -> Result<Value, EvalError> {
+    // Look up constructor info
+    let ctor_info = env
+        .lookup_constructor(ctor_name)
+        .ok_or_else(|| EvalError::UnknownConstructor(ctor_name.to_string()))?;
+
+    // Check arity
+    if args.len() != ctor_info.arity {
+        return Err(EvalError::ConstructorArityMismatch(
+            ctor_name.to_string(),
+            ctor_info.arity,
+            args.len(),
+        ));
+    }
+
+    // Evaluate all arguments
+    let mut values = Vec::new();
+    for arg in args {
+        values.push(eval(arg, env)?);
+    }
+
+    Ok(Value::Variant(ctor_name.to_string(), values))
+}
+
+/// Evaluate `arr_expr[index_expr]` (extracted from `eval` to keep its line
+/// count down).
+fn eval_array_index(arr_expr: &Expr, index_expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
+    // Evaluate the array and index expressions
+    let arr_val = eval(arr_expr, env)?;
+    let index_val = eval(index_expr, env)?;
+
+    // Check that the index is an integer
+    let Value::Int(index) = index_val else {
+        return Err(EvalError::TypeError(
+            "Array index must be an integer".to_string(),
+        ));
+    };
+
+    // Check that index is non-negative
+    if index < 0 {
+        return Err(EvalError::IndexOutOfBounds(format!(
+            "Array index {index} is negative"
+        )));
+    }
+
+    // Check that the value is an array
+    match arr_val {
+        Value::Array(size, values) => {
+            let Ok(idx) = usize::try_from(index) else {
+                return Err(EvalError::IndexOutOfBounds(format!(
+                    "Array index {index} out of bounds for array of size {size}"
+                )));
+            };
+            // Check bounds
+            if idx >= size {
+                Err(EvalError::IndexOutOfBounds(format!(
+                    "Array index {idx} out of bounds for array of size {size}"
+                )))
+            } else {
+                Ok(values[idx].clone())
+            }
+        }
+        _ => Err(EvalError::TypeError(
+            "Array indexing requires an array".to_string(),
+        )),
+    }
+}
+
+/// Evaluate `rec name -> body`, producing a recursive closure (extracted
+/// from `eval` to keep its line count down).
+fn eval_rec(name: &str, body: &Expr, env: &Environment) -> Result<Value, EvalError> {
+    // Parse the body which should be a function (fun param -> expr)
+    // The recursive function can reference itself by name within its body
+    match body {
+        Expr::Fun(param, _ty_ann, fun_body) => {
+            // Create a recursive closure that captures the function name
+            Ok(Value::RecClosure(
+                name.to_string(),
+                param.clone(),
+                (**fun_body).clone(),
+                env.clone(),
+            ))
+        }
+        _ => Err(EvalError::TypeError(
+            "rec expression body must be a function".to_string(),
+        )),
+    }
+}
+
+/// Evaluate a record literal `{ field: expr, ... }` (extracted from `eval`
+/// to keep its line count down).
+fn eval_record(fields: &[(String, Expr)], env: &Environment) -> Result<Value, EvalError> {
+    // Evaluate all field expressions and build the record
+    let mut record = HashMap::new();
+
+    for (name, expr) in fields {
+        let value = eval(expr, env)?;
+        record.insert(name.clone(), value);
+    }
+
+    Ok(Value::Record(record))
+}
+
+/// Evaluate `record_expr.field_name` (extracted from `eval` to keep its
+/// line count down).
+fn eval_field_access(record_expr: &Expr, field_name: &str, env: &Environment) -> Result<Value, EvalError> {
+    // Evaluate the record expression
+    let record_value = eval(record_expr, env)?;
+
+    // Check that the value is a record and access the field
+    match record_value {
+        Value::Record(fields) => fields.get(field_name).cloned().ok_or_else(|| {
+            let mut available: Vec<String> = fields.keys().cloned().collect();
+            available.sort();
+            EvalError::FieldNotFound(field_name.to_string(), available)
+        }),
+        other => Err(EvalError::RecordExpected(format!("{other:?}"))),
+    }
+}
+
+/// Evaluate `ref_expr := value_expr` (extracted from `eval` to keep its
+/// line count down).
+fn eval_ref_assign(ref_expr: &Expr, value_expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
+    // Assign a new value to a reference
+    let ref_val = eval(ref_expr, env)?;
+    let new_val = eval(value_expr, env)?;
+
+    match ref_val {
+        Value::Reference(_id, cell) => {
+            *cell.borrow_mut() = new_val;
+            // Return unit value after assignment
+            Ok(Value::Tuple(vec![]))
+        }
+        _ => Err(EvalError::TypeError(
+            "Reference assignment requires a reference".to_string(),
+        )),
+    }
+}
+
 /// Evaluate an expression in an environment
 ///
 /// # Errors
@@ -613,57 +887,9 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             Ok(Value::Closure(param.clone(), (**body).clone(), env.clone()))
         }
 
-        Expr::App(func, arg) => {
-            let func_val = eval(func, env)?;
-            let arg_val = eval(arg, env)?;
+        Expr::App(func, arg) => eval_app(func, arg, env),
 
-            match func_val {
-                Value::Closure(param, body, closure_env) => {
-                    let new_env = closure_env.extend(param, arg_val);
-                    eval(&body, &new_env)
-                }
-                Value::RecClosure(rec_name, param, body, closure_env) => {
-                    // Create an environment with the recursive function bound to itself
-                    let rec_val = Value::RecClosure(
-                        rec_name.clone(),
-                        param.clone(),
-                        body.clone(),
-                        closure_env.clone(),
-                    );
-                    let env_with_rec = closure_env.extend(rec_name.clone(), rec_val);
-                    let new_env = env_with_rec.extend(param.clone(), arg_val);
-
-                    // Evaluate the body - TCO happens naturally via iteration below
-                    // when the body is a tail call
-                    eval_with_tco(&body, &new_env, &rec_name, &param, &closure_env)
-                }
-                _ => Err(EvalError::TypeError(
-                    "Application requires a function".to_string(),
-                )),
-            }
-        }
-
-        Expr::Load(filepath, body) => {
-            // Read the file contents
-            let content = fs::read_to_string(Path::new(filepath)).map_err(|e| {
-                EvalError::LoadError(format!("Failed to read file '{filepath}': {e}"))
-            })?;
-
-            // Parse the file contents
-            let lib_expr = crate::parser::parse(&content).map_err(|e| {
-                EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}"))
-            })?;
-
-            // Extract bindings from the library file
-            // Pass current environment so type constructors are available
-            let lib_env = extract_bindings(&lib_expr, env)?;
-
-            // Merge library bindings into current environment
-            let extended_env = env.merge(&lib_env);
-
-            // Evaluate the body in the extended environment
-            eval(body, &extended_env)
-        }
+        Expr::Load(filepath, body) => eval_load(filepath, body, env),
 
         Expr::Seq(bindings, body) => {
             // Process each binding in sequence, extending the environment
@@ -676,52 +902,9 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             eval(body, &current_env)
         }
 
-        Expr::Rec(name, body) => {
-            // Parse the body which should be a function (fun param -> expr)
-            // The recursive function can reference itself by name within its body
-            match body.as_ref() {
-                Expr::Fun(param, _ty_ann, fun_body) => {
-                    // Create a recursive closure that captures the function name
-                    Ok(Value::RecClosure(
-                        name.clone(),
-                        param.clone(),
-                        (**fun_body).clone(),
-                        env.clone(),
-                    ))
-                }
-                _ => Err(EvalError::TypeError(
-                    "rec expression body must be a function".to_string(),
-                )),
-            }
-        }
+        Expr::Rec(name, body) => eval_rec(name, body, env),
 
-        Expr::Match(scrutinee, arms) => {
-            // Check exhaustiveness of patterns
-            let patterns: Vec<Pattern> = arms.iter().map(|(p, _)| p.clone()).collect();
-            let exhaustiveness = check_exhaustiveness(&patterns, env);
-
-            if !exhaustiveness.is_exhaustive() {
-                // Print warning to stderr for non-exhaustive patterns
-                if let ExhaustivenessResult::NonExhaustive(missing) = exhaustiveness {
-                    eprintln!("Warning: pattern match is non-exhaustive");
-                    eprintln!("  Missing cases: {}", missing.join(", "));
-                }
-            }
-
-            // Evaluate the scrutinee expression
-            let val = eval(scrutinee, env)?;
-
-            // Try to match against each pattern arm in order
-            for (pattern, result_expr) in arms {
-                if let Some(new_env) = match_pattern(pattern, &val, env) {
-                    // Pattern matched, evaluate the result expression with the extended environment
-                    return eval(result_expr, &new_env);
-                }
-            }
-
-            // No pattern matched - use the dedicated error variant
-            Err(EvalError::PatternMatchNonExhaustive)
-        }
+        Expr::Match(scrutinee, arms) => eval_match(scrutinee, arms, env),
 
         Expr::Tuple(elements) => {
             // Evaluate all elements of the tuple
@@ -732,29 +915,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             Ok(Value::Tuple(values))
         }
 
-        Expr::TupleProj(tuple_expr, index) => {
-            // Evaluate the tuple expression
-            let tuple_val = eval(tuple_expr, env)?;
-
-            // Check that the value is a tuple
-            match tuple_val {
-                Value::Tuple(values) => {
-                    // Check bounds
-                    if *index >= values.len() {
-                        Err(EvalError::IndexOutOfBounds(format!(
-                            "Tuple index {} out of bounds for tuple of size {}",
-                            index,
-                            values.len()
-                        )))
-                    } else {
-                        Ok(values[*index].clone())
-                    }
-                }
-                _ => Err(EvalError::TypeError(
-                    "Tuple projection requires a tuple".to_string(),
-                )),
-            }
-        }
+        Expr::TupleProj(tuple_expr, index) => eval_tuple_proj(tuple_expr, *index, env),
 
         Expr::TypeAlias(_name, _ty_expr, body) => {
             // Type aliases are transparent at runtime - they're only used during type checking
@@ -762,77 +923,13 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             eval(body, env)
         }
 
-        Expr::Record(fields) => {
-            // Evaluate all field expressions and build the record
-            let mut record = HashMap::new();
+        Expr::Record(fields) => eval_record(fields, env),
 
-            for (name, expr) in fields {
-                let value = eval(expr, env)?;
-                record.insert(name.clone(), value);
-            }
+        Expr::FieldAccess(record_expr, field_name) => eval_field_access(record_expr, field_name, env),
 
-            Ok(Value::Record(record))
-        }
+        Expr::TypeDef { name, type_params: _, constructors, body } => eval_type_def(name, constructors, body, env),
 
-        Expr::FieldAccess(record_expr, field_name) => {
-            // Evaluate the record expression
-            let record_value = eval(record_expr, env)?;
-
-            // Check that the value is a record and access the field
-            match record_value {
-                Value::Record(fields) => fields.get(field_name).cloned().ok_or_else(|| {
-                    let mut available: Vec<String> = fields.keys().cloned().collect();
-                    available.sort();
-                    EvalError::FieldNotFound(field_name.clone(), available)
-                }),
-                other => Err(EvalError::RecordExpected(format!("{other:?}"))),
-            }
-        }
-
-        Expr::TypeDef {
-            name,
-            type_params: _,
-            constructors,
-            body,
-        } => {
-            // Register all constructors in the environment
-            let mut new_env = env.clone();
-
-            for (ctor_name, ctor_types) in constructors {
-                let ctor_info = ConstructorInfo {
-                    type_name: name.clone(),
-                    arity: ctor_types.len(),
-                };
-                new_env.register_constructor(ctor_name.clone(), ctor_info);
-            }
-
-            // Evaluate body in extended environment
-            eval(body, &new_env)
-        }
-
-        Expr::Constructor(ctor_name, args) => {
-            // Look up constructor info
-            let ctor_info = env
-                .lookup_constructor(ctor_name)
-                .ok_or_else(|| EvalError::UnknownConstructor(ctor_name.clone()))?;
-
-            // Check arity
-            if args.len() != ctor_info.arity {
-                return Err(EvalError::ConstructorArityMismatch(
-                    ctor_name.clone(),
-                    ctor_info.arity,
-                    args.len(),
-                ));
-            }
-
-            // Evaluate all arguments
-            let mut values = Vec::new();
-            for arg in args {
-                values.push(eval(arg, env)?);
-            }
-
-            Ok(Value::Variant(ctor_name.clone(), values))
-        }
+        Expr::Constructor(ctor_name, args) => eval_constructor(ctor_name, args, env),
 
         Expr::Array(elements) => {
             // Evaluate all elements of the array
@@ -844,47 +941,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             Ok(Value::Array(size, values))
         }
 
-        Expr::ArrayIndex(arr_expr, index_expr) => {
-            // Evaluate the array and index expressions
-            let arr_val = eval(arr_expr, env)?;
-            let index_val = eval(index_expr, env)?;
-
-            // Check that the index is an integer
-            let Value::Int(index) = index_val else {
-                return Err(EvalError::TypeError(
-                    "Array index must be an integer".to_string(),
-                ));
-            };
-
-            // Check that index is non-negative
-            if index < 0 {
-                return Err(EvalError::IndexOutOfBounds(format!(
-                    "Array index {index} is negative"
-                )));
-            }
-
-            // Check that the value is an array
-            match arr_val {
-                Value::Array(size, values) => {
-                    let Ok(idx) = usize::try_from(index) else {
-                        return Err(EvalError::IndexOutOfBounds(format!(
-                            "Array index {index} out of bounds for array of size {size}"
-                        )));
-                    };
-                    // Check bounds
-                    if idx >= size {
-                        Err(EvalError::IndexOutOfBounds(format!(
-                            "Array index {idx} out of bounds for array of size {size}"
-                        )))
-                    } else {
-                        Ok(values[idx].clone())
-                    }
-                }
-                _ => Err(EvalError::TypeError(
-                    "Array indexing requires an array".to_string(),
-                )),
-            }
-        }
+        Expr::ArrayIndex(arr_expr, index_expr) => eval_array_index(arr_expr, index_expr, env),
 
         Expr::Ref(expr) => {
             // Create a reference to a value
@@ -904,22 +961,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             }
         }
 
-        Expr::RefAssign(ref_expr, value_expr) => {
-            // Assign a new value to a reference
-            let ref_val = eval(ref_expr, env)?;
-            let new_val = eval(value_expr, env)?;
-
-            match ref_val {
-                Value::Reference(_id, cell) => {
-                    *cell.borrow_mut() = new_val;
-                    // Return unit value after assignment
-                    Ok(Value::Tuple(vec![]))
-                }
-                _ => Err(EvalError::TypeError(
-                    "Reference assignment requires a reference".to_string(),
-                )),
-            }
-        }
+        Expr::RefAssign(ref_expr, value_expr) => eval_ref_assign(ref_expr, value_expr, env),
 
         Expr::Range(start_expr, end_expr) => {
             // Evaluate start and end expressions
