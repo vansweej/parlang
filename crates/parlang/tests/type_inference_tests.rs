@@ -234,7 +234,7 @@ fn test_type_env_default() {
     let env1 = TypeEnv::new();
     let env2 = TypeEnv::default();
     // Both should have the same initial counter value
-    assert_eq!(format!("{:?}", env1), format!("{:?}", env2));
+    assert_eq!(format!("{env1:?}"), format!("{:?}", env2));
 }
 
 #[test]
@@ -275,8 +275,7 @@ fn test_recursion_supported() {
     let result = typecheck(&expr);
     assert!(
         result.is_ok(),
-        "Recursive functions should be supported: {:?}",
-        result
+        "Recursive functions should be supported: {result:?}"
     );
     // The type should be a function type
     if let Ok(ty) = result {

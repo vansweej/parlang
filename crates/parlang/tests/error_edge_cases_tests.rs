@@ -48,12 +48,12 @@ fn test_pattern_match_no_arms_empty() {
 #[test]
 fn test_pattern_match_non_exhaustive_constructor() {
     // Pattern matching on sum type without covering all constructors
-    let code = r#"
+    let code = r"
         type Option a = Some a | None in
         let x = Some 42 in
         match x with
         | Some n -> n
-    "#;
+    ";
     let result = parse_and_eval(code);
     // This should fail at runtime if x is None (non-exhaustive)
     // But with Some 42, it succeeds
@@ -63,12 +63,12 @@ fn test_pattern_match_non_exhaustive_constructor() {
 #[test]
 fn test_pattern_match_non_exhaustive_runtime_failure() {
     // Pattern matching fails at runtime when no pattern matches
-    let code = r#"
+    let code = r"
         type Option a = Some a | None in
         let x = None in
         match x with
         | Some n -> n
-    "#;
+    ";
     let result = parse_and_eval(code);
     assert!(result.is_err());
     assert!({
@@ -80,11 +80,11 @@ fn test_pattern_match_non_exhaustive_runtime_failure() {
 #[test]
 fn test_pattern_match_undefined_constructor() {
     // Using undefined constructor in pattern
-    let code = r#"
+    let code = r"
         match 42 with
         | UndefinedConstructor -> 1
         | n -> n
-    "#;
+    ";
     let result = parse_and_eval(code);
     // Since UndefinedConstructor is not defined, it's treated as a variable pattern
     // So this should actually succeed with the variable binding
@@ -94,13 +94,13 @@ fn test_pattern_match_undefined_constructor() {
 #[test]
 fn test_pattern_match_constructor_arity_mismatch_too_many_args() {
     // Using constructor with wrong number of arguments in pattern
-    let code = r#"
+    let code = r"
         type Option a = Some a | None in
         let x = Some 42 in
         match x with
         | Some x y -> x + y
         | None -> 0
-    "#;
+    ";
     let result = parse_and_eval(code);
     // This should fail - Some expects 1 arg, pattern has 2
     assert!(result.is_err());
@@ -109,14 +109,14 @@ fn test_pattern_match_constructor_arity_mismatch_too_many_args() {
 #[test]
 fn test_pattern_match_nested_constructor_mismatch() {
     // Nested pattern with wrong constructor
-    let code = r#"
+    let code = r"
         type Option a = Some a | None in
         let x = Some (Some 42) in
         match x with
         | Some None -> 0
         | Some (Some n) -> n
         | None -> 0
-    "#;
+    ";
     let result = parse_and_eval(code);
     assert_eq!(result, Ok(Value::Int(42)));
 }
@@ -133,7 +133,7 @@ fn test_eval_unbound_variable() {
     assert!(result.is_err());
     assert!({
         let err = result.unwrap_err();
-        err.contains("Unbound variable") || err.contains("x")
+        err.contains("Unbound variable") || err.contains('x')
     });
 }
 
@@ -164,12 +164,12 @@ fn test_eval_closure_captures_environment() {
 #[test]
 fn test_eval_closure_captures_at_definition_time() {
     // Closure captures environment at definition, not call time
-    let code = r#"
+    let code = r"
         let x = 10 in
         let f = fun y -> x + y in
         let x = 20 in
         f 5
-    "#;
+    ";
     let result = parse_and_eval(code);
     assert_eq!(result, Ok(Value::Int(15))); // Should use first x = 10
 }
@@ -270,11 +270,11 @@ fn test_record_access_on_non_record() {
 #[test]
 fn test_record_pattern_extra_fields_allowed() {
     // Pattern with subset of fields should match record with extra fields
-    let code = r#"
+    let code = r"
         let person = { name: 42, age: 30, city: 100 } in
         match person with
         | { name: n } -> n
-    "#;
+    ";
     let result = parse_and_eval(code);
     assert_eq!(result, Ok(Value::Int(42)));
 }
@@ -282,11 +282,11 @@ fn test_record_pattern_extra_fields_allowed() {
 #[test]
 fn test_record_pattern_nonexistent_field() {
     // Pattern requires field that doesn't exist
-    let code = r#"
+    let code = r"
         let person = { name: 42, age: 30 } in
         match person with
         | { name: n, city: c } -> c
-    "#;
+    ";
     let result = parse_and_eval(code);
     assert!(result.is_err());
     // Should fail because city field doesn't exist
@@ -303,11 +303,11 @@ fn test_record_empty_construction() {
 #[test]
 fn test_record_field_ordering_irrelevant() {
     // Records with same fields in different order should be equal
-    let code = r#"
+    let code = r"
         let r1 = { x: 1, y: 2 } in
         let r2 = { y: 2, x: 1 } in
         r1.x == r2.x
-    "#;
+    ";
     let result = parse_and_eval(code);
     assert_eq!(result, Ok(Value::Bool(true)));
 }
@@ -331,10 +331,10 @@ fn test_constructor_undefined_at_runtime() {
 #[test]
 fn test_constructor_arity_mismatch_too_many() {
     // Constructor called with too many arguments
-    let code = r#"
+    let code = r"
         type Option a = Some a | None in
         Some 1 2
-    "#;
+    ";
     let result = parse_and_eval(code);
     // This might parse as (Some 1) 2, which would fail as non-function application
     assert!(result.is_err());
@@ -343,10 +343,10 @@ fn test_constructor_arity_mismatch_too_many() {
 #[test]
 fn test_constructor_arity_mismatch_none_with_arg() {
     // None constructor doesn't take arguments
-    let code = r#"
+    let code = r"
         type Option a = Some a | None in
         None 42
-    "#;
+    ";
     let result = parse_and_eval(code);
     // None returns a value, then trying to apply 42 to it fails
     assert!(result.is_err());
@@ -385,10 +385,10 @@ fn test_parse_deeply_nested_parens() {
 #[test]
 fn test_parse_deeply_nested_function_application() {
     // Deeply nested function applications
-    let code = r#"
+    let code = r"
         let id = fun x -> x in
         id (id (id (id (id 42))))
-    "#;
+    ";
     let result = parse_and_eval(code);
     assert_eq!(result, Ok(Value::Int(42)));
 }
@@ -396,14 +396,14 @@ fn test_parse_deeply_nested_function_application() {
 #[test]
 fn test_parse_deeply_nested_let_bindings() {
     // Deep nesting of let bindings
-    let code = r#"
+    let code = r"
         let a = 1 in
         let b = a + 1 in
         let c = b + 1 in
         let d = c + 1 in
         let e = d + 1 in
         e
-    "#;
+    ";
     let result = parse_and_eval(code);
     assert_eq!(result, Ok(Value::Int(5)));
 }

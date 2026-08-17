@@ -11,7 +11,7 @@ fn test_precedence_multiplication_over_addition() {
     let expr = parse(code).unwrap();
     let result_expr = parse("2 + (3 * 4)").unwrap();
     // Should parse as 2 + (3 * 4) = 14, not (2 + 3) * 4 = 20
-    assert_eq!(format!("{:?}", expr), format!("{:?}", result_expr));
+    assert_eq!(format!("{expr:?}"), format!("{:?}", result_expr));
 }
 
 #[test]
@@ -21,7 +21,7 @@ fn test_precedence_division_over_subtraction() {
     let expr = parse(code).unwrap();
     let result_expr = parse("10 - (6 / 2)").unwrap();
     // Should parse as 10 - (6 / 2) = 7, not (10 - 6) / 2 = 2
-    assert_eq!(format!("{:?}", expr), format!("{:?}", result_expr));
+    assert_eq!(format!("{expr:?}"), format!("{:?}", result_expr));
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn test_precedence_comparison_lower_than_arithmetic() {
     let code = "1 + 2 > 2";
     let expr = parse(code).unwrap();
     let result_expr = parse("(1 + 2) > 2").unwrap();
-    assert_eq!(format!("{:?}", expr), format!("{:?}", result_expr));
+    assert_eq!(format!("{expr:?}"), format!("{:?}", result_expr));
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn test_precedence_equality_same_as_comparison() {
     let code = "1 + 1 == 2";
     let expr = parse(code).unwrap();
     let result_expr = parse("(1 + 1) == 2").unwrap();
-    assert_eq!(format!("{:?}", expr), format!("{:?}", result_expr));
+    assert_eq!(format!("{expr:?}"), format!("{:?}", result_expr));
 }
 
 #[test]
@@ -49,7 +49,7 @@ fn test_precedence_complex_expression() {
     let expr = parse(code).unwrap();
     // Should parse as: 2 + (3 * 4) - (10 / 2) = 2 + 12 - 5 = 9
     let result_expr = parse("(2 + (3 * 4)) - (10 / 2)").unwrap();
-    assert_eq!(format!("{:?}", expr), format!("{:?}", result_expr));
+    assert_eq!(format!("{expr:?}"), format!("{:?}", result_expr));
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn test_left_associativity_addition() {
     let code = "1 + 2 + 3";
     let expr = parse(code).unwrap();
     let result_expr = parse("(1 + 2) + 3").unwrap();
-    assert_eq!(format!("{:?}", expr), format!("{:?}", result_expr));
+    assert_eq!(format!("{expr:?}"), format!("{:?}", result_expr));
 }
 
 #[test]
@@ -75,7 +75,7 @@ fn test_left_associativity_subtraction() {
     let code = "10 - 3 - 2";
     let expr = parse(code).unwrap();
     let result_expr = parse("(10 - 3) - 2").unwrap();
-    assert_eq!(format!("{:?}", expr), format!("{:?}", result_expr));
+    assert_eq!(format!("{expr:?}"), format!("{:?}", result_expr));
 }
 
 #[test]
