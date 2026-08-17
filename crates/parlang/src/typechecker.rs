@@ -523,7 +523,7 @@ fn type_annotation_to_type(
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeError {
     UnboundVariable(String),
-    UnificationError(Type, Type),
+    UnificationError(Box<Type>, Box<Type>),
     OccursCheckFailed(TypeVar, Type),
     RecursionRequiresAnnotation,
     /// Field not found in record type: field name, available fields
@@ -746,11 +746,11 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
         (Type::SumType(name1, args1), Type::SumType(name2, args2)) => {
             // Sum types must have the same name and same number of type arguments
             if name1 != name2 {
-                return Err(TypeError::UnificationError(t1.clone(), t2.clone()));
+                return Err(TypeError::UnificationError(Box::new(t1.clone()), Box::new(t2.clone())));
             }
 
             if args1.len() != args2.len() {
-                return Err(TypeError::UnificationError(t1.clone(), t2.clone()));
+                return Err(TypeError::UnificationError(Box::new(t1.clone()), Box::new(t2.clone())));
             }
 
             // Unify all type arguments
@@ -765,7 +765,7 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
             Ok(subst)
         }
 
-        _ => Err(TypeError::UnificationError(t1.clone(), t2.clone())),
+        _ => Err(TypeError::UnificationError(Box::new(t1.clone()), Box::new(t2.clone()))),
     }
 }
 
@@ -935,12 +935,12 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                                     Ok((Type::Int, subst))
                                 }
                                 _ => {
-                                    Err(TypeError::UnificationError(unified_ty, Type::Int))
+                                    Err(TypeError::UnificationError(Box::new(unified_ty), Box::new(Type::Int)))
                                 }
                             }
                         }
                         _ => {
-                            Err(TypeError::UnificationError(left_ty, Type::Int))
+                            Err(TypeError::UnificationError(Box::new(left_ty), Box::new(Type::Int)))
                         }
                     }
                 }
@@ -989,12 +989,12 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                                     Ok((Type::Bool, subst))
                                 }
                                 _ => {
-                                    Err(TypeError::UnificationError(unified_ty, Type::Int))
+                                    Err(TypeError::UnificationError(Box::new(unified_ty), Box::new(Type::Int)))
                                 }
                             }
                         }
                         _ => {
-                            Err(TypeError::UnificationError(left_ty, Type::Int))
+                            Err(TypeError::UnificationError(Box::new(left_ty), Box::new(Type::Int)))
                         }
                     }
                 }
@@ -1389,7 +1389,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                     subst = compose_subst(&s4, &subst);
                     Ok((apply_subst(&subst, &elem_ty), subst))
                 }
-                _ => Err(TypeError::UnificationError(arr_ty_subst, expected_arr_ty)),
+                _ => Err(TypeError::UnificationError(Box::new(arr_ty_subst), Box::new(expected_arr_ty))),
             }
         }
 
@@ -1413,7 +1413,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 Type::Ref(actual_inner) => unify(&inner_ty, actual_inner)?,
                 Type::Var(_) => unify(&ref_ty_subst, &expected_ref_ty)?,
                 _ => {
-                    return Err(TypeError::UnificationError(ref_ty_subst, expected_ref_ty));
+                    return Err(TypeError::UnificationError(Box::new(ref_ty_subst), Box::new(expected_ref_ty)));
                 }
             };
 
@@ -1442,8 +1442,8 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 }
                 _ => {
                     return Err(TypeError::UnificationError(
-                        ref_ty_subst,
-                        Type::Ref(Box::new(env.fresh_var())),
+                        Box::new(ref_ty_subst),
+                        Box::new(Type::Ref(Box::new(env.fresh_var()))),
                     ));
                 }
             };

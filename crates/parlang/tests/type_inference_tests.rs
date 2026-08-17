@@ -248,7 +248,7 @@ fn test_type_error_display_unbound_variable() {
 #[test]
 fn test_type_error_display_unification_error() {
     use parlang::TypeError;
-    let error = TypeError::UnificationError(Type::Int, Type::Bool);
+    let error = TypeError::UnificationError(Box::new(Type::Int), Box::new(Type::Bool));
     assert_eq!(format!("{error}"), "Cannot unify types: Int and Bool");
 }
 
