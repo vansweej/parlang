@@ -14,7 +14,7 @@ use combine::{
 fn starts_with_uppercase(s: &str) -> bool {
     s.as_bytes()
         .first()
-        .map_or(false, |c| c.is_ascii_uppercase())
+        .is_some_and(u8::is_ascii_uppercase)
 }
 
 /// Parse an integer literal
@@ -548,7 +548,7 @@ parser! {
             many(attempt((
                 combine::parser::char::lower(),
                 many::<String, _, _>(alpha_num().or(token('_')))
-            ).map(|(first, rest)| format!("{}{}", first, rest))
+            ).map(|(first, rest)| format!("{first}{rest}"))
              .skip(combine::not_followed_by(alpha_num().or(token('_'))))
              .skip(spaces()))),
             token('=').skip(spaces()),
@@ -558,7 +558,7 @@ parser! {
                 (
                     combine::parser::char::upper(),
                     many::<String, _, _>(alpha_num().or(token('_')))
-                ).map(|(first, rest)| format!("{}{}", first, rest))
+                ).map(|(first, rest)| format!("{first}{rest}"))
                  .skip(combine::not_followed_by(alpha_num().or(token('_'))))
                  .skip(spaces()),
                 // Constructor argument types
@@ -570,7 +570,7 @@ parser! {
                 (
                     combine::parser::char::upper(),
                     many::<String, _, _>(alpha_num().or(token('_')))
-                ).map(|(first, rest)| format!("{}{}", first, rest))
+                ).map(|(first, rest)| format!("{first}{rest}"))
                  .skip(combine::not_followed_by(alpha_num().or(token('_'))))
                  .skip(spaces()),
                 many(attempt(type_annotation_atom().skip(spaces())))
