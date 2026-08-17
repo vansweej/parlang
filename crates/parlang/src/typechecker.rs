@@ -270,7 +270,7 @@ fn apply_subst_with_visited(
     }
 }
 
-/// Row substitution (maps RowVar to Type)
+/// Row substitution (maps `RowVar` to Type)
 ///
 /// Row substitutions map row variables to concrete types, allowing us to
 /// resolve row polymorphic types to concrete record types during unification.
@@ -475,7 +475,7 @@ fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
     }
 }
 
-/// Convert TypeAnnotation to Type
+/// Convert `TypeAnnotation` to Type
 /// This is used when processing sum type definitions
 fn type_annotation_to_type(
     annotation: &crate::ast::TypeAnnotation,
@@ -802,7 +802,7 @@ fn apply_subst_env(subst: &Substitution, env: &mut TypeEnv) {
     }
 }
 
-/// Convert a TypeExpr to a Type, resolving any aliases
+/// Convert a `TypeExpr` to a Type, resolving any aliases
 fn resolve_type_expr(ty_expr: &crate::ast::TypeExpr, env: &TypeEnv) -> Result<Type, TypeError> {
     match ty_expr {
         crate::ast::TypeExpr::Int => Ok(Type::Int),
@@ -818,7 +818,7 @@ fn resolve_type_expr(ty_expr: &crate::ast::TypeExpr, env: &TypeEnv) -> Result<Ty
     }
 }
 
-/// Convert a TypeAnnotation to a Type, resolving names to concrete types
+/// Convert a `TypeAnnotation` to a Type, resolving names to concrete types
 fn resolve_type_annotation(
     ty_ann: &crate::ast::TypeAnnotation,
     env: &mut TypeEnv,
@@ -852,8 +852,7 @@ fn resolve_type_annotation(
             // For now, we don't support applied types in annotations
             // This would require tracking type constructors
             Err(TypeError::UnboundVariable(format!(
-                "Applied type not yet supported in annotations: {}",
-                name
+                "Applied type not yet supported in annotations: {name}"
             )))
         }
     }
@@ -895,17 +894,17 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                         Type::Int => {
                             let s3 = unify(&right_ty, &Type::Int)?;
                             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-                            return Ok((Type::Int, subst));
+                            Ok((Type::Int, subst))
                         }
                         Type::Float => {
                             let s3 = unify(&right_ty, &Type::Float)?;
                             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-                            return Ok((Type::Float, subst));
+                            Ok((Type::Float, subst))
                         }
                         Type::Byte => {
                             let s3 = unify(&right_ty, &Type::Byte)?;
                             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-                            return Ok((Type::Byte, subst));
+                            Ok((Type::Byte, subst))
                         }
                         Type::Var(_) => {
                             // Try to unify with right type first
@@ -916,7 +915,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                             match &unified_ty {
                                 Type::Int | Type::Float | Type::Byte => {
                                     let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-                                    return Ok((unified_ty, subst));
+                                    Ok((unified_ty, subst))
                                 }
                                 Type::Var(_) => {
                                     // Still a type variable, default to Int for arithmetic operations
@@ -925,15 +924,15 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                                         &s4,
                                         &compose_subst(&s3, &compose_subst(&s2, &s1)),
                                     );
-                                    return Ok((Type::Int, subst));
+                                    Ok((Type::Int, subst))
                                 }
                                 _ => {
-                                    return Err(TypeError::UnificationError(unified_ty, Type::Int));
+                                    Err(TypeError::UnificationError(unified_ty, Type::Int))
                                 }
                             }
                         }
                         _ => {
-                            return Err(TypeError::UnificationError(left_ty, Type::Int));
+                            Err(TypeError::UnificationError(left_ty, Type::Int))
                         }
                     }
                 }
@@ -944,22 +943,22 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                         Type::Int => {
                             let s3 = unify(&right_ty, &Type::Int)?;
                             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-                            return Ok((Type::Bool, subst));
+                            Ok((Type::Bool, subst))
                         }
                         Type::Char => {
                             let s3 = unify(&right_ty, &Type::Char)?;
                             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-                            return Ok((Type::Bool, subst));
+                            Ok((Type::Bool, subst))
                         }
                         Type::Float => {
                             let s3 = unify(&right_ty, &Type::Float)?;
                             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-                            return Ok((Type::Bool, subst));
+                            Ok((Type::Bool, subst))
                         }
                         Type::Byte => {
                             let s3 = unify(&right_ty, &Type::Byte)?;
                             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-                            return Ok((Type::Bool, subst));
+                            Ok((Type::Bool, subst))
                         }
                         Type::Var(_) => {
                             // Try to unify with right type first
@@ -970,7 +969,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                             match &unified_ty {
                                 Type::Int | Type::Char | Type::Float | Type::Byte => {
                                     let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-                                    return Ok((Type::Bool, subst));
+                                    Ok((Type::Bool, subst))
                                 }
                                 Type::Var(_) => {
                                     // Still a type variable, default to Int for ordering operations
@@ -979,15 +978,15 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                                         &s4,
                                         &compose_subst(&s3, &compose_subst(&s2, &s1)),
                                     );
-                                    return Ok((Type::Bool, subst));
+                                    Ok((Type::Bool, subst))
                                 }
                                 _ => {
-                                    return Err(TypeError::UnificationError(unified_ty, Type::Int));
+                                    Err(TypeError::UnificationError(unified_ty, Type::Int))
                                 }
                             }
                         }
                         _ => {
-                            return Err(TypeError::UnificationError(left_ty, Type::Int));
+                            Err(TypeError::UnificationError(left_ty, Type::Int))
                         }
                     }
                 }
@@ -995,7 +994,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                     // Equality works on any type, but both sides must match
                     let s3 = unify(&left_ty, &right_ty)?;
                     let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-                    return Ok((Type::Bool, subst));
+                    Ok((Type::Bool, subst))
                 }
             }
         }
@@ -1198,24 +1197,18 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             match record_ty {
                 Type::Record(fields) => {
                     // Look up the field type
-                    match fields.get(field_name) {
-                        Some(field_ty) => Ok((field_ty.clone(), s1)),
-                        None => {
-                            let available: Vec<String> = fields.keys().cloned().collect();
-                            Err(TypeError::FieldNotFound(field_name.clone(), available))
-                        }
+                    if let Some(field_ty) = fields.get(field_name) { Ok((field_ty.clone(), s1)) } else {
+                        let available: Vec<String> = fields.keys().cloned().collect();
+                        Err(TypeError::FieldNotFound(field_name.clone(), available))
                     }
                 }
                 Type::RecordRow(fields, _) => {
                     // Look up the field type in the known fields
-                    match fields.get(field_name) {
-                        Some(field_ty) => Ok((field_ty.clone(), s1)),
-                        None => {
-                            // Field might be in the row variable, but we can't know for sure
-                            // For now, report an error with available fields
-                            let available: Vec<String> = fields.keys().cloned().collect();
-                            Err(TypeError::FieldNotFound(field_name.clone(), available))
-                        }
+                    if let Some(field_ty) = fields.get(field_name) { Ok((field_ty.clone(), s1)) } else {
+                        // Field might be in the row variable, but we can't know for sure
+                        // For now, report an error with available fields
+                        let available: Vec<String> = fields.keys().cloned().collect();
+                        Err(TypeError::FieldNotFound(field_name.clone(), available))
                     }
                 }
                 Type::Var(_) => {
