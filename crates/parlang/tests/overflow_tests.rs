@@ -28,7 +28,7 @@ fn test_arithmetic_add_near_max_no_overflow() {
     // Should work without overflow
     let code = "9223372036854775806 + 1";
     let result = parse_and_eval(code);
-    assert_eq!(result, Ok(Value::Int(9223372036854775807)));
+    assert_eq!(result, Ok(Value::Int(9_223_372_036_854_775_807)));
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn test_arithmetic_sub_near_min_no_overflow() {
     // Should work without overflow
     let code = "-9223372036854775807 - 1";
     let result = parse_and_eval(code);
-    assert_eq!(result, Ok(Value::Int(-9223372036854775808)));
+    assert_eq!(result, Ok(Value::Int(-9_223_372_036_854_775_808)));
 }
 
 // ============================================================================
@@ -125,7 +125,7 @@ fn test_arithmetic_mul_no_overflow() {
     // Should work without overflow
     let code = "1000000 * 1000000";
     let result = parse_and_eval(code);
-    assert_eq!(result, Ok(Value::Int(1000000000000)));
+    assert_eq!(result, Ok(Value::Int(1_000_000_000_000)));
 }
 
 // ============================================================================
@@ -206,15 +206,15 @@ fn test_arithmetic_overflow_in_function_application() {
 }
 
 #[test]
-#[ignore] // This test causes stack overflow and aborts - run manually if needed
+#[ignore = "causes stack overflow and aborts - run manually if needed"]
 fn test_arithmetic_overflow_in_recursive_function() {
     // Overflow within recursive call
     // This test is ignored because factorial(100) causes stack overflow
-    let code = r#"
+    let code = r"
         let factorial = rec fact -> fun n ->
             if n == 0 then 1 else n * fact (n - 1)
         in factorial 100
-    "#;
+    ";
     let result = parse_and_eval(code);
     // Should either overflow or stack overflow (both are acceptable)
     assert!(result.is_err());
@@ -261,7 +261,7 @@ fn test_parse_i64_max_literal() {
     // i64::MAX should parse correctly
     let code = "9223372036854775807";
     let result = parse_and_eval(code);
-    assert_eq!(result, Ok(Value::Int(9223372036854775807)));
+    assert_eq!(result, Ok(Value::Int(9_223_372_036_854_775_807)));
 }
 
 #[test]
@@ -278,7 +278,7 @@ fn test_parse_i64_min_via_expression() {
     // i64::MIN can be computed via expression
     let code = "-9223372036854775807 - 1";
     let result = parse_and_eval(code);
-    assert_eq!(result, Ok(Value::Int(-9223372036854775808)));
+    assert_eq!(result, Ok(Value::Int(-9_223_372_036_854_775_808)));
 }
 
 // ============================================================================

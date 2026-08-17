@@ -153,13 +153,12 @@ fn analyze_pattern(
         Pattern::Literal(Literal::Int(n)) => {
             int_literals.insert(*n);
         }
-        Pattern::Literal(Literal::Char(_)) => {
-            // Char literals are not exhaustively checked currently
-            // (there are too many possible char values)
-        }
-        Pattern::Literal(Literal::Byte(_)) => {
-            // Byte literals are not exhaustively checked currently
-            // (there are 256 possible byte values)
+        Pattern::Literal(Literal::Char(_) | Literal::Byte(_))
+        | Pattern::Wildcard
+        | Pattern::Var(_) => {
+            // Char and Byte literals are not exhaustively checked currently
+            // (too many possible values); Wildcard/Var are catch-all patterns,
+            // handled separately.
         }
         Pattern::Constructor(name, args) => {
             constructors.insert(name.clone());
@@ -205,9 +204,6 @@ fn analyze_pattern(
                     has_record_pattern,
                 );
             }
-        }
-        Pattern::Wildcard | Pattern::Var(_) => {
-            // These are catch-all patterns, handled separately
         }
     }
 }

@@ -9,12 +9,21 @@ use combine::{
     Stream,
 };
 
+/// A single constructor's declared payload type list: `T1 T2 ...`
+type CtorSignature = (String, Vec<TypeAnnotation>);
+/// An additional `| Ctor T1 T2 ...` clause after the first constructor in a
+/// `type` definition, as `(pipe_token, ctor_name, ctor_payload_types)`.
+type AdditionalCtor = (char, String, Vec<TypeAnnotation>);
+/// One step in a chained tuple-projection / field-access / array-index
+/// expression, as `(kind_tag, tuple_index, field_name, array_index_expr)`.
+type ProjectionStep = (u8, usize, String, Option<Expr>);
+/// A single top-level `let name [: Ty] = value;` binding in a `program`.
+type ProgramBinding = (String, Option<TypeAnnotation>, Expr);
+
 /// Helper function to check if a string starts with an uppercase ASCII character.
 /// Used to distinguish concrete types (Int, Bool) from type variables (a, b).
 fn starts_with_uppercase(s: &str) -> bool {
-    s.as_bytes()
-        .first()
-        .map_or(false, |c| c.is_ascii_uppercase())
+    s.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
 }
 
 /// Parse an integer literal
@@ -195,7 +204,7 @@ where
 ///
 /// Builds nested Cons and Nil constructors:
 /// - [] -> Nil
-/// - ['a', 'b', 'c'] -> Cons 'a' (Cons 'b' (Cons 'c' Nil))
+/// - `['a', 'b', 'c']` -> Cons 'a' (Cons 'b' (Cons 'c' Nil))
 ///
 /// In AST form:
 /// - Nil is: Constructor("Nil", [])
@@ -548,7 +557,7 @@ parser! {
             many(attempt((
                 combine::parser::char::lower(),
                 many::<String, _, _>(alpha_num().or(token('_')))
-            ).map(|(first, rest)| format!("{}{}", first, rest))
+            ).map(|(first, rest)| format!("{first}{rest}"))
              .skip(combine::not_followed_by(alpha_num().or(token('_'))))
              .skip(spaces()))),
             token('=').skip(spaces()),
@@ -558,7 +567,7 @@ parser! {
                 (
                     combine::parser::char::upper(),
                     many::<String, _, _>(alpha_num().or(token('_')))
-                ).map(|(first, rest)| format!("{}{}", first, rest))
+                ).map(|(first, rest)| format!("{first}{rest}"))
                  .skip(combine::not_followed_by(alpha_num().or(token('_'))))
                  .skip(spaces()),
                 // Constructor argument types
@@ -570,7 +579,7 @@ parser! {
                 (
                     combine::parser::char::upper(),
                     many::<String, _, _>(alpha_num().or(token('_')))
-                ).map(|(first, rest)| format!("{}{}", first, rest))
+                ).map(|(first, rest)| format!("{first}{rest}"))
                  .skip(combine::not_followed_by(alpha_num().or(token('_'))))
                  .skip(spaces()),
                 many(attempt(type_annotation_atom().skip(spaces())))
@@ -578,7 +587,7 @@ parser! {
             string("in").skip(spaces()),
             expr()
         )
-            .map(|tuple: (_, String, Vec<String>, _, (String, Vec<TypeAnnotation>), Vec<(char, String, Vec<TypeAnnotation>)>, _, Expr)| {
+            .map(|tuple: (_, String, Vec<String>, _, CtorSignature, Vec<AdditionalCtor>, _, Expr)| {
                 let (_, name, type_params, _, first_ctor, additional_ctors, _, body) = tuple;
                 // Combine first constructor with additional constructors
                 let mut constructors = vec![first_ctor];
@@ -937,7 +946,7 @@ parser! {
                 ))))
             )))
         )
-            .map(|(base, projs): (Expr, Vec<(u8, usize, String, Option<Expr>)>)| {
+            .map(|(base, projs): (Expr, Vec<ProjectionStep>)| {
                 projs.into_iter()
                     .fold(base, |expr, (proj_type, index, field, index_expr)| {
                         match proj_type {
@@ -1196,7 +1205,7 @@ parser! {
             }),
             optional(expr()).skip(spaces())
         )
-            .map(|((), bindings, body): ((), Vec<(String, Option<TypeAnnotation>, Expr)>, Option<Expr>)| {
+            .map(|((), bindings, body): ((), Vec<ProgramBinding>, Option<Expr>)| {
                 let body_expr = body.unwrap_or(Expr::Int(0));
                 if bindings.is_empty() {
                     body_expr

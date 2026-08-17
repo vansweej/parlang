@@ -135,18 +135,18 @@ fn test_type_alias_transparent() {
     let result1 = eval(&expr1, &Environment::new()).expect("Eval failed");
     let result2 = eval(&expr2, &Environment::new()).expect("Eval failed");
 
-    assert_eq!(format!("{}", result1), format!("{}", result2));
+    assert_eq!(format!("{result1}"), format!("{}", result2));
 }
 
 /// Test multiple type aliases in sequence
 #[test]
 fn test_multiple_type_aliases() {
-    let input = r#"
+    let input = r"
         type IntFunc = Int -> Int in
         type BoolFunc = Bool -> Bool in
         let f = fun x -> x + 1 in
         f 41
-    "#;
+    ";
     let expr = parse(input).expect("Parse failed");
     let result = eval(&expr, &Environment::new());
     assert!(result.is_ok(), "Eval failed: {:?}", result.err());
@@ -174,7 +174,7 @@ fn test_type_alias_with_conditional() {
     assert_eq!(format!("{}", result.unwrap()), "42");
 }
 
-/// Test Display implementation for TypeExpr
+/// Test Display implementation for `TypeExpr`
 #[test]
 fn test_type_expr_display() {
     use parlang::ast::TypeExpr;
@@ -194,13 +194,13 @@ fn test_type_expr_display() {
     );
 }
 
-/// Test Display implementation for TypeAlias expression
+/// Test Display implementation for `TypeAlias` expression
 #[test]
 fn test_type_alias_expr_display() {
     use parlang::ast::{Expr, TypeExpr};
 
     let expr = Expr::TypeAlias("MyInt".to_string(), TypeExpr::Int, Box::new(Expr::Int(42)));
-    assert_eq!(format!("{}", expr), "(type MyInt = Int in 42)");
+    assert_eq!(format!("{expr}"), "(type MyInt = Int in 42)");
 }
 
 /// Test that type keyword is reserved
@@ -214,12 +214,12 @@ fn test_type_keyword_reserved() {
 /// Test type alias in complex expression
 #[test]
 fn test_type_alias_complex_expression() {
-    let input = r#"
+    let input = r"
         type IntFunc = Int -> Int in
         let double = fun x -> x + x in
         let triple = fun x -> x + x + x in
         (double 10) + (triple 7)
-    "#;
+    ";
     let expr = parse(input).expect("Parse failed");
     let result = eval(&expr, &Environment::new());
     assert!(result.is_ok(), "Eval failed: {:?}", result.err());

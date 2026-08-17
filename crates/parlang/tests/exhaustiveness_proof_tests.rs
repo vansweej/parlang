@@ -6,12 +6,12 @@ use parlang::{check_exhaustiveness, parse, Environment};
 /// Test that exhaustive Option match has no warnings
 #[test]
 fn prove_exhaustive_option_match() {
-    let code = r#"
+    let code = r"
         type Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | None -> 0
-    "#;
+    ";
 
     let expr = parse(code).expect("Failed to parse");
     let env = Environment::new();
@@ -60,8 +60,7 @@ fn prove_non_exhaustive_option_missing_none() {
     if let parlang::ExhaustivenessResult::NonExhaustive(missing) = result {
         assert!(
             missing.contains(&"None".to_string()),
-            "Should report None as missing, got: {:?}",
-            missing
+            "Should report None as missing, got: {missing:?}"
         );
     }
 }
@@ -96,8 +95,7 @@ fn prove_non_exhaustive_option_missing_some() {
     if let parlang::ExhaustivenessResult::NonExhaustive(missing) = result {
         assert!(
             missing.contains(&"Some".to_string()),
-            "Should report Some as missing, got: {:?}",
-            missing
+            "Should report Some as missing, got: {missing:?}"
         );
     }
 }
@@ -166,8 +164,7 @@ fn prove_non_exhaustive_either_missing_right() {
     if let parlang::ExhaustivenessResult::NonExhaustive(missing) = result {
         assert!(
             missing.contains(&"Right".to_string()),
-            "Should report Right as missing, got: {:?}",
-            missing
+            "Should report Right as missing, got: {missing:?}"
         );
     }
 }
@@ -205,8 +202,7 @@ fn prove_non_exhaustive_bool_missing_false() {
     if let parlang::ExhaustivenessResult::NonExhaustive(missing) = result {
         assert!(
             missing.contains(&"false".to_string()),
-            "Should report false as missing, got: {:?}",
-            missing
+            "Should report false as missing, got: {missing:?}"
         );
     }
 }
@@ -227,8 +223,7 @@ fn prove_non_exhaustive_bool_missing_true() {
     if let parlang::ExhaustivenessResult::NonExhaustive(missing) = result {
         assert!(
             missing.contains(&"true".to_string()),
-            "Should report true as missing, got: {:?}",
-            missing
+            "Should report true as missing, got: {missing:?}"
         );
     }
 }
@@ -365,8 +360,7 @@ fn prove_non_exhaustive_list_missing_nil() {
     if let parlang::ExhaustivenessResult::NonExhaustive(missing) = result {
         assert!(
             missing.contains(&"Nil".to_string()),
-            "Should report Nil as missing, got: {:?}",
-            missing
+            "Should report Nil as missing, got: {missing:?}"
         );
     }
 }
@@ -523,8 +517,7 @@ fn prove_multiple_constructors_some_missing() {
         // Should report both Pending and Archived as missing
         assert!(
             missing.len() == 2,
-            "Should have 2 missing constructors, got: {:?}",
-            missing
+            "Should have 2 missing constructors, got: {missing:?}"
         );
         assert!(
             missing.contains(&"Pending".to_string()),
@@ -540,12 +533,12 @@ fn prove_multiple_constructors_some_missing() {
 /// Integration test: Full program execution with exhaustive match
 #[test]
 fn prove_full_program_exhaustive() {
-    let code = r#"
+    let code = r"
         type Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | None -> 0
-    "#;
+    ";
 
     let expr = parse(code).expect("Failed to parse");
     let env = Environment::new();
@@ -558,14 +551,14 @@ fn prove_full_program_exhaustive() {
 /// Integration test: Full program execution with recursive function
 #[test]
 fn prove_full_program_with_recursion() {
-    let code = r#"
+    let code = r"
         type List a = Nil | Cons a (List a) in
         (rec sum -> fun list ->
             match list with
             | Nil -> 0
             | Cons head tail -> head + sum tail)
         (Cons 1 (Cons 2 (Cons 3 Nil)))
-    "#;
+    ";
 
     let expr = parse(code).expect("Failed to parse");
     let env = Environment::new();

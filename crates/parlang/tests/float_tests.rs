@@ -35,7 +35,7 @@ fn test_parse_float_small() {
 fn test_parse_float_large() {
     let expr = parse("123456.789").unwrap();
     let env = Environment::new();
-    assert_eq!(eval(&expr, &env), Ok(Value::Float(123456.789)));
+    assert_eq!(eval(&expr, &env), Ok(Value::Float(123_456.789)));
 }
 
 // Arithmetic operations with Float
@@ -132,21 +132,21 @@ fn test_float_greater_than_or_equal() {
 fn test_typecheck_float_literal() {
     let expr = parse("3.14").unwrap();
     let ty = typecheck(&expr).unwrap();
-    assert_eq!(format!("{}", ty), "Float");
+    assert_eq!(format!("{ty}"), "Float");
 }
 
 #[test]
 fn test_typecheck_float_addition() {
     let expr = parse("1.5 + 2.5").unwrap();
     let ty = typecheck(&expr).unwrap();
-    assert_eq!(format!("{}", ty), "Float");
+    assert_eq!(format!("{ty}"), "Float");
 }
 
 #[test]
 fn test_typecheck_float_comparison() {
     let expr = parse("1.5 < 2.5").unwrap();
     let ty = typecheck(&expr).unwrap();
-    assert_eq!(format!("{}", ty), "Bool");
+    assert_eq!(format!("{ty}"), "Bool");
 }
 
 // Let bindings with Float
@@ -174,12 +174,12 @@ fn test_float_function() {
 #[test]
 fn test_typecheck_float_function() {
     let expr = parse("fun x -> x + x").unwrap();
-    let ty = typecheck(&expr).unwrap();
+    let _ty = typecheck(&expr).unwrap();
     // Since x + x requires x to be numeric, type checker should infer Int by default
     // but we can test with explicit Float usage
     let expr2 = parse("fun x -> x + 1.0").unwrap();
     let ty2 = typecheck(&expr2).unwrap();
-    assert_eq!(format!("{}", ty2), "Float -> Float");
+    assert_eq!(format!("{ty2}"), "Float -> Float");
 }
 
 // Mixed type operations should fail
@@ -212,7 +212,7 @@ fn test_float_in_if_expression() {
 fn test_typecheck_float_in_if_expression() {
     let expr = parse("if true then 1.5 else 2.5").unwrap();
     let ty = typecheck(&expr).unwrap();
-    assert_eq!(format!("{}", ty), "Float");
+    assert_eq!(format!("{ty}"), "Float");
 }
 
 // Record with Float fields

@@ -5,7 +5,7 @@ use parlang::{ast::*, parser::parse, typechecker::typecheck, types::Type};
 #[test]
 fn test_parse_fun_with_type_annotation() {
     // fun (x : Int) -> x + 1  (with parentheses to clarify)
-    let result = parse("fun (x : Int) -> x + 1");
+    let _result = parse("fun (x : Int) -> x + 1");
     // Without parentheses, we need to be careful about precedence
     // Try without parens but with simpler body
     let result2 = parse("fun x -> x");
@@ -28,7 +28,7 @@ fn test_parse_fun_without_type_annotation() {
             assert_eq!(param, "x");
             assert!(ty_ann.is_none());
         }
-        _ => panic!("Expected Expr::Fun, got {:?}", expr),
+        _ => panic!("Expected Expr::Fun, got {expr:?}"),
     }
 }
 
@@ -43,7 +43,7 @@ fn test_parse_fun_with_bool_annotation() {
         Expr::Fun(param, _ty_ann, _body) => {
             assert_eq!(param, "b");
         }
-        _ => panic!("Expected Expr::Fun, got {:?}", expr),
+        _ => panic!("Expected Expr::Fun, got {expr:?}"),
     }
 }
 
@@ -61,7 +61,7 @@ fn test_parse_let_with_type_annotation() {
             let ty = ty_ann.unwrap();
             assert_eq!(ty, TypeAnnotation::Concrete("Int".to_string()));
         }
-        _ => panic!("Expected Expr::Let, got {:?}", expr),
+        _ => panic!("Expected Expr::Let, got {expr:?}"),
     }
 }
 
@@ -77,7 +77,7 @@ fn test_parse_let_without_type_annotation() {
             assert_eq!(name, "x");
             assert!(ty_ann.is_none());
         }
-        _ => panic!("Expected Expr::Let, got {:?}", expr),
+        _ => panic!("Expected Expr::Let, got {expr:?}"),
     }
 }
 
@@ -97,7 +97,7 @@ fn test_parse_seq_with_type_annotation() {
             let ty = ty_ann.as_ref().unwrap();
             assert_eq!(*ty, TypeAnnotation::Concrete("Int".to_string()));
         }
-        _ => panic!("Expected Expr::Seq, got {:?}", expr),
+        _ => panic!("Expected Expr::Seq, got {expr:?}"),
     }
 }
 
@@ -128,7 +128,7 @@ fn test_parse_seq_multiple_with_annotations() {
                 &TypeAnnotation::Concrete("Bool".to_string())
             );
         }
-        _ => panic!("Expected Expr::Seq, got {:?}", expr),
+        _ => panic!("Expected Expr::Seq, got {expr:?}"),
     }
 }
 
@@ -161,7 +161,7 @@ fn test_typecheck_fun_with_bool_annotation() {
             assert_eq!(*arg, Type::Bool);
             assert_eq!(*ret, Type::Int);
         }
-        _ => panic!("Expected function type, got {:?}", ty),
+        _ => panic!("Expected function type, got {ty:?}"),
     }
 }
 
@@ -224,7 +224,7 @@ fn test_display_fun_with_annotation() {
         Some(TypeAnnotation::Concrete("Int".to_string())),
         Box::new(Expr::Var("x".to_string())),
     );
-    assert_eq!(format!("{}", expr), "(fun x : Int -> x)");
+    assert_eq!(format!("{expr}"), "(fun x : Int -> x)");
 }
 
 #[test]
@@ -235,13 +235,13 @@ fn test_display_let_with_annotation() {
         Box::new(Expr::Int(42)),
         Box::new(Expr::Var("x".to_string())),
     );
-    assert_eq!(format!("{}", expr), "(let x : Int = 42 in x)");
+    assert_eq!(format!("{expr}"), "(let x : Int = 42 in x)");
 }
 
 #[test]
 fn test_display_fun_without_annotation() {
     let expr = Expr::Fun("x".to_string(), None, Box::new(Expr::Var("x".to_string())));
-    assert_eq!(format!("{}", expr), "(fun x -> x)");
+    assert_eq!(format!("{expr}"), "(fun x -> x)");
 }
 
 #[test]
@@ -252,5 +252,5 @@ fn test_display_let_without_annotation() {
         Box::new(Expr::Int(42)),
         Box::new(Expr::Var("x".to_string())),
     );
-    assert_eq!(format!("{}", expr), "(let x = 42 in x)");
+    assert_eq!(format!("{expr}"), "(let x = 42 in x)");
 }

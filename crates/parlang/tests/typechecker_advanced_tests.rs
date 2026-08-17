@@ -1,6 +1,6 @@
 /// Advanced unit tests for typechecker internals
 /// Tests for row polymorphism, type unification edge cases, and helper functions
-use parlang::{parse, typecheck, Type, TypeVar};
+use parlang::{parse, typecheck, Type};
 
 // Row Polymorphism Tests
 
@@ -148,7 +148,7 @@ fn test_generic_option_inference() {
             assert_eq!(args.len(), 1);
             assert_eq!(args[0], Type::Int);
         }
-        _ => panic!("Expected SumType, got {:?}", ty),
+        _ => panic!("Expected SumType, got {ty:?}"),
     }
 }
 
@@ -169,7 +169,7 @@ fn test_generic_either_inference_left() {
             // Second type parameter should be a type variable
             assert!(matches!(args[1], Type::Var(_)));
         }
-        _ => panic!("Expected SumType, got {:?}", ty),
+        _ => panic!("Expected SumType, got {ty:?}"),
     }
 }
 
@@ -190,7 +190,7 @@ fn test_generic_either_inference_right() {
             assert!(matches!(args[0], Type::Var(_)));
             assert_eq!(args[1], Type::Int);
         }
-        _ => panic!("Expected SumType, got {:?}", ty),
+        _ => panic!("Expected SumType, got {ty:?}"),
     }
 }
 
@@ -216,7 +216,7 @@ fn test_generic_nested_constructor() {
                 _ => panic!("Expected nested SumType, got {:?}", args[0]),
             }
         }
-        _ => panic!("Expected SumType, got {:?}", ty),
+        _ => panic!("Expected SumType, got {ty:?}"),
     }
 }
 
@@ -235,7 +235,7 @@ fn test_generic_list_constructor() {
             assert_eq!(args.len(), 1);
             assert_eq!(args[0], Type::Int);
         }
-        _ => panic!("Expected SumType, got {:?}", ty),
+        _ => panic!("Expected SumType, got {ty:?}"),
     }
 }
 
@@ -314,7 +314,7 @@ fn test_type_inference_curried_with_generics() {
             assert_eq!(name, "Option");
             assert_eq!(args[0], Type::Int);
         }
-        _ => panic!("Expected Option Int, got {:?}", ty),
+        _ => panic!("Expected Option Int, got {ty:?}"),
     }
 }
 
@@ -334,7 +334,7 @@ fn test_type_inference_higher_order_generics() {
             assert_eq!(name, "Option");
             assert_eq!(args[0], Type::Int);
         }
-        _ => panic!("Expected Option Int, got {:?}", ty),
+        _ => panic!("Expected Option Int, got {ty:?}"),
     }
 }
 
@@ -354,6 +354,6 @@ fn test_polymorphic_function_multiple_instantiations() {
             assert_eq!(name, "Option");
             assert_eq!(args[0], Type::Int);
         }
-        _ => panic!("Expected Option Int, got {:?}", ty),
+        _ => panic!("Expected Option Int, got {ty:?}"),
     }
 }
