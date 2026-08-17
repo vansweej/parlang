@@ -18,7 +18,6 @@ pub enum Type {
     Bool,                       // Boolean type
     Char,                       // Character type
     Float,                      // Floating point type
-    Byte,                       // Byte type (unsigned 8-bit integer)
     Unit,                       // Unit type
     Fun(Box<Type>, Box<Type>),  // Function type: T1 -> T2
     Var(TypeVar),               // Type variable for polymorphism
@@ -36,7 +35,6 @@ pub enum Type {
 - `Bool`: Represents boolean values (`true`, `false`)
 - `Char`: Represents single Unicode characters (e.g., `'a'`, `'\n'`)
 - `Float`: Represents 64-bit floating point values (e.g., `3.14`, `-2.5`)
-- `Byte`: Represents unsigned 8-bit integer values (e.g., `0b`, `255b`, `42b`)
 - `Unit`: Represents the empty tuple `()`
 - `Fun(arg, ret)`: Represents function types where `arg` is the argument type and `ret` is the return type
 - `Var(TypeVar)`: Represents a type variable used during type inference
@@ -51,7 +49,6 @@ pub enum Type {
 ```rust
 Type::Int                                    // Int
 Type::Bool                                   // Bool
-Type::Byte                                   // Byte
 Type::Float                                  // Float
 Type::Fun(Box::new(Type::Int), 
           Box::new(Type::Bool))              // Int -> Bool
@@ -113,7 +110,6 @@ All types implement `Display` for human-readable output:
 ```rust
 Type::Int                     // "Int"
 Type::Bool                    // "Bool"
-Type::Byte                    // "Byte"
 Type::Float                   // "Float"
 Type::Char                    // "Char"
 Type::Unit                    // "()"
@@ -159,7 +155,6 @@ use parlang::types::{Type, TypeVar, TypeScheme};
 // Basic types
 let int_type = Type::Int;
 let bool_type = Type::Bool;
-let byte_type = Type::Byte;
 let float_type = Type::Float;
 let char_type = Type::Char;
 
@@ -206,7 +201,7 @@ println!("{}", scheme);                                 // "forall t0. t0 -> t0"
 
 The type representations support:
 
-1. **Basic Types**: Int, Bool, Char, Float, Byte, and Unit for primitive values
+1. **Basic Types**: Int, Bool, Char, Float, and Unit for primitive values
 2. **Function Types**: First-class function types with proper associativity
 3. **Type Variables**: For representing unknown or polymorphic types
 4. **Type Schemes**: For expressing polymorphic types with universal quantification
