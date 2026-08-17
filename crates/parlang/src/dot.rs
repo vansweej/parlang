@@ -89,10 +89,10 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
 
     match expr {
         Expr::Int(n) => {
-            let _ = write!(output, "  {node_id} [label=\"Int\\n{n}\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Int\\n{n}\"];");
         }
         Expr::Bool(b) => {
-            let _ = write!(output, "  {node_id} [label=\"Bool\\n{b}\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Bool\\n{b}\"];");
         }
         Expr::Char(c) => {
             let label = match c {
@@ -103,42 +103,42 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
                 '\'' => "\\\\'".to_string(),
                 _ => c.to_string(),
             };
-            let _ = write!(output, "  {node_id} [label=\"Char\\n'{label}'\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Char\\n'{label}'\"];");
         }
         Expr::Float(fl) => {
-            let _ = write!(output, "  {node_id} [label=\"Float\\n{fl}\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Float\\n{fl}\"];");
         }
         Expr::Byte(b) => {
-            let _ = write!(output, "  {node_id} [label=\"Byte\\n{b}b\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Byte\\n{b}b\"];");
         }
         Expr::Var(name) => {
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"Var\\n{}\"];\n",
+                "  {} [label=\"Var\\n{}\"];",
                 node_id,
                 escape_label(name)
             );
         }
         Expr::BinOp(op, left, right) => {
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"BinOp\\n{}\"];\n",
+                "  {} [label=\"BinOp\\n{}\"];",
                 node_id,
                 binop_label(*op)
             );
             let left_id = expr_to_dot(left, output, gen);
             let right_id = expr_to_dot(right, output, gen);
-            let _ = write!(output, "  {node_id} -> {left_id} [label=\"left\"];\n");
-            let _ = write!(output, "  {node_id} -> {right_id} [label=\"right\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {left_id} [label=\"left\"];");
+            let _ = writeln!(output, "  {node_id} -> {right_id} [label=\"right\"];");
         }
         Expr::If(cond, then_branch, else_branch) => {
-            let _ = write!(output, "  {node_id} [label=\"If\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"If\"];");
             let cond_id = expr_to_dot(cond, output, gen);
             let then_id = expr_to_dot(then_branch, output, gen);
             let else_id = expr_to_dot(else_branch, output, gen);
-            let _ = write!(output, "  {node_id} -> {cond_id} [label=\"cond\"];\n");
-            let _ = write!(output, "  {node_id} -> {then_id} [label=\"then\"];\n");
-            let _ = write!(output, "  {node_id} -> {else_id} [label=\"else\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {cond_id} [label=\"cond\"];");
+            let _ = writeln!(output, "  {node_id} -> {then_id} [label=\"then\"];");
+            let _ = writeln!(output, "  {node_id} -> {else_id} [label=\"else\"];");
         }
         Expr::Let(name, ty_ann, value, body) => {
             let label = if let Some(ty) = ty_ann {
@@ -146,11 +146,11 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             } else {
                 format!("Let\\n{}", escape_label(name))
             };
-            let _ = write!(output, "  {} [label=\"{}\"];\n", node_id, label);
+            let _ = writeln!(output, "  {node_id} [label=\"{label}\"];");
             let value_id = expr_to_dot(value, output, gen);
             let body_id = expr_to_dot(body, output, gen);
-            let _ = write!(output, "  {node_id} -> {value_id} [label=\"value\"];\n");
-            let _ = write!(output, "  {node_id} -> {body_id} [label=\"body\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {value_id} [label=\"value\"];");
+            let _ = writeln!(output, "  {node_id} -> {body_id} [label=\"body\"];");
         }
         Expr::Fun(param, ty_ann, body) => {
             let label = if let Some(ty) = ty_ann {
@@ -158,29 +158,29 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             } else {
                 format!("Fun\\n{}", escape_label(param))
             };
-            let _ = write!(output, "  {} [label=\"{}\"];\n", node_id, label);
+            let _ = writeln!(output, "  {node_id} [label=\"{label}\"];");
             let body_id = expr_to_dot(body, output, gen);
-            let _ = write!(output, "  {node_id} -> {body_id} [label=\"body\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {body_id} [label=\"body\"];");
         }
         Expr::App(func, arg) => {
-            let _ = write!(output, "  {node_id} [label=\"App\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"App\"];");
             let func_id = expr_to_dot(func, output, gen);
             let arg_id = expr_to_dot(arg, output, gen);
-            let _ = write!(output, "  {node_id} -> {func_id} [label=\"func\"];\n");
-            let _ = write!(output, "  {node_id} -> {arg_id} [label=\"arg\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {func_id} [label=\"func\"];");
+            let _ = writeln!(output, "  {node_id} -> {arg_id} [label=\"arg\"];");
         }
         Expr::Load(filepath, body) => {
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"Load\\n{}\"];\n",
+                "  {} [label=\"Load\\n{}\"];",
                 node_id,
                 escape_label(filepath)
             );
             let body_id = expr_to_dot(body, output, gen);
-            let _ = write!(output, "  {node_id} -> {body_id} [label=\"body\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {body_id} [label=\"body\"];");
         }
         Expr::Seq(bindings, body) => {
-            let _ = write!(output, "  {node_id} [label=\"Seq\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Seq\"];");
             for (i, (name, ty_ann, value)) in bindings.iter().enumerate() {
                 let binding_id = gen.next();
                 let label = if let Some(ty) = ty_ann {
@@ -188,93 +188,93 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
                 } else {
                     format!("Binding\\n{}", escape_label(name))
                 };
-                let _ = write!(output, "  {} [label=\"{}\"];\n", binding_id, label);
+                let _ = writeln!(output, "  {binding_id} [label=\"{label}\"];");
                 let value_id = expr_to_dot(value, output, gen);
-                let _ = write!(
+                let _ = writeln!(
                     output,
-                    "  {node_id} -> {binding_id} [label=\"binding {i}\"];\n"
+                    "  {node_id} -> {binding_id} [label=\"binding {i}\"];"
                 );
-                let _ = write!(output, "  {binding_id} -> {value_id} [label=\"value\"];\n");
+                let _ = writeln!(output, "  {binding_id} -> {value_id} [label=\"value\"];");
             }
             let body_id = expr_to_dot(body, output, gen);
-            let _ = write!(output, "  {node_id} -> {body_id} [label=\"body\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {body_id} [label=\"body\"];");
         }
         Expr::Rec(name, body) => {
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"Rec\\n{}\"];\n",
+                "  {} [label=\"Rec\\n{}\"];",
                 node_id,
                 escape_label(name)
             );
             let body_id = expr_to_dot(body, output, gen);
-            let _ = write!(output, "  {node_id} -> {body_id} [label=\"body\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {body_id} [label=\"body\"];");
         }
         Expr::Match(scrutinee, arms) => {
-            let _ = write!(output, "  {node_id} [label=\"Match\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Match\"];");
             let scrutinee_id = expr_to_dot(scrutinee, output, gen);
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {node_id} -> {scrutinee_id} [label=\"scrutinee\"];\n"
+                "  {node_id} -> {scrutinee_id} [label=\"scrutinee\"];"
             );
 
             for (i, (pattern, result)) in arms.iter().enumerate() {
                 let arm_id = gen.next();
-                let _ = write!(output, "  {arm_id} [label=\"Arm {i}\"];\n");
+                let _ = writeln!(output, "  {arm_id} [label=\"Arm {i}\"];");
                 let pattern_id = pattern_to_dot(pattern, output, gen);
                 let result_id = expr_to_dot(result, output, gen);
-                let _ = write!(output, "  {node_id} -> {arm_id} [label=\"arm {i}\"];\n");
-                let _ = write!(output, "  {arm_id} -> {pattern_id} [label=\"pattern\"];\n");
-                let _ = write!(output, "  {arm_id} -> {result_id} [label=\"result\"];\n");
+                let _ = writeln!(output, "  {node_id} -> {arm_id} [label=\"arm {i}\"];");
+                let _ = writeln!(output, "  {arm_id} -> {pattern_id} [label=\"pattern\"];");
+                let _ = writeln!(output, "  {arm_id} -> {result_id} [label=\"result\"];");
             }
         }
         Expr::Tuple(elements) => {
-            let _ = write!(output, "  {node_id} [label=\"Tuple\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Tuple\"];");
             for (i, elem) in elements.iter().enumerate() {
                 let elem_id = expr_to_dot(elem, output, gen);
-                let _ = write!(output, "  {node_id} -> {elem_id} [label=\"elem {i}\"];\n");
+                let _ = writeln!(output, "  {node_id} -> {elem_id} [label=\"elem {i}\"];");
             }
         }
         Expr::TupleProj(tuple, index) => {
-            let _ = write!(output, "  {node_id} [label=\"TupleProj\\n{index}\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"TupleProj\\n{index}\"];");
             let tuple_id = expr_to_dot(tuple, output, gen);
-            let _ = write!(output, "  {node_id} -> {tuple_id} [label=\"tuple\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {tuple_id} [label=\"tuple\"];");
         }
         Expr::TypeAlias(name, ty_expr, body) => {
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"TypeAlias\\n{}\"];\n",
+                "  {} [label=\"TypeAlias\\n{}\"];",
                 node_id,
                 escape_label(name)
             );
             let type_id = type_expr_to_dot(ty_expr, output, gen);
             let body_id = expr_to_dot(body, output, gen);
-            let _ = write!(output, "  {node_id} -> {type_id} [label=\"type\"];\n");
-            let _ = write!(output, "  {node_id} -> {body_id} [label=\"body\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {type_id} [label=\"type\"];");
+            let _ = writeln!(output, "  {node_id} -> {body_id} [label=\"body\"];");
         }
         Expr::Record(fields) => {
-            let _ = write!(output, "  {node_id} [label=\"Record\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Record\"];");
             for (i, (name, expr)) in fields.iter().enumerate() {
                 let field_id = gen.next();
-                let _ = write!(
+                let _ = writeln!(
                     output,
-                    "  {} [label=\"Field\\n{}\"];\n",
+                    "  {} [label=\"Field\\n{}\"];",
                     field_id,
                     escape_label(name)
                 );
                 let expr_id = expr_to_dot(expr, output, gen);
-                let _ = write!(output, "  {node_id} -> {field_id} [label=\"field {i}\"];\n");
-                let _ = write!(output, "  {field_id} -> {expr_id} [label=\"value\"];\n");
+                let _ = writeln!(output, "  {node_id} -> {field_id} [label=\"field {i}\"];");
+                let _ = writeln!(output, "  {field_id} -> {expr_id} [label=\"value\"];");
             }
         }
         Expr::FieldAccess(record, field) => {
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"FieldAccess\\n{}\"];\n",
+                "  {} [label=\"FieldAccess\\n{}\"];",
                 node_id,
                 escape_label(field)
             );
             let record_id = expr_to_dot(record, output, gen);
-            let _ = write!(output, "  {node_id} -> {record_id} [label=\"record\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {record_id} [label=\"record\"];");
         }
         Expr::TypeDef {
             name,
@@ -283,9 +283,9 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             body,
         } => {
             let params_str = type_params.join(" ");
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"TypeDef\\n{}\\n{}\"];\n",
+                "  {} [label=\"TypeDef\\n{}\\n{}\"];",
                 node_id,
                 escape_label(name),
                 escape_label(&params_str)
@@ -294,67 +294,67 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             // Add constructor nodes
             for (ctor_name, _ctor_types) in constructors {
                 let ctor_id = gen.next();
-                let _ = write!(
+                let _ = writeln!(
                     output,
-                    "  {} [label=\"Constructor\\n{}\"];\n",
+                    "  {} [label=\"Constructor\\n{}\"];",
                     ctor_id,
                     escape_label(ctor_name)
                 );
-                let _ = write!(output, "  {node_id} -> {ctor_id} [label=\"ctor\"];\n");
+                let _ = writeln!(output, "  {node_id} -> {ctor_id} [label=\"ctor\"];");
             }
 
             let body_id = expr_to_dot(body, output, gen);
-            let _ = write!(output, "  {node_id} -> {body_id} [label=\"body\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {body_id} [label=\"body\"];");
         }
         Expr::Constructor(name, args) => {
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"Constructor\\n{}\"];\n",
+                "  {} [label=\"Constructor\\n{}\"];",
                 node_id,
                 escape_label(name)
             );
             for (i, arg) in args.iter().enumerate() {
                 let arg_id = expr_to_dot(arg, output, gen);
-                let _ = write!(output, "  {node_id} -> {arg_id} [label=\"arg{}\"];\n", i);
+                let _ = writeln!(output, "  {node_id} -> {arg_id} [label=\"arg{i}\"];");
             }
         }
         Expr::Array(elements) => {
-            let _ = write!(output, "  {node_id} [label=\"Array\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Array\"];");
             for (i, elem) in elements.iter().enumerate() {
                 let elem_id = expr_to_dot(elem, output, gen);
-                let _ = write!(output, "  {node_id} -> {elem_id} [label=\"elem{}\"];\n", i);
+                let _ = writeln!(output, "  {node_id} -> {elem_id} [label=\"elem{i}\"];");
             }
         }
         Expr::ArrayIndex(arr, index) => {
-            let _ = write!(output, "  {node_id} [label=\"ArrayIndex\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"ArrayIndex\"];");
             let arr_id = expr_to_dot(arr, output, gen);
             let index_id = expr_to_dot(index, output, gen);
-            let _ = write!(output, "  {node_id} -> {arr_id} [label=\"array\"];\n");
-            let _ = write!(output, "  {node_id} -> {index_id} [label=\"index\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {arr_id} [label=\"array\"];");
+            let _ = writeln!(output, "  {node_id} -> {index_id} [label=\"index\"];");
         }
         Expr::Ref(expr) => {
-            let _ = write!(output, "  {node_id} [label=\"Ref\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Ref\"];");
             let expr_id = expr_to_dot(expr, output, gen);
-            let _ = write!(output, "  {node_id} -> {expr_id} [label=\"value\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {expr_id} [label=\"value\"];");
         }
         Expr::Deref(expr) => {
-            let _ = write!(output, "  {node_id} [label=\"Deref\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Deref\"];");
             let expr_id = expr_to_dot(expr, output, gen);
-            let _ = write!(output, "  {node_id} -> {expr_id} [label=\"ref\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {expr_id} [label=\"ref\"];");
         }
         Expr::RefAssign(ref_expr, value) => {
-            let _ = write!(output, "  {node_id} [label=\"RefAssign\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"RefAssign\"];");
             let ref_id = expr_to_dot(ref_expr, output, gen);
             let value_id = expr_to_dot(value, output, gen);
-            let _ = write!(output, "  {node_id} -> {ref_id} [label=\"ref\"];\n");
-            let _ = write!(output, "  {node_id} -> {value_id} [label=\"value\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {ref_id} [label=\"ref\"];");
+            let _ = writeln!(output, "  {node_id} -> {value_id} [label=\"value\"];");
         }
         Expr::Range(start, end) => {
-            let _ = write!(output, "  {node_id} [label=\"Range\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Range\"];");
             let start_id = expr_to_dot(start, output, gen);
             let end_id = expr_to_dot(end, output, gen);
-            let _ = write!(output, "  {node_id} -> {start_id} [label=\"start\"];\n");
-            let _ = write!(output, "  {node_id} -> {end_id} [label=\"end\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {start_id} [label=\"start\"];");
+            let _ = writeln!(output, "  {node_id} -> {end_id} [label=\"end\"];");
         }
     }
 
@@ -370,22 +370,22 @@ fn type_expr_to_dot(
 
     match ty_expr {
         crate::ast::TypeExpr::Int => {
-            let _ = write!(output, "  {node_id} [label=\"Type\\nInt\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Type\\nInt\"];");
         }
         crate::ast::TypeExpr::Bool => {
-            let _ = write!(output, "  {node_id} [label=\"Type\\nBool\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Type\\nBool\"];");
         }
         crate::ast::TypeExpr::Fun(arg, ret) => {
-            let _ = write!(output, "  {node_id} [label=\"Type\\nFun\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Type\\nFun\"];");
             let arg_id = type_expr_to_dot(arg, output, gen);
             let ret_id = type_expr_to_dot(ret, output, gen);
-            let _ = write!(output, "  {node_id} -> {arg_id} [label=\"arg\"];\n");
-            let _ = write!(output, "  {node_id} -> {ret_id} [label=\"ret\"];\n");
+            let _ = writeln!(output, "  {node_id} -> {arg_id} [label=\"arg\"];");
+            let _ = writeln!(output, "  {node_id} -> {ret_id} [label=\"ret\"];");
         }
         crate::ast::TypeExpr::Alias(name) => {
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"TypeAlias\\n{}\"];\n",
+                "  {} [label=\"TypeAlias\\n{}\"];",
                 node_id,
                 escape_label(name)
             );
@@ -416,51 +416,51 @@ fn pattern_to_dot(pattern: &Pattern, output: &mut String, gen: &mut NodeIdGenera
                 }
                 Literal::Byte(b) => format!("Literal\\nByte {b}b"),
             };
-            let _ = write!(output, "  {node_id} [label=\"{label}\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"{label}\"];");
         }
         Pattern::Var(name) => {
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"Var\\n{}\"];\n",
+                "  {} [label=\"Var\\n{}\"];",
                 node_id,
                 escape_label(name)
             );
         }
         Pattern::Wildcard => {
-            let _ = write!(output, "  {node_id} [label=\"Wildcard\\n_\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"Wildcard\\n_\"];");
         }
         Pattern::Tuple(patterns) => {
-            let _ = write!(output, "  {node_id} [label=\"TuplePattern\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"TuplePattern\"];");
             for (i, pat) in patterns.iter().enumerate() {
                 let pat_id = pattern_to_dot(pat, output, gen);
-                let _ = write!(output, "  {node_id} -> {pat_id} [label=\"elem {i}\"];\n");
+                let _ = writeln!(output, "  {node_id} -> {pat_id} [label=\"elem {i}\"];");
             }
         }
         Pattern::Record(fields) => {
-            let _ = write!(output, "  {node_id} [label=\"RecordPattern\"];\n");
+            let _ = writeln!(output, "  {node_id} [label=\"RecordPattern\"];");
             for (i, (name, pat)) in fields.iter().enumerate() {
                 let field_id = gen.next();
-                let _ = write!(
+                let _ = writeln!(
                     output,
-                    "  {} [label=\"Field\\n{}\"];\n",
+                    "  {} [label=\"Field\\n{}\"];",
                     field_id,
                     escape_label(name)
                 );
                 let pat_id = pattern_to_dot(pat, output, gen);
-                let _ = write!(output, "  {node_id} -> {field_id} [label=\"field {i}\"];\n");
-                let _ = write!(output, "  {field_id} -> {pat_id} [label=\"pattern\"];\n");
+                let _ = writeln!(output, "  {node_id} -> {field_id} [label=\"field {i}\"];");
+                let _ = writeln!(output, "  {field_id} -> {pat_id} [label=\"pattern\"];");
             }
         }
         Pattern::Constructor(name, patterns) => {
-            let _ = write!(
+            let _ = writeln!(
                 output,
-                "  {} [label=\"ConstructorPattern\\n{}\"];\n",
+                "  {} [label=\"ConstructorPattern\\n{}\"];",
                 node_id,
                 escape_label(name)
             );
             for (i, pat) in patterns.iter().enumerate() {
                 let pat_id = pattern_to_dot(pat, output, gen);
-                let _ = write!(output, "  {node_id} -> {pat_id} [label=\"arg {i}\"];\n");
+                let _ = writeln!(output, "  {node_id} -> {pat_id} [label=\"arg {i}\"];");
             }
         }
     }
