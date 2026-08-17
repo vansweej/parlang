@@ -91,7 +91,7 @@ impl fmt::Display for Value {
                 // Sort fields by name for consistent display
                 let mut sorted_fields: Vec<_> = fields.iter().collect();
                 sorted_fields.sort_by_key(|(name, _)| *name);
-                
+
                 for (i, (name, value)) in sorted_fields.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
@@ -105,7 +105,9 @@ impl fmt::Display for Value {
                 if !args.is_empty() {
                     write!(f, "(")?;
                     for (i, arg) in args.iter().enumerate() {
-                        if i > 0 { write!(f, ", ")?; }
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
                         write!(f, "{}", arg)?;
                     }
                     write!(f, ")")?;
@@ -181,20 +183,20 @@ impl Environment {
         }
         new_env
     }
-    
+
     pub fn register_constructor(&mut self, name: String, info: ConstructorInfo) {
         self.constructors.insert(name, info);
     }
-    
+
     pub fn lookup_constructor(&self, name: &str) -> Option<&ConstructorInfo> {
         self.constructors.get(name)
     }
-    
+
     /// Get constructor information by name (used by exhaustiveness checker)
     pub fn get_constructor(&self, name: &str) -> Option<&ConstructorInfo> {
         self.constructors.get(name)
     }
-    
+
     /// Get all constructors for a given type name (used by exhaustiveness checker)
     pub fn get_constructors_for_type(&self, type_name: &str) -> Vec<String> {
         self.constructors
@@ -240,7 +242,10 @@ impl fmt::Display for EvalError {
             EvalError::LoadError(msg) => write!(f, "Load error: {msg}"),
             EvalError::IndexOutOfBounds(msg) => write!(f, "Index out of bounds: {msg}"),
             EvalError::FieldNotFound(field, available) => {
-                write!(f, "Field '{field}' not found. Available fields: {available:?}")
+                write!(
+                    f,
+                    "Field '{field}' not found. Available fields: {available:?}"
+                )
             }
             EvalError::RecordExpected(got) => {
                 write!(f, "Expected record, got {got}")
@@ -249,7 +254,11 @@ impl fmt::Display for EvalError {
                 write!(f, "Unknown constructor: {}", name)
             }
             EvalError::ConstructorArityMismatch(name, expected, got) => {
-                write!(f, "Constructor {} expects {} arguments, got {}", name, expected, got)
+                write!(
+                    f,
+                    "Constructor {} expects {} arguments, got {}",
+                    name, expected, got
+                )
             }
             EvalError::PatternMatchNonExhaustive => {
                 write!(f, "Pattern match is non-exhaustive")
@@ -261,22 +270,22 @@ impl fmt::Display for EvalError {
 impl std::error::Error for EvalError {}
 
 /// Evaluate a recursive function body with tail call optimization (TCO)
-/// 
+///
 /// This function implements tail call optimization for recursive functions. Instead of
 /// creating a new stack frame for each recursive call, it iteratively updates the
 /// environment and re-evaluates the body expression. This allows deep recursion without
 /// stack overflow for tail-recursive functions.
-/// 
+///
 /// # Arguments
 /// * `body` - The body expression of the recursive function
 /// * `initial_env` - The initial environment with the argument binding
 /// * `rec_name` - The name of the recursive function
 /// * `param_name` - The name of the function parameter
 /// * `closure_env` - The environment captured in the closure
-/// 
+///
 /// # Returns
 /// The result value of evaluating the function, or an error
-/// 
+///
 /// # Example
 /// For a tail-recursive factorial with accumulator:
 /// ```text
@@ -293,7 +302,7 @@ fn eval_with_tco(
 ) -> Result<Value, EvalError> {
     let mut current_expr = body.clone();
     let mut current_env = initial_env.clone();
-    
+
     loop {
         // Check if the expression is a tail call to the recursive function
         match &current_expr {
@@ -303,7 +312,7 @@ fn eval_with_tco(
                 if is_tail_call_to(func, rec_name) {
                     // This is a tail call - evaluate arg and loop instead of recursing
                     let arg_val = eval(arg, &current_env)?;
-                    
+
                     // Reset environment for next iteration
                     let rec_val = Value::RecClosure(
                         rec_name.to_string(),
@@ -329,9 +338,11 @@ fn eval_with_tco(
                     Value::Bool(false) => {
                         current_expr = (**else_branch).clone();
                     }
-                    _ => return Err(EvalError::TypeError(
-                        "if condition must evaluate to a boolean".to_string(),
-                    )),
+                    _ => {
+                        return Err(EvalError::TypeError(
+                            "if condition must evaluate to a boolean".to_string(),
+                        ))
+                    }
                 }
             }
             // For other expressions, evaluate normally and return
@@ -341,18 +352,18 @@ fn eval_with_tco(
 }
 
 /// Check if an expression is ultimately a call to the recursive function
-/// 
+///
 /// This helper function determines whether an expression is a direct or indirect call
 /// to the named recursive function. It handles nested applications like `(rec_name arg1) arg2`
 /// by recursively checking the function part of applications.
-/// 
+///
 /// # Arguments
 /// * `expr` - The expression to check
 /// * `rec_name` - The name of the recursive function
-/// 
+///
 /// # Returns
 /// `true` if the expression calls the recursive function, `false` otherwise
-/// 
+///
 /// # Example
 /// - `is_tail_call_to(Var("fact"), "fact")` returns `true`
 /// - `is_tail_call_to(App(Var("fact"), Lit(5)), "fact")` returns `true`
@@ -368,9 +379,9 @@ fn is_tail_call_to(expr: &Expr, rec_name: &str) -> bool {
 /// Extract bindings from nested let expressions
 /// This walks through the AST and extracts all top-level let bindings.
 /// Used by the REPL to persist function definitions and library loads across evaluations.
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if:
 /// - Evaluation of a let binding value fails
 /// - Loading a library file fails (file not found or parse error)
@@ -388,11 +399,13 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
         Expr::Load(filepath, body) => {
             // Handle nested load expressions
             // Read and parse the file
-            let content = fs::read_to_string(Path::new(filepath))
-                .map_err(|e| EvalError::LoadError(format!("Failed to read file '{filepath}': {e}")))?;
-            let lib_expr = crate::parser::parse(&content)
-                .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}")))?;
-            
+            let content = fs::read_to_string(Path::new(filepath)).map_err(|e| {
+                EvalError::LoadError(format!("Failed to read file '{filepath}': {e}"))
+            })?;
+            let lib_expr = crate::parser::parse(&content).map_err(|e| {
+                EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}"))
+            })?;
+
             // Extract bindings from the loaded library
             // Pass current environment so type constructors are available
             let lib_env = extract_bindings(&lib_expr, env)?;
@@ -422,19 +435,19 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
 }
 
 /// Match a pattern against a value, returning an extended environment if successful
-/// 
+///
 /// This function implements pattern matching by recursively checking if a pattern
 /// matches a given value. If successful, it returns an environment extended with
 /// any variable bindings from the pattern. If the match fails, it returns `None`.
-/// 
+///
 /// # Arguments
 /// * `pattern` - The pattern to match against
 /// * `value` - The value to match
 /// * `env` - The current environment to extend with bindings
-/// 
+///
 /// # Returns
 /// `Some(Environment)` with new bindings if the pattern matches, `None` otherwise
-/// 
+///
 /// # Supported Patterns
 /// - `Wildcard`: Matches anything without binding
 /// - `Var(name)`: Matches anything and binds it to `name`
@@ -442,7 +455,7 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
 /// - `Tuple(patterns)`: Matches tuples with matching sub-patterns
 /// - `Record(fields)`: Matches records with specified fields (supports partial matching)
 /// - `Constructor(name, args)`: Matches sum type constructors
-/// 
+///
 /// # Example
 /// ```text
 /// match_pattern(Var("x"), Int(42), env) → Some(env + {x: 42})
@@ -495,7 +508,7 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
             match value {
                 Value::Record(value_fields) => {
                     let mut current_env = env.clone();
-                    
+
                     // Match each field in the pattern
                     for (field_name, field_pattern) in pattern_fields {
                         match value_fields.get(field_name) {
@@ -512,7 +525,7 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
                             }
                         }
                     }
-                    
+
                     Some(current_env)
                 }
                 _ => None,
@@ -526,12 +539,12 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
                     if pattern_ctor != value_ctor {
                         return None;
                     }
-                    
+
                     // Argument counts must match
                     if pattern_args.len() != value_args.len() {
                         return None;
                     }
-                    
+
                     // Match each argument recursively
                     let mut current_env = env.clone();
                     for (pat, val) in pattern_args.iter().zip(value_args.iter()) {
@@ -540,7 +553,7 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
                             None => return None,
                         }
                     }
-                    
+
                     Some(current_env)
                 }
                 _ => None,
@@ -550,9 +563,9 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
 }
 
 /// Evaluate an expression in an environment
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if:
 /// - A variable is unbound (not found in the environment)
 /// - A type error occurs (e.g., applying a non-function, or arithmetic on non-integers)
@@ -566,20 +579,20 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
         Expr::Bool(b) => Ok(Value::Bool(*b)),
         Expr::Char(c) => Ok(Value::Char(*c)),
         Expr::Float(f) => Ok(Value::Float(*f)),
-        
+
         Expr::Byte(b) => Ok(Value::Byte(*b)),
-        
+
         Expr::Var(name) => env
             .lookup(name)
             .cloned()
             .ok_or_else(|| EvalError::UnboundVariable(name.clone())),
-        
+
         Expr::BinOp(op, left, right) => {
             let left_val = eval(left, env)?;
             let right_val = eval(right, env)?;
             eval_binop(*op, left_val, right_val)
         }
-        
+
         Expr::If(cond, then_branch, else_branch) => {
             let cond_val = eval(cond, env)?;
             match cond_val {
@@ -590,23 +603,21 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                 )),
             }
         }
-        
+
         Expr::Let(name, _ty_ann, value, body) => {
             let val = eval(value, env)?;
             let new_env = env.extend(name.clone(), val);
             eval(body, &new_env)
         }
-        
-        Expr::Fun(param, _ty_ann, body) => Ok(Value::Closure(
-            param.clone(),
-            (**body).clone(),
-            env.clone(),
-        )),
-        
+
+        Expr::Fun(param, _ty_ann, body) => {
+            Ok(Value::Closure(param.clone(), (**body).clone(), env.clone()))
+        }
+
         Expr::App(func, arg) => {
             let func_val = eval(func, env)?;
             let arg_val = eval(arg, env)?;
-            
+
             match func_val {
                 Value::Closure(param, body, closure_env) => {
                     let new_env = closure_env.extend(param, arg_val);
@@ -622,7 +633,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     );
                     let env_with_rec = closure_env.extend(rec_name.clone(), rec_val);
                     let new_env = env_with_rec.extend(param.clone(), arg_val);
-                    
+
                     // Evaluate the body - TCO happens naturally via iteration below
                     // when the body is a tail call
                     eval_with_tco(&body, &new_env, &rec_name, &param, &closure_env)
@@ -632,27 +643,29 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                 )),
             }
         }
-        
+
         Expr::Load(filepath, body) => {
             // Read the file contents
-            let content = fs::read_to_string(Path::new(filepath))
-                .map_err(|e| EvalError::LoadError(format!("Failed to read file '{filepath}': {e}")))?;
-            
+            let content = fs::read_to_string(Path::new(filepath)).map_err(|e| {
+                EvalError::LoadError(format!("Failed to read file '{filepath}': {e}"))
+            })?;
+
             // Parse the file contents
-            let lib_expr = crate::parser::parse(&content)
-                .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}")))?;
-            
+            let lib_expr = crate::parser::parse(&content).map_err(|e| {
+                EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}"))
+            })?;
+
             // Extract bindings from the library file
             // Pass current environment so type constructors are available
             let lib_env = extract_bindings(&lib_expr, env)?;
-            
+
             // Merge library bindings into current environment
             let extended_env = env.merge(&lib_env);
-            
+
             // Evaluate the body in the extended environment
             eval(body, &extended_env)
         }
-        
+
         Expr::Seq(bindings, body) => {
             // Process each binding in sequence, extending the environment
             let mut current_env = env.clone();
@@ -663,7 +676,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             // Evaluate the body in the extended environment
             eval(body, &current_env)
         }
-        
+
         Expr::Rec(name, body) => {
             // Parse the body which should be a function (fun param -> expr)
             // The recursive function can reference itself by name within its body
@@ -682,12 +695,12 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                 )),
             }
         }
-        
+
         Expr::Match(scrutinee, arms) => {
             // Check exhaustiveness of patterns
             let patterns: Vec<Pattern> = arms.iter().map(|(p, _)| p.clone()).collect();
             let exhaustiveness = check_exhaustiveness(&patterns, env);
-            
+
             if !exhaustiveness.is_exhaustive() {
                 // Print warning to stderr for non-exhaustive patterns
                 if let ExhaustivenessResult::NonExhaustive(missing) = exhaustiveness {
@@ -695,10 +708,10 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     eprintln!("  Missing cases: {}", missing.join(", "));
                 }
             }
-            
+
             // Evaluate the scrutinee expression
             let val = eval(scrutinee, env)?;
-            
+
             // Try to match against each pattern arm in order
             for (pattern, result_expr) in arms {
                 if let Some(new_env) = match_pattern(pattern, &val, env) {
@@ -706,11 +719,11 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     return eval(result_expr, &new_env);
                 }
             }
-            
+
             // No pattern matched - use the dedicated error variant
             Err(EvalError::PatternMatchNonExhaustive)
         }
-        
+
         Expr::Tuple(elements) => {
             // Evaluate all elements of the tuple
             let mut values = Vec::new();
@@ -719,11 +732,11 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             }
             Ok(Value::Tuple(values))
         }
-        
+
         Expr::TupleProj(tuple_expr, index) => {
             // Evaluate the tuple expression
             let tuple_val = eval(tuple_expr, env)?;
-            
+
             // Check that the value is a tuple
             match tuple_val {
                 Value::Tuple(values) => {
@@ -743,50 +756,49 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                 )),
             }
         }
-        
+
         Expr::TypeAlias(_name, _ty_expr, body) => {
             // Type aliases are transparent at runtime - they're only used during type checking
             // We simply evaluate the body in the current environment
             eval(body, env)
         }
-        
+
         Expr::Record(fields) => {
             // Evaluate all field expressions and build the record
             let mut record = HashMap::new();
-            
+
             for (name, expr) in fields {
                 let value = eval(expr, env)?;
                 record.insert(name.clone(), value);
             }
-            
+
             Ok(Value::Record(record))
         }
-        
+
         Expr::FieldAccess(record_expr, field_name) => {
             // Evaluate the record expression
             let record_value = eval(record_expr, env)?;
-            
+
             // Check that the value is a record and access the field
             match record_value {
-                Value::Record(fields) => {
-                    fields.get(field_name)
-                        .cloned()
-                        .ok_or_else(|| {
-                            let mut available: Vec<String> = fields.keys().cloned().collect();
-                            available.sort();
-                            EvalError::FieldNotFound(field_name.clone(), available)
-                        })
-                }
-                other => {
-                    Err(EvalError::RecordExpected(format!("{:?}", other)))
-                }
+                Value::Record(fields) => fields.get(field_name).cloned().ok_or_else(|| {
+                    let mut available: Vec<String> = fields.keys().cloned().collect();
+                    available.sort();
+                    EvalError::FieldNotFound(field_name.clone(), available)
+                }),
+                other => Err(EvalError::RecordExpected(format!("{:?}", other))),
             }
         }
-        
-        Expr::TypeDef { name, type_params: _, constructors, body } => {
+
+        Expr::TypeDef {
+            name,
+            type_params: _,
+            constructors,
+            body,
+        } => {
             // Register all constructors in the environment
             let mut new_env = env.clone();
-            
+
             for (ctor_name, ctor_types) in constructors {
                 let ctor_info = ConstructorInfo {
                     type_name: name.clone(),
@@ -794,34 +806,35 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                 };
                 new_env.register_constructor(ctor_name.clone(), ctor_info);
             }
-            
+
             // Evaluate body in extended environment
             eval(body, &new_env)
         }
-        
+
         Expr::Constructor(ctor_name, args) => {
             // Look up constructor info
-            let ctor_info = env.lookup_constructor(ctor_name)
+            let ctor_info = env
+                .lookup_constructor(ctor_name)
                 .ok_or_else(|| EvalError::UnknownConstructor(ctor_name.clone()))?;
-            
+
             // Check arity
             if args.len() != ctor_info.arity {
                 return Err(EvalError::ConstructorArityMismatch(
                     ctor_name.clone(),
                     ctor_info.arity,
-                    args.len()
+                    args.len(),
                 ));
             }
-            
+
             // Evaluate all arguments
             let mut values = Vec::new();
             for arg in args {
                 values.push(eval(arg, env)?);
             }
-            
+
             Ok(Value::Variant(ctor_name.clone(), values))
         }
-        
+
         Expr::Array(elements) => {
             // Evaluate all elements of the array
             let mut values = Vec::new();
@@ -831,20 +844,22 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             let size = values.len();
             Ok(Value::Array(size, values))
         }
-        
+
         Expr::ArrayIndex(arr_expr, index_expr) => {
             // Evaluate the array and index expressions
             let arr_val = eval(arr_expr, env)?;
             let index_val = eval(index_expr, env)?;
-            
+
             // Check that the index is an integer
             let index = match index_val {
                 Value::Int(i) => i,
-                _ => return Err(EvalError::TypeError(
-                    "Array index must be an integer".to_string()
-                )),
+                _ => {
+                    return Err(EvalError::TypeError(
+                        "Array index must be an integer".to_string(),
+                    ))
+                }
             };
-            
+
             // Check that index is non-negative
             if index < 0 {
                 return Err(EvalError::IndexOutOfBounds(format!(
@@ -852,7 +867,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     index
                 )));
             }
-            
+
             // Check that the value is an array
             match arr_val {
                 Value::Array(size, values) => {
@@ -868,36 +883,34 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     }
                 }
                 _ => Err(EvalError::TypeError(
-                    "Array indexing requires an array".to_string()
+                    "Array indexing requires an array".to_string(),
                 )),
             }
         }
-        
+
         Expr::Ref(expr) => {
             // Create a reference to a value
             let val = eval(expr, env)?;
             let id = next_ref_id();
             Ok(Value::Reference(id, Rc::new(RefCell::new(val))))
         }
-        
+
         Expr::Deref(expr) => {
             // Dereference a reference to get the value
             let ref_val = eval(expr, env)?;
             match ref_val {
-                Value::Reference(_id, cell) => {
-                    Ok(cell.borrow().clone())
-                }
+                Value::Reference(_id, cell) => Ok(cell.borrow().clone()),
                 _ => Err(EvalError::TypeError(
-                    "Dereference requires a reference".to_string()
+                    "Dereference requires a reference".to_string(),
                 )),
             }
         }
-        
+
         Expr::RefAssign(ref_expr, value_expr) => {
             // Assign a new value to a reference
             let ref_val = eval(ref_expr, env)?;
             let new_val = eval(value_expr, env)?;
-            
+
             match ref_val {
                 Value::Reference(_id, cell) => {
                     *cell.borrow_mut() = new_val;
@@ -905,23 +918,21 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
                     Ok(Value::Tuple(vec![]))
                 }
                 _ => Err(EvalError::TypeError(
-                    "Reference assignment requires a reference".to_string()
+                    "Reference assignment requires a reference".to_string(),
                 )),
             }
         }
-        
+
         Expr::Range(start_expr, end_expr) => {
             // Evaluate start and end expressions
             let start_val = eval(start_expr, env)?;
             let end_val = eval(end_expr, env)?;
-            
+
             // Check that both are integers
             match (start_val, end_val) {
-                (Value::Int(start), Value::Int(end)) => {
-                    Ok(Value::Range(start, end))
-                }
+                (Value::Int(start), Value::Int(end)) => Ok(Value::Range(start, end)),
                 _ => Err(EvalError::TypeError(
-                    "Range requires integer start and end values".to_string()
+                    "Range requires integer start and end values".to_string(),
                 )),
             }
         }
@@ -932,21 +943,18 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
 fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> {
     match (op, left, right) {
         // Arithmetic operations with overflow checking for Int
-        (BinOp::Add, Value::Int(a), Value::Int(b)) => {
-            a.checked_add(b)
-                .map(Value::Int)
-                .ok_or_else(|| EvalError::TypeError("Integer overflow in addition".to_string()))
-        }
-        (BinOp::Sub, Value::Int(a), Value::Int(b)) => {
-            a.checked_sub(b)
-                .map(Value::Int)
-                .ok_or_else(|| EvalError::TypeError("Integer overflow in subtraction".to_string()))
-        }
-        (BinOp::Mul, Value::Int(a), Value::Int(b)) => {
-            a.checked_mul(b)
-                .map(Value::Int)
-                .ok_or_else(|| EvalError::TypeError("Integer overflow in multiplication".to_string()))
-        }
+        (BinOp::Add, Value::Int(a), Value::Int(b)) => a
+            .checked_add(b)
+            .map(Value::Int)
+            .ok_or_else(|| EvalError::TypeError("Integer overflow in addition".to_string())),
+        (BinOp::Sub, Value::Int(a), Value::Int(b)) => a
+            .checked_sub(b)
+            .map(Value::Int)
+            .ok_or_else(|| EvalError::TypeError("Integer overflow in subtraction".to_string())),
+        (BinOp::Mul, Value::Int(a), Value::Int(b)) => a
+            .checked_mul(b)
+            .map(Value::Int)
+            .ok_or_else(|| EvalError::TypeError("Integer overflow in multiplication".to_string())),
         (BinOp::Div, Value::Int(a), Value::Int(b)) => {
             if b == 0 {
                 Err(EvalError::DivisionByZero)
@@ -956,7 +964,7 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
                     .ok_or_else(|| EvalError::TypeError("Integer overflow in division".to_string()))
             }
         }
-        
+
         // Arithmetic operations for Float
         (BinOp::Add, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
         (BinOp::Sub, Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
@@ -968,23 +976,20 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
                 Ok(Value::Float(a / b))
             }
         }
-        
+
         // Arithmetic operations for Byte with overflow checking
-        (BinOp::Add, Value::Byte(a), Value::Byte(b)) => {
-            a.checked_add(b)
-                .map(Value::Byte)
-                .ok_or_else(|| EvalError::TypeError("Byte overflow in addition".to_string()))
-        }
-        (BinOp::Sub, Value::Byte(a), Value::Byte(b)) => {
-            a.checked_sub(b)
-                .map(Value::Byte)
-                .ok_or_else(|| EvalError::TypeError("Byte underflow in subtraction".to_string()))
-        }
-        (BinOp::Mul, Value::Byte(a), Value::Byte(b)) => {
-            a.checked_mul(b)
-                .map(Value::Byte)
-                .ok_or_else(|| EvalError::TypeError("Byte overflow in multiplication".to_string()))
-        }
+        (BinOp::Add, Value::Byte(a), Value::Byte(b)) => a
+            .checked_add(b)
+            .map(Value::Byte)
+            .ok_or_else(|| EvalError::TypeError("Byte overflow in addition".to_string())),
+        (BinOp::Sub, Value::Byte(a), Value::Byte(b)) => a
+            .checked_sub(b)
+            .map(Value::Byte)
+            .ok_or_else(|| EvalError::TypeError("Byte underflow in subtraction".to_string())),
+        (BinOp::Mul, Value::Byte(a), Value::Byte(b)) => a
+            .checked_mul(b)
+            .map(Value::Byte)
+            .ok_or_else(|| EvalError::TypeError("Byte overflow in multiplication".to_string())),
         (BinOp::Div, Value::Byte(a), Value::Byte(b)) => {
             if b == 0 {
                 Err(EvalError::DivisionByZero)
@@ -994,7 +999,7 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
                     .ok_or_else(|| EvalError::TypeError("Byte overflow in division".to_string()))
             }
         }
-        
+
         // Comparison operations for Int
         (BinOp::Eq, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a == b)),
         (BinOp::Neq, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a != b)),
@@ -1002,7 +1007,7 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Le, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a <= b)),
         (BinOp::Gt, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a > b)),
         (BinOp::Ge, Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a >= b)),
-        
+
         // Comparison operations for Float
         (BinOp::Eq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a == b)),
         (BinOp::Neq, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a != b)),
@@ -1010,11 +1015,11 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Le, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a <= b)),
         (BinOp::Gt, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a > b)),
         (BinOp::Ge, Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a >= b)),
-        
+
         // Comparison operations for Bool
         (BinOp::Eq, Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
         (BinOp::Neq, Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a != b)),
-        
+
         // Comparison operations for Char
         (BinOp::Eq, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a == b)),
         (BinOp::Neq, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a != b)),
@@ -1022,7 +1027,7 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Le, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a <= b)),
         (BinOp::Gt, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a > b)),
         (BinOp::Ge, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a >= b)),
-        
+
         // Comparison operations for Byte
         (BinOp::Eq, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a == b)),
         (BinOp::Neq, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a != b)),
@@ -1030,7 +1035,7 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Le, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a <= b)),
         (BinOp::Gt, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a > b)),
         (BinOp::Ge, Value::Byte(a), Value::Byte(b)) => Ok(Value::Bool(a >= b)),
-        
+
         // Comparison operations for Range
         (BinOp::Eq, Value::Range(start1, end1), Value::Range(start2, end2)) => {
             Ok(Value::Bool(start1 == start2 && end1 == end2))
@@ -1038,9 +1043,10 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Neq, Value::Range(start1, end1), Value::Range(start2, end2)) => {
             Ok(Value::Bool(start1 != start2 || end1 != end2))
         }
-        
+
         (op, left, right) => Err(EvalError::TypeError(format!(
-            "Type error in binary operation {:?}: cannot apply to {:?} and {:?}", op, left, right
+            "Type error in binary operation {:?}: cannot apply to {:?} and {:?}",
+            op, left, right
         ))),
     }
 }
@@ -1064,11 +1070,7 @@ mod tests {
     #[test]
     fn test_eval_binop() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Add,
-            Box::new(Expr::Int(1)),
-            Box::new(Expr::Int(2)),
-        );
+        let expr = Expr::BinOp(BinOp::Add, Box::new(Expr::Int(1)), Box::new(Expr::Int(2)));
         assert_eq!(eval(&expr, &env), Ok(Value::Int(3)));
     }
 
@@ -1118,62 +1120,45 @@ mod tests {
     fn test_eval_unbound_var() {
         let env = Environment::new();
         let expr = Expr::Var("x".to_string());
-        assert!(matches!(eval(&expr, &env), Err(EvalError::UnboundVariable(_))));
+        assert!(matches!(
+            eval(&expr, &env),
+            Err(EvalError::UnboundVariable(_))
+        ));
     }
 
     // Test all arithmetic operations
     #[test]
     fn test_eval_add() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Add,
-            Box::new(Expr::Int(10)),
-            Box::new(Expr::Int(32)),
-        );
+        let expr = Expr::BinOp(BinOp::Add, Box::new(Expr::Int(10)), Box::new(Expr::Int(32)));
         assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
     }
 
     #[test]
     fn test_eval_sub() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Sub,
-            Box::new(Expr::Int(50)),
-            Box::new(Expr::Int(8)),
-        );
+        let expr = Expr::BinOp(BinOp::Sub, Box::new(Expr::Int(50)), Box::new(Expr::Int(8)));
         assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
     }
 
     #[test]
     fn test_eval_mul() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Mul,
-            Box::new(Expr::Int(6)),
-            Box::new(Expr::Int(7)),
-        );
+        let expr = Expr::BinOp(BinOp::Mul, Box::new(Expr::Int(6)), Box::new(Expr::Int(7)));
         assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
     }
 
     #[test]
     fn test_eval_div() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Div,
-            Box::new(Expr::Int(84)),
-            Box::new(Expr::Int(2)),
-        );
+        let expr = Expr::BinOp(BinOp::Div, Box::new(Expr::Int(84)), Box::new(Expr::Int(2)));
         assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
     }
 
     #[test]
     fn test_eval_div_by_zero() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Div,
-            Box::new(Expr::Int(42)),
-            Box::new(Expr::Int(0)),
-        );
+        let expr = Expr::BinOp(BinOp::Div, Box::new(Expr::Int(42)), Box::new(Expr::Int(0)));
         assert_eq!(eval(&expr, &env), Err(EvalError::DivisionByZero));
     }
 
@@ -1181,132 +1166,84 @@ mod tests {
     #[test]
     fn test_eval_eq_true() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Eq,
-            Box::new(Expr::Int(42)),
-            Box::new(Expr::Int(42)),
-        );
+        let expr = Expr::BinOp(BinOp::Eq, Box::new(Expr::Int(42)), Box::new(Expr::Int(42)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
     }
 
     #[test]
     fn test_eval_eq_false() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Eq,
-            Box::new(Expr::Int(42)),
-            Box::new(Expr::Int(43)),
-        );
+        let expr = Expr::BinOp(BinOp::Eq, Box::new(Expr::Int(42)), Box::new(Expr::Int(43)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(false)));
     }
 
     #[test]
     fn test_eval_neq_true() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Neq,
-            Box::new(Expr::Int(42)),
-            Box::new(Expr::Int(43)),
-        );
+        let expr = Expr::BinOp(BinOp::Neq, Box::new(Expr::Int(42)), Box::new(Expr::Int(43)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
     }
 
     #[test]
     fn test_eval_neq_false() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Neq,
-            Box::new(Expr::Int(42)),
-            Box::new(Expr::Int(42)),
-        );
+        let expr = Expr::BinOp(BinOp::Neq, Box::new(Expr::Int(42)), Box::new(Expr::Int(42)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(false)));
     }
 
     #[test]
     fn test_eval_lt_true() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Lt,
-            Box::new(Expr::Int(3)),
-            Box::new(Expr::Int(5)),
-        );
+        let expr = Expr::BinOp(BinOp::Lt, Box::new(Expr::Int(3)), Box::new(Expr::Int(5)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
     }
 
     #[test]
     fn test_eval_lt_false() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Lt,
-            Box::new(Expr::Int(5)),
-            Box::new(Expr::Int(3)),
-        );
+        let expr = Expr::BinOp(BinOp::Lt, Box::new(Expr::Int(5)), Box::new(Expr::Int(3)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(false)));
     }
 
     #[test]
     fn test_eval_le_true() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Le,
-            Box::new(Expr::Int(3)),
-            Box::new(Expr::Int(5)),
-        );
+        let expr = Expr::BinOp(BinOp::Le, Box::new(Expr::Int(3)), Box::new(Expr::Int(5)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
     }
 
     #[test]
     fn test_eval_le_equal() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Le,
-            Box::new(Expr::Int(5)),
-            Box::new(Expr::Int(5)),
-        );
+        let expr = Expr::BinOp(BinOp::Le, Box::new(Expr::Int(5)), Box::new(Expr::Int(5)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
     }
 
     #[test]
     fn test_eval_gt_true() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Gt,
-            Box::new(Expr::Int(5)),
-            Box::new(Expr::Int(3)),
-        );
+        let expr = Expr::BinOp(BinOp::Gt, Box::new(Expr::Int(5)), Box::new(Expr::Int(3)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
     }
 
     #[test]
     fn test_eval_gt_false() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Gt,
-            Box::new(Expr::Int(3)),
-            Box::new(Expr::Int(5)),
-        );
+        let expr = Expr::BinOp(BinOp::Gt, Box::new(Expr::Int(3)), Box::new(Expr::Int(5)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(false)));
     }
 
     #[test]
     fn test_eval_ge_true() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Ge,
-            Box::new(Expr::Int(5)),
-            Box::new(Expr::Int(3)),
-        );
+        let expr = Expr::BinOp(BinOp::Ge, Box::new(Expr::Int(5)), Box::new(Expr::Int(3)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
     }
 
     #[test]
     fn test_eval_ge_equal() {
         let env = Environment::new();
-        let expr = Expr::BinOp(
-            BinOp::Ge,
-            Box::new(Expr::Int(5)),
-            Box::new(Expr::Int(5)),
-        );
+        let expr = Expr::BinOp(BinOp::Ge, Box::new(Expr::Int(5)), Box::new(Expr::Int(5)));
         assert_eq!(eval(&expr, &env), Ok(Value::Bool(true)));
     }
 
@@ -1755,13 +1692,13 @@ mod tests {
     #[test]
     fn test_load_simple_library() {
         use std::fs;
-        
+
         // Create a temporary library file
         let lib_content = "let double = fun x -> x * 2 in 0";
         let temp_dir = std::env::temp_dir();
         let temp_file = temp_dir.join("test_load_simple.par");
         fs::write(&temp_file, lib_content).unwrap();
-        
+
         let env = Environment::new();
         let expr = Expr::Load(
             temp_file.to_str().unwrap().to_string(),
@@ -1770,10 +1707,10 @@ mod tests {
                 Box::new(Expr::Int(21)),
             )),
         );
-        
+
         let result = eval(&expr, &env);
         assert_eq!(result, Ok(Value::Int(42)));
-        
+
         // Cleanup
         fs::remove_file(&temp_file).ok();
     }
@@ -1781,13 +1718,13 @@ mod tests {
     #[test]
     fn test_load_multiple_functions() {
         use std::fs;
-        
+
         // Create a library with multiple functions
         let lib_content = "let double = fun x -> x * 2 in let triple = fun x -> x * 3 in 0";
         let temp_dir = std::env::temp_dir();
         let temp_file = temp_dir.join("test_load_multiple.par");
         fs::write(&temp_file, lib_content).unwrap();
-        
+
         let env = Environment::new();
         // Use both double and triple
         let expr = Expr::Load(
@@ -1804,10 +1741,10 @@ mod tests {
                 )),
             )),
         );
-        
+
         let result = eval(&expr, &env);
         assert_eq!(result, Ok(Value::Int(41))); // 10*2 + 7*3 = 20 + 21 = 41
-        
+
         // Cleanup
         fs::remove_file(&temp_file).ok();
     }
@@ -1815,13 +1752,13 @@ mod tests {
     #[test]
     fn test_load_with_nested_lets() {
         use std::fs;
-        
+
         // Library with nested lets creating multiple bindings
         let lib_content = "let square = fun x -> x * x in let cube = fun x -> x * x * x in 0";
         let temp_dir = std::env::temp_dir();
         let temp_file = temp_dir.join("test_load_nested_lets.par");
         fs::write(&temp_file, lib_content).unwrap();
-        
+
         let env = Environment::new();
         let expr = Expr::Load(
             temp_file.to_str().unwrap().to_string(),
@@ -1830,10 +1767,10 @@ mod tests {
                 Box::new(Expr::Int(3)),
             )),
         );
-        
+
         let result = eval(&expr, &env);
         assert_eq!(result, Ok(Value::Int(27))); // 3^3 = 27
-        
+
         // Cleanup
         fs::remove_file(&temp_file).ok();
     }
@@ -1841,11 +1778,8 @@ mod tests {
     #[test]
     fn test_load_file_not_found() {
         let env = Environment::new();
-        let expr = Expr::Load(
-            "/nonexistent/file.par".to_string(),
-            Box::new(Expr::Int(42)),
-        );
-        
+        let expr = Expr::Load("/nonexistent/file.par".to_string(), Box::new(Expr::Int(42)));
+
         let result = eval(&expr, &env);
         assert!(matches!(result, Err(EvalError::LoadError(_))));
         if let Err(EvalError::LoadError(msg)) = result {
@@ -1856,25 +1790,25 @@ mod tests {
     #[test]
     fn test_load_parse_error() {
         use std::fs;
-        
+
         // Create a file with invalid syntax
         let lib_content = "let x = ";
         let temp_dir = std::env::temp_dir();
         let temp_file = temp_dir.join("test_load_parse_error.par");
         fs::write(&temp_file, lib_content).unwrap();
-        
+
         let env = Environment::new();
         let expr = Expr::Load(
             temp_file.to_str().unwrap().to_string(),
             Box::new(Expr::Int(42)),
         );
-        
+
         let result = eval(&expr, &env);
         assert!(matches!(result, Err(EvalError::LoadError(_))));
         if let Err(EvalError::LoadError(msg)) = result {
             assert!(msg.contains("Failed to parse file"));
         }
-        
+
         // Cleanup
         fs::remove_file(&temp_file).ok();
     }
@@ -1882,18 +1816,21 @@ mod tests {
     #[test]
     fn test_load_nested_load() {
         use std::fs;
-        
+
         // Create first library
         let lib1_content = "let helper = fun x -> x + 1 in 0";
         let temp_dir = std::env::temp_dir();
         let temp_file1 = temp_dir.join("test_load_lib1.par");
         fs::write(&temp_file1, lib1_content).unwrap();
-        
+
         // Create second library that loads the first
-        let lib2_content = format!("load \"{}\" in let double_helper = fun x -> helper (helper x) in 0", temp_file1.to_str().unwrap());
+        let lib2_content = format!(
+            "load \"{}\" in let double_helper = fun x -> helper (helper x) in 0",
+            temp_file1.to_str().unwrap()
+        );
         let temp_file2 = temp_dir.join("test_load_lib2.par");
         fs::write(&temp_file2, &lib2_content).unwrap();
-        
+
         let env = Environment::new();
         let expr = Expr::Load(
             temp_file2.to_str().unwrap().to_string(),
@@ -1902,10 +1839,10 @@ mod tests {
                 Box::new(Expr::Int(10)),
             )),
         );
-        
+
         let result = eval(&expr, &env);
         assert_eq!(result, Ok(Value::Int(12))); // 10 + 1 + 1 = 12
-        
+
         // Cleanup
         fs::remove_file(&temp_file1).ok();
         fs::remove_file(&temp_file2).ok();
@@ -1914,17 +1851,17 @@ mod tests {
     #[test]
     fn test_load_preserves_outer_bindings() {
         use std::fs;
-        
+
         // Create a library
         let lib_content = "let double = fun x -> x * 2 in 0";
         let temp_dir = std::env::temp_dir();
         let temp_file = temp_dir.join("test_load_preserve.par");
         fs::write(&temp_file, lib_content).unwrap();
-        
+
         // Create an environment with existing bindings
         let mut env = Environment::new();
         env.bind("y".to_string(), Value::Int(10));
-        
+
         // Load library and use both outer and library bindings
         let expr = Expr::Load(
             temp_file.to_str().unwrap().to_string(),
@@ -1937,10 +1874,10 @@ mod tests {
                 )),
             )),
         );
-        
+
         let result = eval(&expr, &env);
         assert_eq!(result, Ok(Value::Int(20))); // 10 + (5*2) = 20
-        
+
         // Cleanup
         fs::remove_file(&temp_file).ok();
     }
@@ -1950,10 +1887,10 @@ mod tests {
     fn test_environment_merge() {
         let mut env1 = Environment::new();
         env1.bind("x".to_string(), Value::Int(1));
-        
+
         let mut env2 = Environment::new();
         env2.bind("y".to_string(), Value::Int(2));
-        
+
         let merged = env1.merge(&env2);
         assert_eq!(merged.lookup("x"), Some(&Value::Int(1)));
         assert_eq!(merged.lookup("y"), Some(&Value::Int(2)));
@@ -1963,10 +1900,10 @@ mod tests {
     fn test_environment_merge_shadowing() {
         let mut env1 = Environment::new();
         env1.bind("x".to_string(), Value::Int(1));
-        
+
         let mut env2 = Environment::new();
         env2.bind("x".to_string(), Value::Int(2));
-        
+
         let merged = env1.merge(&env2);
         // Later binding should shadow
         assert_eq!(merged.lookup("x"), Some(&Value::Int(2)));
@@ -2023,7 +1960,10 @@ mod tests {
         );
         let env = Environment::new();
         let result_env = extract_bindings(&expr, &env).unwrap();
-        assert!(matches!(result_env.lookup("double"), Some(Value::Closure(_, _, _))));
+        assert!(matches!(
+            result_env.lookup("double"),
+            Some(Value::Closure(_, _, _))
+        ));
     }
 
     // Test EvalError Display for LoadError
@@ -2182,20 +2122,14 @@ mod tests {
     #[test]
     fn test_eval_tuple_proj_first() {
         let env = Environment::new();
-        let expr = Expr::TupleProj(
-            Box::new(Expr::Tuple(vec![Expr::Int(10), Expr::Int(20)])),
-            0,
-        );
+        let expr = Expr::TupleProj(Box::new(Expr::Tuple(vec![Expr::Int(10), Expr::Int(20)])), 0);
         assert_eq!(eval(&expr, &env), Ok(Value::Int(10)));
     }
 
     #[test]
     fn test_eval_tuple_proj_second() {
         let env = Environment::new();
-        let expr = Expr::TupleProj(
-            Box::new(Expr::Tuple(vec![Expr::Int(10), Expr::Int(20)])),
-            1,
-        );
+        let expr = Expr::TupleProj(Box::new(Expr::Tuple(vec![Expr::Int(10), Expr::Int(20)])), 1);
         assert_eq!(eval(&expr, &env), Ok(Value::Int(20)));
     }
 
@@ -2219,10 +2153,7 @@ mod tests {
     #[test]
     fn test_eval_tuple_proj_out_of_bounds() {
         let env = Environment::new();
-        let expr = Expr::TupleProj(
-            Box::new(Expr::Tuple(vec![Expr::Int(10), Expr::Int(20)])),
-            2,
-        );
+        let expr = Expr::TupleProj(Box::new(Expr::Tuple(vec![Expr::Int(10), Expr::Int(20)])), 2);
         assert!(matches!(
             eval(&expr, &env),
             Err(EvalError::IndexOutOfBounds(_))
@@ -2240,7 +2171,10 @@ mod tests {
     #[test]
     fn test_match_pattern_tuple_simple() {
         let env = Environment::new();
-        let pattern = Pattern::Tuple(vec![Pattern::Var("x".to_string()), Pattern::Var("y".to_string())]);
+        let pattern = Pattern::Tuple(vec![
+            Pattern::Var("x".to_string()),
+            Pattern::Var("y".to_string()),
+        ]);
         let value = Value::Tuple(vec![Value::Int(1), Value::Int(2)]);
         let result = match_pattern(&pattern, &value, &env);
         assert!(result.is_some());
@@ -2288,7 +2222,10 @@ mod tests {
     fn test_match_pattern_tuple_nested() {
         let env = Environment::new();
         let pattern = Pattern::Tuple(vec![
-            Pattern::Tuple(vec![Pattern::Var("a".to_string()), Pattern::Var("b".to_string())]),
+            Pattern::Tuple(vec![
+                Pattern::Var("a".to_string()),
+                Pattern::Var("b".to_string()),
+            ]),
             Pattern::Var("c".to_string()),
         ]);
         let value = Value::Tuple(vec![
@@ -2318,7 +2255,10 @@ mod tests {
                     Expr::Int(0),
                 ),
                 (
-                    Pattern::Tuple(vec![Pattern::Var("x".to_string()), Pattern::Var("y".to_string())]),
+                    Pattern::Tuple(vec![
+                        Pattern::Var("x".to_string()),
+                        Pattern::Var("y".to_string()),
+                    ]),
                     Expr::BinOp(
                         BinOp::Add,
                         Box::new(Expr::Var("x".to_string())),
@@ -2352,4 +2292,3 @@ mod tests {
         assert_eq!(format!("{val}"), "((1, 2), 3)");
     }
 }
-

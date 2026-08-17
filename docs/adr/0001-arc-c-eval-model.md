@@ -64,6 +64,9 @@ stays UNTOUCHED. Reserved names:
 - `Con("+"|"-"|"*"|"/", [a, b])` — checked arithmetic on `Int`.
 - `Con("<", [a, b])` — `Int` operands only.
 - `Con("eq", [a, b])` — base-type operands only.
+- `Con("strlen", [s])` — host string primitive; length of a `Str` value.
+- `Con("strcat", [a, b])` — host string primitive; concatenation of two
+  `Str` values.
 
 **Option B** (adding dedicated `Term::If`/`Term::Prim` AST variants) is the
 **rejected alternative**: it mutates the shared AST used by other arcs and
@@ -71,8 +74,16 @@ ripples into `display.rs`/`dot.rs`/`builder.rs`/typechecker, whereas Option A
 keeps the AST frozen and localizes all VM concerns to `eval.rs`. This fork is
 now resolved, not open.
 
-Accepted consequence: a user constructor literally named `if`/`eq`/`+`/etc.
-is shadowed by primitive dispatch.
+Accepted consequence: a user constructor literally named
+`if`/`eq`/`+`/`strlen`/`strcat`/etc. is shadowed by primitive dispatch.
+
+Arc C4 added two host string primitives, `strlen` and `strcat`, to this
+reserved-name set. These are dispatch-only reserved constructor names, not
+environment bindings — like `if`/`eq`/etc., they are recognized directly by
+the VM's `Con` dispatch in `eval.rs` and do not appear as bindings in any
+`Environment`. The `eq` mismatched-base-type behavior (falling back to
+non-error `false` rather than raising `NotComparable`) is unchanged by this
+addition.
 
 ### Decision 4 — Recursion via `RecClosure` re-bound at each application
 

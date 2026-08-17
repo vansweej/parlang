@@ -1,12 +1,12 @@
 /// Abstract Syntax Tree definitions for the `ParLang` language
-/// 
+///
 /// This module defines the Abstract Syntax Tree (AST) structure for ParLang,
 /// representing the parsed structure of programs before evaluation or type checking.
-/// 
+///
 /// # Overview
-/// 
+///
 /// The AST consists of several key types:
-/// 
+///
 /// - **`Expr`**: Core expression type representing all language constructs (literals,
 ///   variables, functions, applications, conditionals, pattern matching, etc.)
 /// - **`Pattern`**: Patterns used in pattern matching and destructuring
@@ -14,9 +14,9 @@
 /// - **`TypeExpr`**: Type expressions for type aliases
 /// - **`TypeAnnotation`**: Type annotations for sum type definitions
 /// - **`BinOp`**: Binary operators for arithmetic and comparison
-/// 
+///
 /// # Expression Types
-/// 
+///
 /// The language supports:
 /// - Literals: `Lit(Literal)`
 /// - Variables: `Var(String)`
@@ -36,9 +36,9 @@
 /// - Sum types: `SumType(name, params, constructors, body)`
 /// - Constructors: `Constructor(name, args)`
 /// - Library loading: `Load(filepath, body)`
-/// 
+///
 /// # Pattern Matching
-/// 
+///
 /// Patterns support:
 /// - Literal patterns: `Pattern::Literal(lit)`
 /// - Variable binding: `Pattern::Var(name)`
@@ -46,17 +46,17 @@
 /// - Tuples: `Pattern::Tuple(patterns)`
 /// - Records: `Pattern::Record(fields)` with partial matching
 /// - Constructors: `Pattern::Constructor(name, args)`
-/// 
+///
 /// # Example
-/// 
+///
 /// ```text
 /// let x = 42 in x + 1
 /// ```
-/// 
+///
 /// Is represented as:
-/// 
+///
 /// ```text
-/// Let("x", None, 
+/// Let("x", None,
 ///     Lit(Int(42)),
 ///     BinOp(Add, Var("x"), Lit(Int(1))))
 /// ```
@@ -89,7 +89,7 @@ pub enum Pattern {
     /// Record pattern: { field1: pattern1, field2: pattern2, ... }
     /// Can be partial (only match some fields)
     Record(Vec<(String, Pattern)>),
-    
+
     /// Constructor pattern: Some x, Cons head tail, Left value
     Constructor(String, Vec<Pattern>),
 }
@@ -125,72 +125,72 @@ pub enum TypeAnnotation {
 pub enum Expr {
     /// Integer literal: 42
     Int(i64),
-    
+
     /// Boolean literal: true, false
     Bool(bool),
-    
+
     /// Character literal: 'a', 'Z', '\n'
     Char(char),
-    
+
     /// Floating point literal: 3.14, -2.5, 0.0
     Float(f64),
-    
+
     /// Byte literal: 0b, 255b
     Byte(u8),
-    
+
     /// Variable reference: x, y, foo
     Var(String),
-    
+
     /// Binary operation: e1 + e2, e1 * e2, etc.
     BinOp(BinOp, Box<Expr>, Box<Expr>),
-    
+
     /// If-then-else: if e1 then e2 else e3
     If(Box<Expr>, Box<Expr>, Box<Expr>),
-    
+
     /// Let binding: let x = e1 in e2
     /// Optional type annotation for the variable
     Let(String, Option<TypeAnnotation>, Box<Expr>, Box<Expr>),
-    
+
     /// Function definition: fun x -> e
     /// Optional type annotation for the parameter
     Fun(String, Option<TypeAnnotation>, Box<Expr>),
-    
+
     /// Function application: f e
     App(Box<Expr>, Box<Expr>),
-    
+
     /// Load expression: load "filepath" in e
     Load(String, Box<Expr>),
-    
+
     /// Sequential let bindings: let x = e1; let y = e2; expr
     /// Vector of (name, optional type annotation, value) triples, followed by a body expression
     Seq(Vec<(String, Option<TypeAnnotation>, Expr)>, Box<Expr>),
-    
+
     /// Recursive function definition: rec name -> body
     /// The function can reference itself by name within its body
     Rec(String, Box<Expr>),
-    
+
     /// Pattern matching: match e with | p1 -> e1 | p2 -> e2 | ...
     /// (scrutinee expression, vector of (pattern, result expression) arms)
     Match(Box<Expr>, Vec<(Pattern, Expr)>),
-    
+
     /// Tuple construction: (e1, e2, e3, ...)
     Tuple(Vec<Expr>),
-    
+
     /// Tuple projection: e.0, e.1, e.2, ...
     TupleProj(Box<Expr>, usize),
-    
+
     /// Type alias definition: `type Name = TypeExpr in body`
     /// Defines a type alias that can be used in the body expression
     TypeAlias(String, TypeExpr, Box<Expr>),
-    
+
     /// Record construction: { field1: expr1, field2: expr2, ... }
     /// Vec maintains insertion order for display purposes
     Record(Vec<(String, Expr)>),
-    
+
     /// Field access: expr.field
     /// Accesses a named field from a record
     FieldAccess(Box<Expr>, String),
-    
+
     /// Type definition: type Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
     /// Introduces a new algebraic data type with constructors
     TypeDef {
@@ -204,30 +204,30 @@ pub enum Expr {
         /// Body expression where this type is in scope
         body: Box<Expr>,
     },
-    
+
     /// Constructor application: Some 42, Cons 1 rest, Left x
     Constructor(String, Vec<Expr>),
-    
+
     /// Fixed-size array construction: [|e1, e2, e3|]
     /// All elements must be of the same type
     Array(Vec<Expr>),
-    
+
     /// Array indexing: arr[i]
     /// Accesses element at index i (zero-based)
     ArrayIndex(Box<Expr>, Box<Expr>),
-    
+
     /// Reference creation: ref expr
     /// Creates a mutable reference to a value
     Ref(Box<Expr>),
-    
+
     /// Reference dereference: !expr
     /// Reads the value from a reference
     Deref(Box<Expr>),
-    
+
     /// Reference assignment: ref_expr := value_expr
     /// Mutates the value stored in a reference
     RefAssign(Box<Expr>, Box<Expr>),
-    
+
     /// Range construction: start..end
     /// Creates an inclusive integer range from start to end
     Range(Box<Expr>, Box<Expr>),
@@ -236,16 +236,16 @@ pub enum Expr {
 /// Binary operators
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
-    Add,  // +
-    Sub,  // -
-    Mul,  // *
-    Div,  // /
-    Eq,   // ==
-    Neq,  // !=
-    Lt,   // <
-    Le,   // <=
-    Gt,   // >
-    Ge,   // >=
+    Add, // +
+    Sub, // -
+    Mul, // *
+    Div, // /
+    Eq,  // ==
+    Neq, // !=
+    Lt,  // <
+    Le,  // <=
+    Gt,  // >
+    Ge,  // >=
 }
 
 impl fmt::Display for Expr {
@@ -337,14 +337,21 @@ impl fmt::Display for Expr {
             Expr::FieldAccess(record, field) => {
                 write!(f, "{record}.{field}")
             }
-            Expr::TypeDef { name, type_params, constructors, body } => {
+            Expr::TypeDef {
+                name,
+                type_params,
+                constructors,
+                body,
+            } => {
                 write!(f, "(type {}", name)?;
                 for param in type_params {
                     write!(f, " {}", param)?;
                 }
                 write!(f, " =")?;
                 for (i, (ctor, types)) in constructors.iter().enumerate() {
-                    if i > 0 { write!(f, " |")?; }
+                    if i > 0 {
+                        write!(f, " |")?;
+                    }
                     write!(f, " {}", ctor)?;
                     for ty in types {
                         write!(f, " {}", ty)?;
@@ -519,16 +526,8 @@ mod tests {
 
     #[test]
     fn test_expr_binop() {
-        let expr = Expr::BinOp(
-            BinOp::Add,
-            Box::new(Expr::Int(1)),
-            Box::new(Expr::Int(2)),
-        );
-        let expr2 = Expr::BinOp(
-            BinOp::Add,
-            Box::new(Expr::Int(1)),
-            Box::new(Expr::Int(2)),
-        );
+        let expr = Expr::BinOp(BinOp::Add, Box::new(Expr::Int(1)), Box::new(Expr::Int(2)));
+        let expr2 = Expr::BinOp(BinOp::Add, Box::new(Expr::Int(1)), Box::new(Expr::Int(2)));
         assert_eq!(expr, expr2);
     }
 
@@ -594,16 +593,10 @@ mod tests {
 
     #[test]
     fn test_expr_load() {
-        let expr = Expr::Load(
-            "lib.par".to_string(),
-            Box::new(Expr::Var("x".to_string())),
-        );
+        let expr = Expr::Load("lib.par".to_string(), Box::new(Expr::Var("x".to_string())));
         assert_eq!(
             expr,
-            Expr::Load(
-                "lib.par".to_string(),
-                Box::new(Expr::Var("x".to_string())),
-            )
+            Expr::Load("lib.par".to_string(), Box::new(Expr::Var("x".to_string())),)
         );
     }
 
@@ -656,11 +649,7 @@ mod tests {
 
     #[test]
     fn test_display_binop() {
-        let expr = Expr::BinOp(
-            BinOp::Add,
-            Box::new(Expr::Int(1)),
-            Box::new(Expr::Int(2)),
-        );
+        let expr = Expr::BinOp(BinOp::Add, Box::new(Expr::Int(1)), Box::new(Expr::Int(2)));
         assert_eq!(format!("{expr}"), "(1 + 2)");
     }
 
@@ -716,10 +705,7 @@ mod tests {
 
     #[test]
     fn test_display_load() {
-        let expr = Expr::Load(
-            "lib.par".to_string(),
-            Box::new(Expr::Var("x".to_string())),
-        );
+        let expr = Expr::Load("lib.par".to_string(), Box::new(Expr::Var("x".to_string())));
         assert_eq!(format!("{expr}"), "(load \"lib.par\" in x)");
     }
 
@@ -814,10 +800,7 @@ mod tests {
                 Box::new(Expr::Int(41)),
             )),
         );
-        assert_eq!(
-            format!("{expr}"),
-            "(let f = (fun x -> (x + 1)) in (f 41))"
-        );
+        assert_eq!(format!("{expr}"), "(let f = (fun x -> (x + 1)) in (f 41))");
     }
 
     #[test]
@@ -946,7 +929,10 @@ mod tests {
     #[test]
     fn test_display_pattern_tuple_nested() {
         let pat = Pattern::Tuple(vec![
-            Pattern::Tuple(vec![Pattern::Var("x".to_string()), Pattern::Var("y".to_string())]),
+            Pattern::Tuple(vec![
+                Pattern::Var("x".to_string()),
+                Pattern::Var("y".to_string()),
+            ]),
             Pattern::Var("z".to_string()),
         ]);
         assert_eq!(format!("{pat}"), "((x, y), z)");
@@ -1196,11 +1182,7 @@ mod tests {
 
     #[test]
     fn test_type_alias_clone() {
-        let expr = Expr::TypeAlias(
-            "MyInt".to_string(),
-            TypeExpr::Int,
-            Box::new(Expr::Int(42)),
-        );
+        let expr = Expr::TypeAlias("MyInt".to_string(), TypeExpr::Int, Box::new(Expr::Int(42)));
         let cloned = expr.clone();
         assert_eq!(expr, cloned);
     }

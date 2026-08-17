@@ -1,6 +1,6 @@
 /// Hindley-Milner type inference implementation
 use crate::ast::{BinOp, Expr};
-use crate::types::{Type, TypeScheme, TypeVar, RowVar};
+use crate::types::{RowVar, Type, TypeScheme, TypeVar};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -45,11 +45,11 @@ impl TypeEnv {
     }
 
     /// Generate a fresh row variable
-    /// 
+    ///
     /// Row variables represent "the rest of the fields" in record types.
     /// They enable row polymorphism, allowing functions to work with records
     /// that have at least certain fields.
-    /// 
+    ///
     /// # Example
     /// ```
     /// // When type-checking: fun r -> r.age
@@ -76,7 +76,14 @@ impl TypeEnv {
     /// Extend environment with a monomorphic binding
     pub fn extend(&self, name: String, ty: Type) -> Self {
         let mut new_env = self.clone();
-        new_env.bind(name, TypeScheme { vars: vec![], row_vars: vec![], ty });
+        new_env.bind(
+            name,
+            TypeScheme {
+                vars: vec![],
+                row_vars: vec![],
+                ty,
+            },
+        );
         new_env
     }
 
@@ -90,12 +97,12 @@ impl TypeEnv {
         for var in &scheme.vars {
             subst.insert(var.clone(), self.fresh_var());
         }
-        
+
         let mut row_subst = HashMap::new();
         for row_var in &scheme.row_vars {
             row_subst.insert(row_var.clone(), Type::Row(self.fresh_row_var()));
         }
-        
+
         let ty_after_subst = apply_subst(&subst, &scheme.ty);
         apply_row_subst(&row_subst, &ty_after_subst)
     }
@@ -105,10 +112,7 @@ impl TypeEnv {
         let free_in_env = self.free_vars();
         let free_in_type = free_type_vars(ty);
 
-        let mut quantified: Vec<TypeVar> = free_in_type
-            .difference(&free_in_env)
-            .cloned()
-            .collect();
+        let mut quantified: Vec<TypeVar> = free_in_type.difference(&free_in_env).cloned().collect();
         quantified.sort();
 
         let free_row_in_env = self.free_row_vars();
@@ -166,11 +170,7 @@ impl TypeEnv {
     }
 
     /// Register a constructor for a sum type
-    pub fn register_constructor(
-        &mut self,
-        constructor_name: String,
-        info: ConstructorInfo,
-    ) {
+    pub fn register_constructor(&mut self, constructor_name: String, info: ConstructorInfo) {
         self.constructors.insert(constructor_name, info);
     }
 
@@ -190,15 +190,15 @@ impl Default for TypeEnv {
 type Substitution = HashMap<TypeVar, Type>;
 
 /// Apply type substitution to a type
-/// 
+///
 /// This is a wrapper around `apply_subst_with_visited` that handles the common case
 /// of applying a substitution without needing to track visited variables. It prevents
 /// infinite recursion when dealing with cyclic type references.
-/// 
+///
 /// # Arguments
 /// * `subst` - The substitution mapping type variables to types
 /// * `ty` - The type to apply the substitution to
-/// 
+///
 /// # Returns
 /// A new type with all substitutable type variables replaced
 fn apply_subst(subst: &Substitution, ty: &Type) -> Type {
@@ -212,7 +212,13 @@ fn apply_subst_with_visited(
     visited: &mut HashSet<TypeVar>,
 ) -> Type {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit | Type::Range => ty.clone(),
+        Type::Int
+        | Type::Bool
+        | Type::Char
+        | Type::Float
+        | Type::Byte
+        | Type::Unit
+        | Type::Range => ty.clone(),
         Type::Var(v) => {
             if visited.contains(v) {
                 // Cycle detected, return the variable as-is
@@ -234,20 +240,14 @@ fn apply_subst_with_visited(
         Type::Record(fields) => {
             let mut new_fields = HashMap::new();
             for (name, ty) in fields {
-                new_fields.insert(
-                    name.clone(),
-                    apply_subst_with_visited(subst, ty, visited),
-                );
+                new_fields.insert(name.clone(), apply_subst_with_visited(subst, ty, visited));
             }
             Type::Record(new_fields)
         }
         Type::RecordRow(fields, row_var) => {
             let mut new_fields = HashMap::new();
             for (name, ty) in fields {
-                new_fields.insert(
-                    name.clone(),
-                    apply_subst_with_visited(subst, ty, visited),
-                );
+                new_fields.insert(name.clone(), apply_subst_with_visited(subst, ty, visited));
             }
             Type::RecordRow(new_fields, row_var.clone())
         }
@@ -271,27 +271,34 @@ fn apply_subst_with_visited(
 }
 
 /// Row substitution (maps RowVar to Type)
-/// 
+///
 /// Row substitutions map row variables to concrete types, allowing us to
 /// resolve row polymorphic types to concrete record types during unification.
 type RowSubstitution = HashMap<RowVar, Type>;
 
 /// Apply row substitution to a type
-/// 
+///
 /// This function applies row variable substitutions to types, which is essential
 /// for row polymorphism. When we have a type like `{ age: Int | r0 }` and a
 /// substitution `r0 -> { name: Int }`, we can merge them to get
 /// `{ age: Int, name: Int }`.
-/// 
+///
 /// # Arguments
 /// * `subst` - The row substitution mapping row variables to types
 /// * `ty` - The type to apply the substitution to
-/// 
+///
 /// # Returns
 /// The type with row variables substituted
 fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit | Type::Var(_) | Type::Range => ty.clone(),
+        Type::Int
+        | Type::Bool
+        | Type::Char
+        | Type::Float
+        | Type::Byte
+        | Type::Unit
+        | Type::Var(_)
+        | Type::Range => ty.clone(),
         Type::Fun(arg, ret) => Type::Fun(
             Box::new(apply_row_subst(subst, arg)),
             Box::new(apply_row_subst(subst, ret)),
@@ -358,24 +365,30 @@ fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
 }
 
 /// Get free type variables in a type
-/// 
+///
 /// A type variable is "free" if it appears in the type but is not bound by any
 /// quantifier. This function recursively traverses a type and collects all free
 /// type variables.
-/// 
+///
 /// # Arguments
 /// * `ty` - The type to analyze
-/// 
+///
 /// # Returns
 /// A set of all free type variables in the type
-/// 
+///
 /// # Example
 /// - For `Int -> Int`: returns `{}`
 /// - For `t0 -> t1`: returns `{t0, t1}`
 /// - For `{ age: t0 }`: returns `{t0}`
 fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit | Type::Range => HashSet::new(),
+        Type::Int
+        | Type::Bool
+        | Type::Char
+        | Type::Float
+        | Type::Byte
+        | Type::Unit
+        | Type::Range => HashSet::new(),
         Type::Var(v) => {
             let mut set = HashSet::new();
             set.insert(v.clone());
@@ -408,26 +421,30 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
             }
             set
         }
-        Type::Array(elem_ty, _size) => {
-            free_type_vars(elem_ty)
-        }
-        Type::Ref(inner_ty) => {
-            free_type_vars(inner_ty)
-        }
+        Type::Array(elem_ty, _size) => free_type_vars(elem_ty),
+        Type::Ref(inner_ty) => free_type_vars(inner_ty),
     }
 }
 
 /// Get free row variables in a type
-/// 
+///
 /// Row variables that appear in a type but are not bound by any quantifier
 /// are considered "free". This function collects all such free row variables.
-/// 
+///
 /// # Example
 /// For the type `{ age: Int | r0 }`, this returns `{r0}`.
 /// For the type `forall r0. { age: Int | r0 }`, after instantiation r0 is bound.
 fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Byte | Type::Unit | Type::Var(_) | Type::Record(_) | Type::Range => HashSet::new(),
+        Type::Int
+        | Type::Bool
+        | Type::Char
+        | Type::Float
+        | Type::Byte
+        | Type::Unit
+        | Type::Var(_)
+        | Type::Record(_)
+        | Type::Range => HashSet::new(),
         Type::RecordRow(fields, row_var) => {
             let mut set = HashSet::new();
             set.insert(row_var.clone());
@@ -453,12 +470,8 @@ fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
             }
             set
         }
-        Type::Array(elem_ty, _size) => {
-            free_row_vars(elem_ty)
-        }
-        Type::Ref(inner_ty) => {
-            free_row_vars(inner_ty)
-        }
+        Type::Array(elem_ty, _size) => free_row_vars(elem_ty),
+        Type::Ref(inner_ty) => free_row_vars(inner_ty),
     }
 }
 
@@ -491,12 +504,10 @@ fn type_annotation_to_type(
                 env.fresh_var()
             })
         }
-        crate::ast::TypeAnnotation::Fun(arg, ret) => {
-            Type::Fun(
-                Box::new(type_annotation_to_type(arg, type_param_map, env)),
-                Box::new(type_annotation_to_type(ret, type_param_map, env)),
-            )
-        }
+        crate::ast::TypeAnnotation::Fun(arg, ret) => Type::Fun(
+            Box::new(type_annotation_to_type(arg, type_param_map, env)),
+            Box::new(type_annotation_to_type(ret, type_param_map, env)),
+        ),
         crate::ast::TypeAnnotation::App(name, args) => {
             let arg_types: Vec<Type> = args
                 .iter()
@@ -540,7 +551,10 @@ impl fmt::Display for TypeError {
                 write!(f, "Recursive functions require type annotations")
             }
             TypeError::FieldNotFound(field, available) => {
-                write!(f, "Field '{field}' not found. Available fields: {available:?}")
+                write!(
+                    f,
+                    "Field '{field}' not found. Available fields: {available:?}"
+                )
             }
             TypeError::RecordExpected(got) => {
                 write!(f, "Expected record type, got {got}")
@@ -549,7 +563,10 @@ impl fmt::Display for TypeError {
                 write!(f, "Record types have different fields")
             }
             TypeError::ConstructorArityMismatch(name, expected, actual) => {
-                write!(f, "Constructor '{name}' expects {expected} arguments, but got {actual}")
+                write!(
+                    f,
+                    "Constructor '{name}' expects {expected} arguments, but got {actual}"
+                )
             }
         }
     }
@@ -560,7 +577,13 @@ impl std::error::Error for TypeError {}
 /// Unification algorithm
 fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
     match (t1, t2) {
-        (Type::Int, Type::Int) | (Type::Bool, Type::Bool) | (Type::Char, Type::Char) | (Type::Float, Type::Float) | (Type::Byte, Type::Byte) | (Type::Unit, Type::Unit) | (Type::Range, Type::Range) => Ok(HashMap::new()),
+        (Type::Int, Type::Int)
+        | (Type::Bool, Type::Bool)
+        | (Type::Char, Type::Char)
+        | (Type::Float, Type::Float)
+        | (Type::Byte, Type::Byte)
+        | (Type::Unit, Type::Unit)
+        | (Type::Range, Type::Range) => Ok(HashMap::new()),
 
         (Type::Var(v), t) | (t, Type::Var(v)) => bind_var(v.clone(), t.clone()),
 
@@ -577,9 +600,9 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
             if fields1.len() != fields2.len() {
                 return Err(TypeError::RecordFieldMismatch);
             }
-            
+
             let mut subst = HashMap::new();
-            
+
             for (name, ty1) in fields1 {
                 match fields2.get(name) {
                     Some(ty2) => {
@@ -593,7 +616,7 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
                     }
                 }
             }
-            
+
             Ok(subst)
         }
 
@@ -604,7 +627,7 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
         | (Type::RecordRow(row_fields, row_var), Type::Record(fields)) => {
             // The closed record must have at least the fields in row_fields
             let mut subst = HashMap::new();
-            
+
             // Unify the common fields
             for (name, row_ty) in row_fields {
                 match fields.get(name) {
@@ -615,22 +638,24 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
                         subst = compose_subst(&s, &subst);
                     }
                     None => {
-                        return Err(TypeError::FieldNotFound(name.clone(), 
-                            fields.keys().cloned().collect()));
+                        return Err(TypeError::FieldNotFound(
+                            name.clone(),
+                            fields.keys().cloned().collect(),
+                        ));
                     }
                 }
             }
-            
+
             // The row variable should represent the remaining fields
             let mut remaining = fields.clone();
             for name in row_fields.keys() {
                 remaining.remove(name);
             }
-            
+
             // Bind the row variable to the remaining fields
             let mut row_subst = HashMap::new();
             row_subst.insert(row_var.clone(), Type::Record(remaining));
-            
+
             // Compose the substitutions - we need to convert row_subst to regular subst
             // For now, we'll just return the type substitution
             Ok(subst)
@@ -644,21 +669,21 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
             let mut subst = HashMap::new();
             let mut fields1_only = HashMap::new();
             let mut fields2_only = HashMap::new();
-            
+
             // Collect fields only in fields1
             for (name, ty) in fields1 {
                 if !fields2.contains_key(name) {
                     fields1_only.insert(name.clone(), ty.clone());
                 }
             }
-            
+
             // Collect fields only in fields2
             for (name, ty) in fields2 {
                 if !fields1.contains_key(name) {
                     fields2_only.insert(name.clone(), ty.clone());
                 }
             }
-            
+
             // Unify common fields
             for (name, ty1) in fields1 {
                 if let Some(ty2) = fields2.get(name) {
@@ -668,7 +693,7 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
                     subst = compose_subst(&s, &subst);
                 }
             }
-            
+
             // Now we need to handle the row variables
             // row1 should contain fields2_only + some rest
             // row2 should contain fields1_only + some rest
@@ -705,15 +730,14 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
         }
 
         // Unify Row with Record or RecordRow
-        (Type::Row(_row), Type::Record(_fields)) |
-        (Type::Record(_fields), Type::Row(_row)) => {
+        (Type::Row(_row), Type::Record(_fields)) | (Type::Record(_fields), Type::Row(_row)) => {
             // A row variable can unify with a closed record
             // This would bind the row variable to that record
             Ok(HashMap::new())
         }
 
-        (Type::Row(_row), Type::RecordRow(_fields, _row_var)) |
-        (Type::RecordRow(_fields, _row_var), Type::Row(_row)) => {
+        (Type::Row(_row), Type::RecordRow(_fields, _row_var))
+        | (Type::RecordRow(_fields, _row_var), Type::Row(_row)) => {
             // A row variable can unify with a row-polymorphic record
             Ok(HashMap::new())
         }
@@ -723,11 +747,11 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
             if name1 != name2 {
                 return Err(TypeError::UnificationError(t1.clone(), t2.clone()));
             }
-            
+
             if args1.len() != args2.len() {
                 return Err(TypeError::UnificationError(t1.clone(), t2.clone()));
             }
-            
+
             // Unify all type arguments
             let mut subst = HashMap::new();
             for (type_arg1, type_arg2) in args1.iter().zip(args2.iter()) {
@@ -736,7 +760,7 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
                 let s = unify(&type_arg1, &type_arg2)?;
                 subst = compose_subst(&s, &subst);
             }
-            
+
             Ok(subst)
         }
 
@@ -788,15 +812,17 @@ fn resolve_type_expr(ty_expr: &crate::ast::TypeExpr, env: &TypeEnv) -> Result<Ty
             let ret_ty = resolve_type_expr(ret, env)?;
             Ok(Type::Fun(Box::new(arg_ty), Box::new(ret_ty)))
         }
-        crate::ast::TypeExpr::Alias(name) => {
-            env.resolve_type_alias(name)
-                .ok_or_else(|| TypeError::UnboundVariable(name.clone()))
-        }
+        crate::ast::TypeExpr::Alias(name) => env
+            .resolve_type_alias(name)
+            .ok_or_else(|| TypeError::UnboundVariable(name.clone())),
     }
 }
 
 /// Convert a TypeAnnotation to a Type, resolving names to concrete types
-fn resolve_type_annotation(ty_ann: &crate::ast::TypeAnnotation, env: &mut TypeEnv) -> Result<Type, TypeError> {
+fn resolve_type_annotation(
+    ty_ann: &crate::ast::TypeAnnotation,
+    env: &mut TypeEnv,
+) -> Result<Type, TypeError> {
     match ty_ann {
         crate::ast::TypeAnnotation::Concrete(name) => {
             // Check if it's a basic type
@@ -825,7 +851,10 @@ fn resolve_type_annotation(ty_ann: &crate::ast::TypeAnnotation, env: &mut TypeEn
         crate::ast::TypeAnnotation::App(name, _args) => {
             // For now, we don't support applied types in annotations
             // This would require tracking type constructors
-            Err(TypeError::UnboundVariable(format!("Applied type not yet supported in annotations: {}", name)))
+            Err(TypeError::UnboundVariable(format!(
+                "Applied type not yet supported in annotations: {}",
+                name
+            )))
         }
     }
 }
@@ -882,7 +911,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                             // Try to unify with right type first
                             let s3 = unify(&left_ty, &right_ty)?;
                             let unified_ty = apply_subst(&s3, &left_ty);
-                            
+
                             // Now check if unified type is Int, Float, or Byte
                             match &unified_ty {
                                 Type::Int | Type::Float | Type::Byte => {
@@ -892,22 +921,19 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                                 Type::Var(_) => {
                                     // Still a type variable, default to Int for arithmetic operations
                                     let s4 = unify(&unified_ty, &Type::Int)?;
-                                    let subst = compose_subst(&s4, &compose_subst(&s3, &compose_subst(&s2, &s1)));
+                                    let subst = compose_subst(
+                                        &s4,
+                                        &compose_subst(&s3, &compose_subst(&s2, &s1)),
+                                    );
                                     return Ok((Type::Int, subst));
                                 }
                                 _ => {
-                                    return Err(TypeError::UnificationError(
-                                        unified_ty,
-                                        Type::Int,
-                                    ));
+                                    return Err(TypeError::UnificationError(unified_ty, Type::Int));
                                 }
                             }
                         }
                         _ => {
-                            return Err(TypeError::UnificationError(
-                                left_ty,
-                                Type::Int,
-                            ));
+                            return Err(TypeError::UnificationError(left_ty, Type::Int));
                         }
                     }
                 }
@@ -939,7 +965,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                             // Try to unify with right type first
                             let s3 = unify(&left_ty, &right_ty)?;
                             let unified_ty = apply_subst(&s3, &left_ty);
-                            
+
                             // Now check if unified type is Int, Char, Float, or Byte
                             match &unified_ty {
                                 Type::Int | Type::Char | Type::Float | Type::Byte => {
@@ -949,22 +975,19 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                                 Type::Var(_) => {
                                     // Still a type variable, default to Int for ordering operations
                                     let s4 = unify(&unified_ty, &Type::Int)?;
-                                    let subst = compose_subst(&s4, &compose_subst(&s3, &compose_subst(&s2, &s1)));
+                                    let subst = compose_subst(
+                                        &s4,
+                                        &compose_subst(&s3, &compose_subst(&s2, &s1)),
+                                    );
                                     return Ok((Type::Bool, subst));
                                 }
                                 _ => {
-                                    return Err(TypeError::UnificationError(
-                                        unified_ty,
-                                        Type::Int,
-                                    ));
+                                    return Err(TypeError::UnificationError(unified_ty, Type::Int));
                                 }
                             }
                         }
                         _ => {
-                            return Err(TypeError::UnificationError(
-                                left_ty,
-                                Type::Int,
-                            ));
+                            return Err(TypeError::UnificationError(left_ty, Type::Int));
                         }
                     }
                 }
@@ -1011,10 +1034,10 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 let annotated_ty = resolve_type_annotation(ty_ann, env)?;
                 let s_ann = unify(&value_ty, &annotated_ty)?;
                 let s1 = compose_subst(&s_ann, &s1);
-                
+
                 let mut env1 = env.clone();
                 apply_subst_env(&s1, &mut env1);
-                
+
                 let unified_ty = apply_subst(&s1, &value_ty);
                 let scheme = env1.generalize(&unified_ty);
                 env1.bind(name.clone(), scheme);
@@ -1045,7 +1068,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             } else {
                 env.fresh_var()
             };
-            
+
             let mut env1 = env.clone();
             env1 = env1.extend(param.clone(), param_ty.clone());
 
@@ -1083,20 +1106,20 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             // 2. Add it to the environment before checking the body
             // 3. Infer the type of the body with the recursive name bound
             // 4. Unify the inferred type with the assumed type
-            
+
             let rec_ty = env.fresh_var();
             let mut extended_env = env.extend(name.clone(), rec_ty.clone());
-            
+
             let (body_ty, subst) = infer(body, &mut extended_env)?;
-            
+
             // The body type should be the same as the recursive function type
             // (after applying the substitution from inferring the body)
             let rec_ty = apply_subst(&subst, &rec_ty);
             let s2 = unify(&rec_ty, &body_ty)?;
-            
+
             let final_ty = apply_subst(&s2, &body_ty);
             let final_subst = compose_subst(&s2, &subst);
-            
+
             Ok((final_ty, final_subst))
         }
 
@@ -1133,45 +1156,45 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
         Expr::TypeAlias(name, ty_expr, body) => {
             // Resolve the type expression to a Type
             let ty = resolve_type_expr(ty_expr, env)?;
-            
+
             // Define the type alias in the environment
             let mut new_env = env.clone();
             new_env.define_type_alias(name.clone(), ty);
-            
+
             // Infer the type of the body with the extended environment
             infer(body, &mut new_env)
         }
-        
+
         Expr::Record(fields) => {
             // Infer types for all field expressions
             let mut field_types = HashMap::new();
             let mut subst = HashMap::new();
-            
+
             for (name, expr) in fields {
                 let (ty, s) = infer(expr, env)?;
-                
+
                 // Apply accumulated substitution to the type
                 let ty = apply_subst(&subst, &ty);
-                
+
                 // Compose substitutions
                 subst = compose_subst(&s, &subst);
-                
+
                 // Apply substitution to environment for next field
                 apply_subst_env(&s, env);
-                
+
                 field_types.insert(name.clone(), ty);
             }
-            
+
             Ok((Type::Record(field_types), subst))
         }
-        
+
         Expr::FieldAccess(record_expr, field_name) => {
             // Infer the type of the record expression
             let (record_ty, s1) = infer(record_expr, env)?;
-            
+
             // Apply substitution to get concrete record type
             let record_ty = apply_subst(&s1, &record_ty);
-            
+
             match record_ty {
                 Type::Record(fields) => {
                     // Look up the field type
@@ -1200,16 +1223,16 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                     // Use row polymorphism: create a record type with at least this field
                     let field_ty = env.fresh_var();
                     let row_var = env.fresh_row_var();
-                    
+
                     // Create a record type with at least this field plus other fields (row variable)
                     let mut fields = HashMap::new();
                     fields.insert(field_name.clone(), field_ty.clone());
                     let record_with_field = Type::RecordRow(fields, row_var);
-                    
+
                     // Unify with the record type
                     let s2 = unify(&record_ty, &record_with_field)?;
                     let subst = compose_subst(&s2, &s1);
-                    
+
                     Ok((field_ty, subst))
                 }
                 Type::Row(row_var) => {
@@ -1217,26 +1240,29 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                     // Create a fresh type variable for the field type
                     let field_ty = env.fresh_var();
                     let new_row_var = env.fresh_row_var();
-                    
+
                     // Create a record type with this field
                     let mut fields = HashMap::new();
                     fields.insert(field_name.clone(), field_ty.clone());
                     let record_with_field = Type::RecordRow(fields, new_row_var);
-                    
+
                     // Unify the row variable with this record type
                     let row_ty = Type::Row(row_var.clone());
                     let s2 = unify(&row_ty, &record_with_field)?;
                     let subst = compose_subst(&s2, &s1);
-                    
+
                     Ok((field_ty, subst))
                 }
-                _ => {
-                    Err(TypeError::RecordExpected(format!("{record_ty}")))
-                }
+                _ => Err(TypeError::RecordExpected(format!("{record_ty}"))),
             }
         }
-        
-        Expr::TypeDef { name, type_params, constructors, body } => {
+
+        Expr::TypeDef {
+            name,
+            type_params,
+            constructors,
+            body,
+        } => {
             // Register constructors in the environment
             for (ctor_name, _payload_types) in constructors {
                 let info = ConstructorInfo {
@@ -1246,11 +1272,11 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 };
                 env.register_constructor(ctor_name.clone(), info);
             }
-            
+
             // Type check the body with constructors available
             infer(body, env)
         }
-        
+
         Expr::Constructor(name, args) => {
             // Look up constructor information and clone it to avoid borrow issues
             if let Some(info) = env.lookup_constructor(name).cloned() {
@@ -1259,17 +1285,17 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 for param in &info.type_params {
                     type_param_map.insert(param.clone(), env.fresh_var());
                 }
-                
+
                 // Type check each argument
                 let mut subst = HashMap::new();
                 let mut arg_types = Vec::new();
-                
+
                 for arg in args {
                     let (arg_ty, s) = infer(arg, env)?;
                     subst = compose_subst(&s, &subst);
                     arg_types.push(apply_subst(&subst, &arg_ty));
                 }
-                
+
                 // Check that the number of arguments matches
                 if arg_types.len() != info.payload_types.len() {
                     // Return an error for argument count mismatch
@@ -1279,22 +1305,22 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                         arg_types.len(),
                     ));
                 }
-                
+
                 // Unify each argument with its expected type
                 for (arg_ty, expected_annotation) in arg_types.iter().zip(&info.payload_types) {
-                    let expected_ty = type_annotation_to_type(expected_annotation, &type_param_map, env);
+                    let expected_ty =
+                        type_annotation_to_type(expected_annotation, &type_param_map, env);
                     let s = unify(arg_ty, &expected_ty)?;
                     subst = compose_subst(&s, &subst);
                 }
-                
+
                 // Create the result type
-                let type_args: Vec<Type> = info.type_params
+                let type_args: Vec<Type> = info
+                    .type_params
                     .iter()
-                    .map(|param| {
-                        apply_subst(&subst, &type_param_map[param])
-                    })
+                    .map(|param| apply_subst(&subst, &type_param_map[param]))
                     .collect();
-                
+
                 let result_ty = Type::SumType(info.sum_type_name.clone(), type_args);
                 Ok((result_ty, subst))
             } else {
@@ -1303,7 +1329,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 Ok((env.fresh_var(), HashMap::new()))
             }
         }
-        
+
         Expr::Array(elements) => {
             if elements.is_empty() {
                 // Empty array - use fresh type variable for element type
@@ -1312,38 +1338,41 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             } else {
                 // Infer type of first element
                 let (first_ty, mut subst) = infer(&elements[0], env)?;
-                
+
                 // Check that all other elements have the same type
                 for elem in &elements[1..] {
                     let (elem_ty, s) = infer(elem, env)?;
                     subst = compose_subst(&s, &subst);
-                    let s2 = unify(&apply_subst(&subst, &first_ty), &apply_subst(&subst, &elem_ty))?;
+                    let s2 = unify(
+                        &apply_subst(&subst, &first_ty),
+                        &apply_subst(&subst, &elem_ty),
+                    )?;
                     subst = compose_subst(&s2, &subst);
                 }
-                
+
                 let final_elem_ty = apply_subst(&subst, &first_ty);
                 let size = elements.len();
                 Ok((Type::Array(Box::new(final_elem_ty), size), subst))
             }
         }
-        
+
         Expr::ArrayIndex(arr_expr, index_expr) => {
             // Infer types of array and index
             let (arr_ty, s1) = infer(arr_expr, env)?;
             let (index_ty, s2) = infer(index_expr, env)?;
             let mut subst = compose_subst(&s2, &s1);
-            
+
             // Index must be Int
             let s3 = unify(&apply_subst(&subst, &index_ty), &Type::Int)?;
             subst = compose_subst(&s3, &subst);
-            
+
             // Array must be Array type
             let elem_ty = env.fresh_var();
             // Array size is not validated during type inference - it's a runtime property
             // We use 0 as a placeholder since the actual size will be checked at runtime
             let size_var = 0;
             let expected_arr_ty = Type::Array(Box::new(elem_ty.clone()), size_var);
-            
+
             // We need special handling for array unification because size may differ
             // Extract the element type from the array
             let arr_ty_subst = apply_subst(&subst, &arr_ty);
@@ -1359,57 +1388,45 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                     subst = compose_subst(&s4, &subst);
                     Ok((apply_subst(&subst, &elem_ty), subst))
                 }
-                _ => {
-                    Err(TypeError::UnificationError(
-                        arr_ty_subst,
-                        expected_arr_ty
-                    ))
-                }
+                _ => Err(TypeError::UnificationError(arr_ty_subst, expected_arr_ty)),
             }
         }
-        
+
         Expr::Ref(expr) => {
             // Type of ref expr is Ref T where T is the type of expr
             let (ty, subst) = infer(expr, env)?;
             Ok((Type::Ref(Box::new(ty)), subst))
         }
-        
+
         Expr::Deref(expr) => {
             // Type of !ref_expr is T where ref_expr has type Ref T
             let (ref_ty, subst) = infer(expr, env)?;
-            
+
             // Create a fresh type variable for the inner type
             let inner_ty = env.fresh_var();
             let expected_ref_ty = Type::Ref(Box::new(inner_ty.clone()));
-            
+
             // Unify the inferred type with Ref inner_ty
             let ref_ty_subst = apply_subst(&subst, &ref_ty);
             let s2 = match &ref_ty_subst {
-                Type::Ref(actual_inner) => {
-                    unify(&inner_ty, actual_inner)?
-                }
-                Type::Var(_) => {
-                    unify(&ref_ty_subst, &expected_ref_ty)?
-                }
+                Type::Ref(actual_inner) => unify(&inner_ty, actual_inner)?,
+                Type::Var(_) => unify(&ref_ty_subst, &expected_ref_ty)?,
                 _ => {
-                    return Err(TypeError::UnificationError(
-                        ref_ty_subst,
-                        expected_ref_ty
-                    ));
+                    return Err(TypeError::UnificationError(ref_ty_subst, expected_ref_ty));
                 }
             };
-            
+
             let final_subst = compose_subst(&s2, &subst);
             Ok((apply_subst(&final_subst, &inner_ty), final_subst))
         }
-        
+
         Expr::RefAssign(ref_expr, value_expr) => {
             // Type check: ref_expr must have type Ref T, value_expr must have type T
             // Result type is unit ()
             let (ref_ty, s1) = infer(ref_expr, env)?;
             let (val_ty, s2) = infer(value_expr, env)?;
             let mut subst = compose_subst(&s2, &s1);
-            
+
             // Extract the inner type from the reference
             let ref_ty_subst = apply_subst(&subst, &ref_ty);
             let inner_ty = match &ref_ty_subst {
@@ -1425,30 +1442,30 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
                 _ => {
                     return Err(TypeError::UnificationError(
                         ref_ty_subst,
-                        Type::Ref(Box::new(env.fresh_var()))
+                        Type::Ref(Box::new(env.fresh_var())),
                     ));
                 }
             };
-            
+
             // Unify the value type with the inner type of the reference
             let val_ty_subst = apply_subst(&subst, &val_ty);
             let s3 = unify(&val_ty_subst, &apply_subst(&subst, &inner_ty))?;
             subst = compose_subst(&s3, &subst);
-            
+
             // Return unit type
             Ok((Type::Unit, subst))
         }
-        
+
         Expr::Range(start_expr, end_expr) => {
             // Type check: start and end must both be integers
             let (start_ty, s1) = infer(start_expr, env)?;
             let (end_ty, s2) = infer(end_expr, env)?;
-            
+
             // Unify start with Int
             let s3 = unify(&start_ty, &Type::Int)?;
             // Unify end with Int
             let s4 = unify(&end_ty, &Type::Int)?;
-            
+
             let subst = compose_subst(&s4, &compose_subst(&s3, &compose_subst(&s2, &s1)));
             Ok((Type::Range, subst))
         }
@@ -1501,10 +1518,7 @@ mod tests {
     fn test_infer_if() {
         assert_eq!(check("if true then 1 else 2").unwrap(), Type::Int);
         assert_eq!(check("if 5 > 3 then 10 else 0").unwrap(), Type::Int);
-        assert_eq!(
-            check("if false then true else false").unwrap(),
-            Type::Bool
-        );
+        assert_eq!(check("if false then true else false").unwrap(), Type::Bool);
     }
 
     #[test]
@@ -1558,10 +1572,7 @@ mod tests {
 
     #[test]
     fn test_error_unbound_variable() {
-        assert!(matches!(
-            check("x + 1"),
-            Err(TypeError::UnboundVariable(_))
-        ));
+        assert!(matches!(check("x + 1"), Err(TypeError::UnboundVariable(_))));
         assert!(matches!(check("y"), Err(TypeError::UnboundVariable(_))));
     }
 
@@ -1655,7 +1666,7 @@ mod tests {
         let ty = check("rec f -> fun n -> if n == 0 then 1 else n").unwrap();
         assert_eq!(ty, Type::Fun(Box::new(Type::Int), Box::new(Type::Int)));
     }
-    
+
     #[test]
     fn test_rec_factorial() {
         // Test factorial: rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)

@@ -6,7 +6,7 @@ fn test_simple_record_construction() {
     let source = "{ name: 42, age: 30 }";
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     // Check the result contains both fields
     let result_str = format!("{}", result);
     assert!(result_str.contains("name: 42"));
@@ -18,7 +18,7 @@ fn test_empty_record() {
     let source = "{}";
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "{}");
 }
 
@@ -28,10 +28,10 @@ fn test_field_access() {
         let person = { name: 42, age: 30 }
         in person.age
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "30");
 }
 
@@ -41,10 +41,10 @@ fn test_field_access_multiple_fields() {
         let person = { name: 42, age: 30, city: 100 }
         in person.name
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -55,10 +55,10 @@ fn test_nested_records() {
         in let person = { name: 789, address: address }
         in person.address.city
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "456");
 }
 
@@ -67,7 +67,7 @@ fn test_record_with_boolean_fields() {
     let source = "{ active: true, verified: false }";
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     let result_str = format!("{}", result);
     assert!(result_str.contains("active: true"));
     assert!(result_str.contains("verified: false"));
@@ -80,10 +80,10 @@ fn test_record_pattern_matching_full() {
         in match person with
         | { name: n, age: a } -> n + a
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "72");
 }
 
@@ -94,10 +94,10 @@ fn test_record_pattern_matching_partial() {
         in match person with
         | { name: n } -> n
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -108,10 +108,10 @@ fn test_record_pattern_matching_with_wildcard() {
         in match person with
         | { name: _, age: a } -> a
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "30");
 }
 
@@ -122,10 +122,10 @@ fn test_record_in_function_parameter() {
         in let person = { name: 42, age: 25 }
         in getAge person
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "25");
 }
 
@@ -135,10 +135,10 @@ fn test_record_in_function_return() {
         let makePerson = fun n -> fun a -> { name: n, age: a }
         in makePerson 42 30
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     let result_str = format!("{}", result);
     assert!(result_str.contains("name: 42"));
     assert!(result_str.contains("age: 30"));
@@ -150,10 +150,10 @@ fn test_record_field_access_in_expression() {
         let person = { x: 10, y: 20 }
         in person.x + person.y
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "30");
 }
 
@@ -165,10 +165,10 @@ fn test_record_update_functional_style() {
         in let updatedPerson = { name: person.name, age: 31 }
         in updatedPerson.age
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "31");
 }
 
@@ -178,10 +178,10 @@ fn test_field_not_found_error() {
         let person = { name: 42, age: 30 }
         in person.salary
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new());
-    
+
     assert!(result.is_err());
     match result {
         Err(EvalError::FieldNotFound(field, _)) => {
@@ -194,10 +194,10 @@ fn test_field_not_found_error() {
 #[test]
 fn test_record_expected_error() {
     let source = "let x = 42 in x.field";
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new());
-    
+
     assert!(result.is_err());
     assert!(matches!(result, Err(EvalError::RecordExpected(_))));
 }
@@ -205,10 +205,10 @@ fn test_record_expected_error() {
 #[test]
 fn test_record_type_inference_simple() {
     let source = "{ name: 42, age: 30 }";
-    
+
     let expr = parse(source).expect("Parse error");
     let ty = typecheck(&expr).expect("Type error");
-    
+
     let type_str = format!("{}", ty);
     assert!(type_str.contains("name: Int"));
     assert!(type_str.contains("age: Int"));
@@ -220,20 +220,20 @@ fn test_record_type_inference_field_access() {
         let person = { name: 42, age: 30 }
         in person.age
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let ty = typecheck(&expr).expect("Type error");
-    
+
     assert_eq!(ty, Type::Int);
 }
 
 #[test]
 fn test_record_type_inference_function() {
     let source = "fun p -> p.age";
-    
+
     let expr = parse(source).expect("Parse error");
     let ty = typecheck(&expr).expect("Type error");
-    
+
     // Should be a function from a record with at least 'age' field to the type of age
     let type_str = format!("{}", ty);
     assert!(type_str.contains("->"));
@@ -246,10 +246,10 @@ fn test_record_type_inference_nested() {
         let person = { address: { city: 100 } }
         in person.address
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let ty = typecheck(&expr).expect("Type error");
-    
+
     let type_str = format!("{}", ty);
     assert!(type_str.contains("city: Int"));
 }
@@ -257,20 +257,20 @@ fn test_record_type_inference_nested() {
 #[test]
 fn test_empty_record_type() {
     let source = "{}";
-    
+
     let expr = parse(source).expect("Parse error");
     let ty = typecheck(&expr).expect("Type error");
-    
+
     assert_eq!(format!("{}", ty), "{}");
 }
 
 #[test]
 fn test_record_with_mixed_types() {
     let source = "{ num: 42, flag: true }";
-    
+
     let expr = parse(source).expect("Parse error");
     let ty = typecheck(&expr).expect("Type error");
-    
+
     let type_str = format!("{}", ty);
     assert!(type_str.contains("flag: Bool"));
     assert!(type_str.contains("num: Int"));
@@ -282,10 +282,10 @@ fn test_deeply_nested_field_access() {
         let data = { a: { b: { c: 42 } } }
         in data.a.b.c
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -297,10 +297,10 @@ fn test_record_pattern_not_matching() {
         | { age: a } -> a
         | _ -> 0
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "0");
 }
 
@@ -312,10 +312,10 @@ fn test_record_comparison_in_match() {
         | { status: 1, name: n } -> n
         | _ -> 0
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -326,10 +326,10 @@ fn test_record_in_nested_let() {
         in let record = { a: x, b: 20 }
         in record.a + record.b
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "30");
 }
 
@@ -339,10 +339,10 @@ fn test_record_with_function_field() {
         let obj = { value: 42, getValue: fun x -> x }
         in (obj.getValue) obj.value
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -354,10 +354,10 @@ fn test_higher_order_function_with_records() {
         in let data = { value: 41 }
         in (mapField inc data).value
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -368,10 +368,10 @@ fn test_record_type_error_field_not_found() {
         in let getPerson = fun p -> p.age
         in getPerson (makePerson 42)
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = typecheck(&expr);
-    
+
     // This should fail type checking because 'age' field doesn't exist
     // The error may be either FieldNotFound or RecordFieldMismatch depending on
     // when the type checker discovers the incompatibility
@@ -383,6 +383,9 @@ fn test_record_type_error_field_not_found() {
         Err(TypeError::RecordFieldMismatch) => {
             // Also acceptable - unification fails due to field mismatch
         }
-        other => panic!("Expected FieldNotFound or RecordFieldMismatch type error, got {:?}", other),
+        other => panic!(
+            "Expected FieldNotFound or RecordFieldMismatch type error, got {:?}",
+            other
+        ),
     }
 }

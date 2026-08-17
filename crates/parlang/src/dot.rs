@@ -1,25 +1,25 @@
 /// DOT format generator for `ParLang` AST visualization
-/// 
+///
 /// This module provides functionality to convert `ParLang` Abstract Syntax Trees
 /// into Graphviz DOT format for visualization. The generated DOT files can be
 /// rendered using tools like `dot` or `graphviz`.
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 /// use parlang::{parse, dot::ast_to_dot};
 /// use std::fs;
-/// 
+///
 /// let source = "let x = 42 in x + 1";
 /// let expr = parse(source).unwrap();
 /// let dot_output = ast_to_dot(&expr);
 /// fs::write("ast.dot", dot_output).unwrap();
 /// ```
-use crate::ast::{Expr, BinOp, Pattern, Literal};
+use crate::ast::{BinOp, Expr, Literal, Pattern};
 use std::io;
 
 /// Counter for generating unique node IDs in the DOT graph
-/// 
+///
 /// This helper struct ensures each AST node gets a unique identifier
 /// when converting to DOT format. Node IDs are sequential strings
 /// in the format "node0", "node1", "node2", etc.
@@ -34,7 +34,7 @@ impl NodeIdGenerator {
     }
 
     /// Generate the next unique node ID
-    /// 
+    ///
     /// Returns a string like "node0", "node1", etc. and increments
     /// the internal counter for the next call.
     fn next(&mut self) -> String {
@@ -45,38 +45,38 @@ impl NodeIdGenerator {
 }
 
 /// Convert an expression to DOT format
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `expr` - The expression to convert to DOT format
-/// 
+///
 /// # Returns
-/// 
+///
 /// A String containing the DOT representation of the AST
 pub fn ast_to_dot(expr: &Expr) -> String {
     let mut output = String::new();
     output.push_str("digraph AST {\n");
     output.push_str("  node [shape=box, style=rounded];\n");
     output.push_str("  edge [fontsize=10];\n\n");
-    
+
     let mut gen = NodeIdGenerator::new();
     expr_to_dot(expr, &mut output, &mut gen);
-    
+
     output.push_str("}\n");
     output
 }
 
 /// Write DOT representation of an expression to a file
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `expr` - The expression to convert
 /// * `path` - The file path to write to
-/// 
+///
 /// # Returns
-/// 
+///
 /// # Errors
-/// 
+///
 /// Result indicating success or IO error when writing to file fails
 pub fn write_ast_to_dot_file(expr: &Expr, path: &str) -> io::Result<()> {
     let dot_content = ast_to_dot(expr);
@@ -85,7 +85,7 @@ pub fn write_ast_to_dot_file(expr: &Expr, path: &str) -> io::Result<()> {
 
 fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> String {
     let node_id = gen.next();
-    
+
     match expr {
         Expr::Int(n) => {
             output.push_str(&format!("  {node_id} [label=\"Int\\n{n}\"];\n"));
@@ -111,10 +111,18 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             output.push_str(&format!("  {node_id} [label=\"Byte\\n{b}b\"];\n"));
         }
         Expr::Var(name) => {
-            output.push_str(&format!("  {} [label=\"Var\\n{}\"];\n", node_id, escape_label(name)));
+            output.push_str(&format!(
+                "  {} [label=\"Var\\n{}\"];\n",
+                node_id,
+                escape_label(name)
+            ));
         }
         Expr::BinOp(op, left, right) => {
-            output.push_str(&format!("  {} [label=\"BinOp\\n{}\"];\n", node_id, binop_label(*op)));
+            output.push_str(&format!(
+                "  {} [label=\"BinOp\\n{}\"];\n",
+                node_id,
+                binop_label(*op)
+            ));
             let left_id = expr_to_dot(left, output, gen);
             let right_id = expr_to_dot(right, output, gen);
             output.push_str(&format!("  {node_id} -> {left_id} [label=\"left\"];\n"));
@@ -159,7 +167,11 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             output.push_str(&format!("  {node_id} -> {arg_id} [label=\"arg\"];\n"));
         }
         Expr::Load(filepath, body) => {
-            output.push_str(&format!("  {} [label=\"Load\\n{}\"];\n", node_id, escape_label(filepath)));
+            output.push_str(&format!(
+                "  {} [label=\"Load\\n{}\"];\n",
+                node_id,
+                escape_label(filepath)
+            ));
             let body_id = expr_to_dot(body, output, gen);
             output.push_str(&format!("  {node_id} -> {body_id} [label=\"body\"];\n"));
         }
@@ -174,29 +186,41 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
                 };
                 output.push_str(&format!("  {} [label=\"{}\"];\n", binding_id, label));
                 let value_id = expr_to_dot(value, output, gen);
-                output.push_str(&format!("  {node_id} -> {binding_id} [label=\"binding {i}\"];\n"));
-                output.push_str(&format!("  {binding_id} -> {value_id} [label=\"value\"];\n"));
+                output.push_str(&format!(
+                    "  {node_id} -> {binding_id} [label=\"binding {i}\"];\n"
+                ));
+                output.push_str(&format!(
+                    "  {binding_id} -> {value_id} [label=\"value\"];\n"
+                ));
             }
             let body_id = expr_to_dot(body, output, gen);
             output.push_str(&format!("  {node_id} -> {body_id} [label=\"body\"];\n"));
         }
         Expr::Rec(name, body) => {
-            output.push_str(&format!("  {} [label=\"Rec\\n{}\"];\n", node_id, escape_label(name)));
+            output.push_str(&format!(
+                "  {} [label=\"Rec\\n{}\"];\n",
+                node_id,
+                escape_label(name)
+            ));
             let body_id = expr_to_dot(body, output, gen);
             output.push_str(&format!("  {node_id} -> {body_id} [label=\"body\"];\n"));
         }
         Expr::Match(scrutinee, arms) => {
             output.push_str(&format!("  {node_id} [label=\"Match\"];\n"));
             let scrutinee_id = expr_to_dot(scrutinee, output, gen);
-            output.push_str(&format!("  {node_id} -> {scrutinee_id} [label=\"scrutinee\"];\n"));
-            
+            output.push_str(&format!(
+                "  {node_id} -> {scrutinee_id} [label=\"scrutinee\"];\n"
+            ));
+
             for (i, (pattern, result)) in arms.iter().enumerate() {
                 let arm_id = gen.next();
                 output.push_str(&format!("  {arm_id} [label=\"Arm {i}\"];\n"));
                 let pattern_id = pattern_to_dot(pattern, output, gen);
                 let result_id = expr_to_dot(result, output, gen);
                 output.push_str(&format!("  {node_id} -> {arm_id} [label=\"arm {i}\"];\n"));
-                output.push_str(&format!("  {arm_id} -> {pattern_id} [label=\"pattern\"];\n"));
+                output.push_str(&format!(
+                    "  {arm_id} -> {pattern_id} [label=\"pattern\"];\n"
+                ));
                 output.push_str(&format!("  {arm_id} -> {result_id} [label=\"result\"];\n"));
             }
         }
@@ -213,7 +237,11 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             output.push_str(&format!("  {node_id} -> {tuple_id} [label=\"tuple\"];\n"));
         }
         Expr::TypeAlias(name, ty_expr, body) => {
-            output.push_str(&format!("  {} [label=\"TypeAlias\\n{}\"];\n", node_id, escape_label(name)));
+            output.push_str(&format!(
+                "  {} [label=\"TypeAlias\\n{}\"];\n",
+                node_id,
+                escape_label(name)
+            ));
             let type_id = type_expr_to_dot(ty_expr, output, gen);
             let body_id = expr_to_dot(body, output, gen);
             output.push_str(&format!("  {node_id} -> {type_id} [label=\"type\"];\n"));
@@ -223,33 +251,61 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             output.push_str(&format!("  {node_id} [label=\"Record\"];\n"));
             for (i, (name, expr)) in fields.iter().enumerate() {
                 let field_id = gen.next();
-                output.push_str(&format!("  {} [label=\"Field\\n{}\"];\n", field_id, escape_label(name)));
+                output.push_str(&format!(
+                    "  {} [label=\"Field\\n{}\"];\n",
+                    field_id,
+                    escape_label(name)
+                ));
                 let expr_id = expr_to_dot(expr, output, gen);
-                output.push_str(&format!("  {node_id} -> {field_id} [label=\"field {i}\"];\n"));
+                output.push_str(&format!(
+                    "  {node_id} -> {field_id} [label=\"field {i}\"];\n"
+                ));
                 output.push_str(&format!("  {field_id} -> {expr_id} [label=\"value\"];\n"));
             }
         }
         Expr::FieldAccess(record, field) => {
-            output.push_str(&format!("  {} [label=\"FieldAccess\\n{}\"];\n", node_id, escape_label(field)));
+            output.push_str(&format!(
+                "  {} [label=\"FieldAccess\\n{}\"];\n",
+                node_id,
+                escape_label(field)
+            ));
             let record_id = expr_to_dot(record, output, gen);
             output.push_str(&format!("  {node_id} -> {record_id} [label=\"record\"];\n"));
         }
-        Expr::TypeDef { name, type_params, constructors, body } => {
+        Expr::TypeDef {
+            name,
+            type_params,
+            constructors,
+            body,
+        } => {
             let params_str = type_params.join(" ");
-            output.push_str(&format!("  {} [label=\"TypeDef\\n{}\\n{}\"];\n", node_id, escape_label(name), escape_label(&params_str)));
-            
+            output.push_str(&format!(
+                "  {} [label=\"TypeDef\\n{}\\n{}\"];\n",
+                node_id,
+                escape_label(name),
+                escape_label(&params_str)
+            ));
+
             // Add constructor nodes
             for (ctor_name, _ctor_types) in constructors {
                 let ctor_id = gen.next();
-                output.push_str(&format!("  {} [label=\"Constructor\\n{}\"];\n", ctor_id, escape_label(ctor_name)));
+                output.push_str(&format!(
+                    "  {} [label=\"Constructor\\n{}\"];\n",
+                    ctor_id,
+                    escape_label(ctor_name)
+                ));
                 output.push_str(&format!("  {node_id} -> {ctor_id} [label=\"ctor\"];\n"));
             }
-            
+
             let body_id = expr_to_dot(body, output, gen);
             output.push_str(&format!("  {node_id} -> {body_id} [label=\"body\"];\n"));
         }
         Expr::Constructor(name, args) => {
-            output.push_str(&format!("  {} [label=\"Constructor\\n{}\"];\n", node_id, escape_label(name)));
+            output.push_str(&format!(
+                "  {} [label=\"Constructor\\n{}\"];\n",
+                node_id,
+                escape_label(name)
+            ));
             for (i, arg) in args.iter().enumerate() {
                 let arg_id = expr_to_dot(arg, output, gen);
                 output.push_str(&format!("  {node_id} -> {arg_id} [label=\"arg{}\"];\n", i));
@@ -259,7 +315,10 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             output.push_str(&format!("  {node_id} [label=\"Array\"];\n"));
             for (i, elem) in elements.iter().enumerate() {
                 let elem_id = expr_to_dot(elem, output, gen);
-                output.push_str(&format!("  {node_id} -> {elem_id} [label=\"elem{}\"];\n", i));
+                output.push_str(&format!(
+                    "  {node_id} -> {elem_id} [label=\"elem{}\"];\n",
+                    i
+                ));
             }
         }
         Expr::ArrayIndex(arr, index) => {
@@ -294,13 +353,17 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             output.push_str(&format!("  {node_id} -> {end_id} [label=\"end\"];\n"));
         }
     }
-    
+
     node_id
 }
 
-fn type_expr_to_dot(ty_expr: &crate::ast::TypeExpr, output: &mut String, gen: &mut NodeIdGenerator) -> String {
+fn type_expr_to_dot(
+    ty_expr: &crate::ast::TypeExpr,
+    output: &mut String,
+    gen: &mut NodeIdGenerator,
+) -> String {
     let node_id = gen.next();
-    
+
     match ty_expr {
         crate::ast::TypeExpr::Int => {
             output.push_str(&format!("  {node_id} [label=\"Type\\nInt\"];\n"));
@@ -316,16 +379,20 @@ fn type_expr_to_dot(ty_expr: &crate::ast::TypeExpr, output: &mut String, gen: &m
             output.push_str(&format!("  {node_id} -> {ret_id} [label=\"ret\"];\n"));
         }
         crate::ast::TypeExpr::Alias(name) => {
-            output.push_str(&format!("  {} [label=\"TypeAlias\\n{}\"];\n", node_id, escape_label(name)));
+            output.push_str(&format!(
+                "  {} [label=\"TypeAlias\\n{}\"];\n",
+                node_id,
+                escape_label(name)
+            ));
         }
     }
-    
+
     node_id
 }
 
 fn pattern_to_dot(pattern: &Pattern, output: &mut String, gen: &mut NodeIdGenerator) -> String {
     let node_id = gen.next();
-    
+
     match pattern {
         Pattern::Literal(lit) => {
             let label = match lit {
@@ -347,7 +414,11 @@ fn pattern_to_dot(pattern: &Pattern, output: &mut String, gen: &mut NodeIdGenera
             output.push_str(&format!("  {node_id} [label=\"{label}\"];\n"));
         }
         Pattern::Var(name) => {
-            output.push_str(&format!("  {} [label=\"Var\\n{}\"];\n", node_id, escape_label(name)));
+            output.push_str(&format!(
+                "  {} [label=\"Var\\n{}\"];\n",
+                node_id,
+                escape_label(name)
+            ));
         }
         Pattern::Wildcard => {
             output.push_str(&format!("  {node_id} [label=\"Wildcard\\n_\"];\n"));
@@ -363,21 +434,31 @@ fn pattern_to_dot(pattern: &Pattern, output: &mut String, gen: &mut NodeIdGenera
             output.push_str(&format!("  {node_id} [label=\"RecordPattern\"];\n"));
             for (i, (name, pat)) in fields.iter().enumerate() {
                 let field_id = gen.next();
-                output.push_str(&format!("  {} [label=\"Field\\n{}\"];\n", field_id, escape_label(name)));
+                output.push_str(&format!(
+                    "  {} [label=\"Field\\n{}\"];\n",
+                    field_id,
+                    escape_label(name)
+                ));
                 let pat_id = pattern_to_dot(pat, output, gen);
-                output.push_str(&format!("  {node_id} -> {field_id} [label=\"field {i}\"];\n"));
+                output.push_str(&format!(
+                    "  {node_id} -> {field_id} [label=\"field {i}\"];\n"
+                ));
                 output.push_str(&format!("  {field_id} -> {pat_id} [label=\"pattern\"];\n"));
             }
         }
         Pattern::Constructor(name, patterns) => {
-            output.push_str(&format!("  {} [label=\"ConstructorPattern\\n{}\"];\n", node_id, escape_label(name)));
+            output.push_str(&format!(
+                "  {} [label=\"ConstructorPattern\\n{}\"];\n",
+                node_id,
+                escape_label(name)
+            ));
             for (i, pat) in patterns.iter().enumerate() {
                 let pat_id = pattern_to_dot(pat, output, gen);
                 output.push_str(&format!("  {node_id} -> {pat_id} [label=\"arg {i}\"];\n"));
             }
         }
     }
-    
+
     node_id
 }
 
@@ -431,11 +512,7 @@ mod tests {
 
     #[test]
     fn test_binop() {
-        let expr = Expr::BinOp(
-            BinOp::Add,
-            Box::new(Expr::Int(1)),
-            Box::new(Expr::Int(2)),
-        );
+        let expr = Expr::BinOp(BinOp::Add, Box::new(Expr::Int(1)), Box::new(Expr::Int(2)));
         let dot = ast_to_dot(&expr);
         assert!(dot.contains("[label=\"BinOp\\n+\"]"));
         assert!(dot.contains("[label=\"Int\\n1\"]"));
@@ -548,10 +625,7 @@ mod tests {
 
     #[test]
     fn test_load_expr() {
-        let expr = Expr::Load(
-            "lib.par".to_string(),
-            Box::new(Expr::Var("x".to_string())),
-        );
+        let expr = Expr::Load("lib.par".to_string(), Box::new(Expr::Var("x".to_string())));
         let dot = ast_to_dot(&expr);
         assert!(dot.contains("[label=\"Load\\nlib.par\"]"));
     }
@@ -585,7 +659,7 @@ mod tests {
             )),
         );
         let dot = ast_to_dot(&expr);
-        
+
         // Verify structure
         assert!(dot.contains("digraph AST"));
         assert!(dot.contains("[label=\"Let\\nf\"]"));
@@ -598,12 +672,19 @@ mod tests {
     #[test]
     fn test_all_binops() {
         let ops = vec![
-            BinOp::Add, BinOp::Sub, BinOp::Mul, BinOp::Div,
-            BinOp::Eq, BinOp::Neq, BinOp::Lt, BinOp::Le,
-            BinOp::Gt, BinOp::Ge,
+            BinOp::Add,
+            BinOp::Sub,
+            BinOp::Mul,
+            BinOp::Div,
+            BinOp::Eq,
+            BinOp::Neq,
+            BinOp::Lt,
+            BinOp::Le,
+            BinOp::Gt,
+            BinOp::Ge,
         ];
         let expected = vec!["+", "-", "*", "/", "==", "!=", "<", "<=", ">", ">="];
-        
+
         for (op, expected_label) in ops.iter().zip(expected.iter()) {
             let label = binop_label(*op);
             assert_eq!(label, *expected_label);

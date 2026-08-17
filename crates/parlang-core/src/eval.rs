@@ -225,6 +225,8 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
                 "/" => eval_arith('/', args, env),
                 "<" => eval_cmp(args, env),
                 "eq" => eval_eq(args, env),
+                "strlen" => eval_strlen(args, env),
+                "strcat" => eval_strcat(args, env),
                 _ => {
                     let mut vals = Vec::with_capacity(args.len());
                     for a in args {
@@ -254,6 +256,32 @@ fn eval_if(args: &[Term], env: &Environment) -> EvalResult {
         other => Err(EvalError::TypeMismatch {
             expected: "bool".to_string(),
             found: value_kind(&other).to_string(),
+        }),
+    }
+}
+
+/// Evaluate the private `strcat` primitive, concatenating two `Value::Str` values.
+///
+/// Requires exactly two arguments, both evaluating to `Value::Str`.
+fn eval_strcat(args: &[Term], env: &Environment) -> EvalResult {
+    if args.len() != 2 {
+        return Err(EvalError::TypeMismatch {
+            expected: "2 arguments".to_string(),
+            found: format!("{} arguments", args.len()),
+        });
+    }
+    let a = eval(&args[0], env)?;
+    let b = eval(&args[1], env)?;
+    match (&a, &b) {
+        (Value::Str(a), Value::Str(b)) => {
+            let mut joined = String::with_capacity(a.len() + b.len());
+            joined.push_str(a);
+            joined.push_str(b);
+            Ok(Value::Str(joined))
+        }
+        (Value::Str(_), v) | (v, _) => Err(EvalError::TypeMismatch {
+            expected: "str".to_string(),
+            found: value_kind(v).to_string(),
         }),
     }
 }
@@ -346,6 +374,28 @@ fn eval_eq(args: &[Term], env: &Environment) -> EvalResult {
     }
 }
 
+/// Evaluates the `strlen` built-in: returns the UTF-8 character count of a
+/// [`Value::Str`] as an [`Value::Int`].
+fn eval_strlen(args: &[Term], env: &Environment) -> EvalResult {
+    if args.len() != 1 {
+        return Err(EvalError::TypeMismatch {
+            expected: "1 argument".to_string(),
+            found: format!("{} arguments", args.len()),
+        });
+    }
+    let v = eval(&args[0], env)?;
+    match v {
+        Value::Str(s) => {
+            let n = i64::try_from(s.chars().count()).map_err(|_| EvalError::ArithmeticOverflow)?;
+            Ok(Value::Int(n))
+        }
+        other => Err(EvalError::TypeMismatch {
+            expected: "str".to_string(),
+            found: value_kind(&other).to_string(),
+        }),
+    }
+}
+
 /// Maps a [`Value`] to a short type-tag string for error messages.
 fn value_kind(v: &Value) -> &'static str {
     match v {
@@ -368,7 +418,7 @@ fn value_kind(v: &Value) -> &'static str {
 mod tests {
     use super::*;
     use crate::base_type::BaseType;
-    use crate::builder::{app, bool_, con, int, lam, let_, letrec, unit, var};
+    use crate::builder::{app, bool_, con, int, lam, let_, letrec, str_, unit, var};
 
     fn env() -> Environment {
         Environment::new()
@@ -526,6 +576,20 @@ mod tests {
     }
 
     #[test]
+    fn strlen_counts_utf8_chars() -> Result<(), crate::error::BuildError> {
+        let t = con("strlen", vec![str_("héllo")])?;
+        assert_eq!(eval(&t, &env()), Ok(Value::Int(5)));
+        Ok(())
+    }
+
+    #[test]
+    fn strcat_joins_two_strings() -> Result<(), crate::error::BuildError> {
+        let t = con("strcat", vec![str_("foo"), str_("bar")])?;
+        assert_eq!(eval(&t, &env()), Ok(Value::Str("foobar".to_string())));
+        Ok(())
+    }
+
+    #[test]
     fn non_reserved_con() -> Result<(), crate::error::BuildError> {
         let t = con("Pair", vec![int(1), bool_(true)])?;
         assert_eq!(
@@ -535,6 +599,34 @@ mod tests {
                 vec![Value::Int(1), Value::Bool(true)]
             ))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn strlen_rejects_non_string() -> Result<(), crate::error::BuildError> {
+        let t = con("strlen", vec![int(1)])?;
+        assert!(matches!(
+            eval(&t, &env()),
+            Err(EvalError::TypeMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn strcat_rejects_wrong_arity() -> Result<(), crate::error::BuildError> {
+        let t = con("strcat", vec![str_("x")])?;
+        assert!(matches!(
+            eval(&t, &env()),
+            Err(EvalError::TypeMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn strlen_name_is_not_bound() -> Result<(), crate::error::BuildError> {
+        let t = var("strlen")?;
+        let result = eval(&t, &env());
+        assert!(matches!(result, Err(EvalError::UnboundVar(_))));
         Ok(())
     }
 

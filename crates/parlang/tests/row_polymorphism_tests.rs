@@ -5,10 +5,10 @@ use parlang::{eval, parse, typecheck, Environment, Type};
 #[test]
 fn test_row_polymorphic_field_access() {
     let source = "fun r -> r.age";
-    
+
     let expr = parse(source).expect("Parse error");
     let ty = typecheck(&expr).expect("Type error");
-    
+
     // Should infer a function type from a record with at least 'age' field to the type of age
     let type_str = format!("{}", ty);
     assert!(type_str.contains("age:"));
@@ -24,10 +24,10 @@ fn test_row_polymorphic_function_application() {
         in let p2 = { age: 30, city: 100 }
         in getAge p1 + getAge p2
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "55");
 }
 
@@ -39,10 +39,10 @@ fn test_row_polymorphic_multiple_fields() {
         in let point = { x: 10, y: 20, z: 30 }
         in addXY point
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "30");
 }
 
@@ -53,19 +53,21 @@ fn test_row_polymorphic_type_inference() {
         let addXY = fun r -> r.x + r.y
         in addXY
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let ty = typecheck(&expr);
-    
+
     // This is currently expected to fail because we can't yet handle
     // multiple field accesses on the same row variable in a single pass
     // The issue is that after accessing r.x, the type becomes {x: Int | r0}
     // and then accessing r.y fails because y is not in the known fields
     // This would require more sophisticated constraint tracking
-    assert!(ty.is_err() || {
-        let type_str = format!("{}", ty.unwrap());
-        type_str.contains("Int")
-    });
+    assert!(
+        ty.is_err() || {
+            let type_str = format!("{}", ty.unwrap());
+            type_str.contains("Int")
+        }
+    );
 }
 
 /// Test row polymorphic function can accept records with extra fields
@@ -76,10 +78,10 @@ fn test_row_polymorphism_extra_fields() {
         in let person = { name: 42, age: 30, city: 100, active: true }
         in getName person
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -91,10 +93,10 @@ fn test_row_polymorphic_nested_access() {
         in let person = { name: 42, address: { city: 100, zip: 200 } }
         in getCity person
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "100");
 }
 
@@ -108,10 +110,10 @@ fn test_row_polymorphic_composition() {
         in let person = { name: 42, age: 21 }
         in doubleAge person
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -123,10 +125,10 @@ fn test_row_polymorphic_record_creation() {
         in let person = { name: 42, age: 30 }
         in (addScore person).score
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "100");
 }
 
@@ -139,10 +141,10 @@ fn test_row_polymorphic_curried() {
         in let p2 = { city: 100, age: 30 }
         in compareAge p1 p2
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "true");
 }
 
@@ -154,10 +156,10 @@ fn test_row_polymorphic_conditional() {
         in let config = { name: 42, active: true, port: 8080 }
         in getStatus config
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "1");
 }
 
@@ -170,10 +172,10 @@ fn test_row_polymorphic_generalization() {
         in let r2 = { value: 20, city: 100 }
         in getValue r1 + getValue r2
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "30");
 }
 
@@ -188,10 +190,10 @@ fn test_row_polymorphic_pattern_matching() {
         in let record = { value: 41, extra: 100 }
         in processRecord record
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -203,10 +205,10 @@ fn test_row_polymorphic_type_safety() {
         in let person = { name: 42 }
         in getAge person
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = typecheck(&expr);
-    
+
     // This should fail because person doesn't have age field
     assert!(result.is_err());
 }
@@ -222,10 +224,10 @@ fn test_row_polymorphic_recursive() {
         in let person = { name: 42, age: 10 }
         in sumAges 3 person
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "30");
 }
 
@@ -238,10 +240,10 @@ fn test_row_polymorphic_higher_order() {
         in let person = { name: 42, age: 21, city: 100 }
         in applyToAge double person
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -252,10 +254,10 @@ fn test_closed_record_unifies_with_row_polymorphic() {
         let f = fun r -> r.x
         in f { x: 10, y: 20 }
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let ty = typecheck(&expr).expect("Type error");
-    
+
     assert_eq!(ty, Type::Int);
 }
 
@@ -266,10 +268,10 @@ fn test_row_polymorphism_minimal_record() {
         let getX = fun r -> r.x
         in getX { x: 42 }
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -281,10 +283,10 @@ fn test_row_polymorphic_boolean_field() {
         in let config = { name: 42, active: true, port: 8080 }
         in isActive config
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "true");
 }
 
@@ -292,10 +294,10 @@ fn test_row_polymorphic_boolean_field() {
 #[test]
 fn test_row_polymorphic_type_display() {
     let source = "fun r -> r.field";
-    
+
     let expr = parse(source).expect("Parse error");
     let ty = typecheck(&expr).expect("Type error");
-    
+
     let type_str = format!("{}", ty);
     // The type should show row polymorphism
     assert!(type_str.contains("field:") || type_str.contains("->"));
@@ -312,10 +314,10 @@ fn test_row_polymorphic_shared_constraint() {
         in let person = { name: 42, age: 10 }
         in processAge person
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "50");
 }
 
@@ -327,10 +329,10 @@ fn test_row_polymorphic_function_field() {
         in let obj = { method: fun x -> x + 1, data: 100 }
         in applyMethod obj 41
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "42");
 }
 
@@ -345,9 +347,9 @@ fn test_row_polymorphic_let_generalization() {
         in let person2 = { age: 30, city: 100, active: true }
         in getAge person1 + getAge person2
     "#;
-    
+
     let expr = parse(source).expect("Parse error");
     let result = eval(&expr, &Environment::new()).expect("Eval error");
-    
+
     assert_eq!(format!("{}", result), "55");
 }

@@ -17,7 +17,10 @@ fn test_arithmetic_add_max_int_overflow() {
     let code = "9223372036854775807 + 1";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 #[test]
@@ -34,7 +37,10 @@ fn test_arithmetic_add_negative_overflow() {
     let code = "-9223372036854775807 + -2";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 // ============================================================================
@@ -48,7 +54,10 @@ fn test_arithmetic_sub_min_int_underflow() {
     let code = "(-9223372036854775807 - 1) - 1";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 #[test]
@@ -57,7 +66,10 @@ fn test_arithmetic_sub_max_from_min() {
     let code = "-9223372036854775807 - 2";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 #[test]
@@ -78,7 +90,10 @@ fn test_arithmetic_mul_max_int_overflow() {
     let code = "9223372036854775807 * 2";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 #[test]
@@ -87,7 +102,10 @@ fn test_arithmetic_mul_large_numbers_overflow() {
     let code = "1000000000000 * 10000000000";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 #[test]
@@ -96,7 +114,10 @@ fn test_arithmetic_mul_negative_overflow() {
     let code = "-9223372036854775807 * 2";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 #[test]
@@ -117,7 +138,10 @@ fn test_arithmetic_div_by_zero() {
     let code = "42 / 0";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("zero") || err.contains("Division by zero") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("zero") || err.contains("Division by zero")
+    });
 }
 
 #[test]
@@ -127,7 +151,10 @@ fn test_arithmetic_div_min_by_negative_one() {
     let code = "(-9223372036854775807 - 1) / -1";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 #[test]
@@ -148,7 +175,10 @@ fn test_arithmetic_overflow_in_if_condition() {
     let code = "if 9223372036854775807 + 1 > 0 then 1 else 0";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 #[test]
@@ -157,7 +187,10 @@ fn test_arithmetic_overflow_in_let_binding() {
     let code = "let x = 9223372036854775807 + 1 in x";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 #[test]
@@ -166,7 +199,10 @@ fn test_arithmetic_overflow_in_function_application() {
     let code = "(fun x -> x + 1) 9223372036854775807";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 #[test]
@@ -191,7 +227,10 @@ fn test_arithmetic_chained_operations_overflow() {
     let code = "9223372036854775807 + 1 * 1";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("overflow") || err.contains("Integer overflow") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("overflow") || err.contains("Integer overflow")
+    });
 }
 
 // ============================================================================

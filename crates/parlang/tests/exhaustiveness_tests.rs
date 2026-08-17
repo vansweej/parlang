@@ -11,7 +11,7 @@ fn test_option_exhaustive() {
         | None -> 0
     "#;
     let expr = parse(input).expect("Parse failed");
-    
+
     // Get the match arms and environment after TypeDef evaluation
     // For this test, we'll evaluate and verify no warning is printed
     let result = eval(&expr, &Environment::new());
@@ -28,7 +28,7 @@ fn test_option_non_exhaustive_missing_none() {
         | Some n -> n
     "#;
     let expr = parse(input).expect("Parse failed");
-    
+
     // This should print a warning but still evaluate successfully
     let result = eval(&expr, &Environment::new());
     assert!(result.is_ok(), "Eval failed: {:?}", result.err());
@@ -44,7 +44,7 @@ fn test_option_non_exhaustive_missing_some() {
         | None -> 0
     "#;
     let expr = parse(input).expect("Parse failed");
-    
+
     // This should print a warning but still evaluate successfully
     let result = eval(&expr, &Environment::new());
     assert!(result.is_ok(), "Eval failed: {:?}", result.err());
@@ -75,7 +75,7 @@ fn test_either_non_exhaustive() {
         | Left n -> n
     "#;
     let expr = parse(input).expect("Parse failed");
-    
+
     // This should print a warning but still evaluate successfully
     let result = eval(&expr, &Environment::new());
     assert!(result.is_ok(), "Eval failed: {:?}", result.err());
@@ -104,7 +104,7 @@ fn test_bool_non_exhaustive() {
         | true -> 1
     "#;
     let expr = parse(input).expect("Parse failed");
-    
+
     // This should print a warning but still evaluate successfully
     let result = eval(&expr, &Environment::new());
     assert!(result.is_ok(), "Eval failed: {:?}", result.err());
@@ -165,7 +165,7 @@ fn test_list_non_exhaustive() {
         | Cons head tail -> head
     "#;
     let expr = parse(input).expect("Parse failed");
-    
+
     // This should print a warning but still evaluate successfully
     let result = eval(&expr, &Environment::new());
     assert!(result.is_ok(), "Eval failed: {:?}", result.err());
@@ -197,7 +197,7 @@ fn test_int_patterns_non_exhaustive() {
         | 1 -> 2
     "#;
     let expr = parse(input).expect("Parse failed");
-    
+
     // This should print a warning and fail at runtime since 5 doesn't match
     let result = eval(&expr, &Environment::new());
     assert!(result.is_err(), "Expected error for non-matching pattern");

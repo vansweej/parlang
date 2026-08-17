@@ -77,6 +77,12 @@ shared `Term` AST frozen:
   `Str`, `Float`); `Float` operands are compared via `f64::to_bits`
   bit-equality; function or constructor operands are rejected with
   `NotComparable`.
+- `Con("strlen", [s])` — `s` must be `Str`; returns the `Int` count of
+  UTF-8 characters in `s`. See `MODULE_CORE_PRELUDE.md` for the Core-defined
+  helpers (`isEmpty`, `nonEmpty`, etc.) built on top of this primitive.
+- `Con("strcat", [a, b])` — both `a` and `b` must be `Str`; returns their
+  concatenation as a `Str`. See `MODULE_CORE_PRELUDE.md` for the Core-defined
+  helpers built on top of this primitive.
 
 The `eq` float semantics are intended, not accidental: under bit-equality,
 `NaN == NaN` is **true**, and `0.0 != -0.0` (signed zero is distinct from its

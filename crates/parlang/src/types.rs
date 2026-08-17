@@ -89,7 +89,7 @@ impl fmt::Display for Type {
                 // Sort fields by name for consistent display
                 let mut sorted: Vec<_> = fields.iter().collect();
                 sorted.sort_by_key(|(name, _)| *name);
-                
+
                 for (i, (name, ty)) in sorted.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
@@ -103,7 +103,7 @@ impl fmt::Display for Type {
                 // Sort fields by name for consistent display
                 let mut sorted: Vec<_> = fields.iter().collect();
                 sorted.sort_by_key(|(name, _)| *name);
-                
+
                 for (i, (name, ty)) in sorted.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
@@ -378,11 +378,11 @@ mod tests {
     fn test_type_record_nested() {
         let mut inner_fields = std::collections::HashMap::new();
         inner_fields.insert("city".to_string(), Type::Int);
-        
+
         let mut outer_fields = std::collections::HashMap::new();
         outer_fields.insert("address".to_string(), Type::Record(inner_fields.clone()));
         outer_fields.insert("name".to_string(), Type::Int);
-        
+
         let ty = Type::Record(outer_fields.clone());
         assert_eq!(ty, Type::Record(outer_fields));
     }
@@ -415,11 +415,11 @@ mod tests {
     fn test_display_record_nested() {
         let mut inner_fields = std::collections::HashMap::new();
         inner_fields.insert("city".to_string(), Type::Int);
-        
+
         let mut outer_fields = std::collections::HashMap::new();
         outer_fields.insert("address".to_string(), Type::Record(inner_fields));
         outer_fields.insert("name".to_string(), Type::Int);
-        
+
         let ty = Type::Record(outer_fields);
         assert_eq!(format!("{ty}"), "{address: {city: Int}, name: Int}");
     }
@@ -449,7 +449,10 @@ mod tests {
     #[test]
     fn test_sum_type_multiple_args() {
         let ty = Type::SumType("Either".to_string(), vec![Type::Int, Type::Bool]);
-        assert_eq!(ty, Type::SumType("Either".to_string(), vec![Type::Int, Type::Bool]));
+        assert_eq!(
+            ty,
+            Type::SumType("Either".to_string(), vec![Type::Int, Type::Bool])
+        );
     }
 
     #[test]
@@ -458,7 +461,10 @@ mod tests {
         let outer = Type::SumType("List".to_string(), vec![inner]);
         assert_eq!(
             outer,
-            Type::SumType("List".to_string(), vec![Type::SumType("Option".to_string(), vec![Type::Int])])
+            Type::SumType(
+                "List".to_string(),
+                vec![Type::SumType("Option".to_string(), vec![Type::Int])]
+            )
         );
     }
 
@@ -506,7 +512,7 @@ mod tests {
         let ty2 = Type::SumType("Option".to_string(), vec![Type::Int]);
         let ty3 = Type::SumType("Option".to_string(), vec![Type::Bool]);
         let ty4 = Type::SumType("List".to_string(), vec![Type::Int]);
-        
+
         assert_eq!(ty1, ty2);
         assert_ne!(ty1, ty3); // Different type argument
         assert_ne!(ty1, ty4); // Different type constructor
@@ -529,7 +535,7 @@ mod tests {
     fn test_display_row() {
         let ty = Type::Row(RowVar(0));
         assert_eq!(format!("{ty}"), "r0");
-        
+
         let ty = Type::Row(RowVar(42));
         assert_eq!(format!("{ty}"), "r42");
     }
@@ -573,13 +579,13 @@ mod tests {
         let mut fields1 = std::collections::HashMap::new();
         fields1.insert("name".to_string(), Type::Int);
         let ty1 = Type::RecordRow(fields1.clone(), RowVar(0));
-        
+
         let mut fields2 = std::collections::HashMap::new();
         fields2.insert("name".to_string(), Type::Bool);
         let ty2 = Type::RecordRow(fields2, RowVar(0));
-        
+
         let ty3 = Type::RecordRow(fields1, RowVar(1));
-        
+
         assert_ne!(ty1, ty2); // Different field type
         assert_ne!(ty1, ty3); // Different row variable
     }

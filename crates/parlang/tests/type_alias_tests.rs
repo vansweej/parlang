@@ -128,13 +128,13 @@ fn test_type_alias_with_polymorphism() {
 fn test_type_alias_transparent() {
     let input1 = "42";
     let input2 = "type MyInt = Int in 42";
-    
+
     let expr1 = parse(input1).expect("Parse failed");
     let expr2 = parse(input2).expect("Parse failed");
-    
+
     let result1 = eval(&expr1, &Environment::new()).expect("Eval failed");
     let result2 = eval(&expr2, &Environment::new()).expect("Eval failed");
-    
+
     assert_eq!(format!("{}", result1), format!("{}", result2));
 }
 
@@ -156,7 +156,8 @@ fn test_multiple_type_aliases() {
 /// Test type alias with curried function
 #[test]
 fn test_type_alias_with_currying() {
-    let input = "type BinOp = Int -> Int -> Int in let add = fun x -> fun y -> x + y in (add 10) 32";
+    let input =
+        "type BinOp = Int -> Int -> Int in let add = fun x -> fun y -> x + y in (add 10) 32";
     let expr = parse(input).expect("Parse failed");
     let result = eval(&expr, &Environment::new());
     assert!(result.is_ok(), "Eval failed: {:?}", result.err());
@@ -177,26 +178,28 @@ fn test_type_alias_with_conditional() {
 #[test]
 fn test_type_expr_display() {
     use parlang::ast::TypeExpr;
-    
+
     assert_eq!(format!("{}", TypeExpr::Int), "Int");
     assert_eq!(format!("{}", TypeExpr::Bool), "Bool");
     assert_eq!(
-        format!("{}", TypeExpr::Fun(Box::new(TypeExpr::Int), Box::new(TypeExpr::Bool))),
+        format!(
+            "{}",
+            TypeExpr::Fun(Box::new(TypeExpr::Int), Box::new(TypeExpr::Bool))
+        ),
         "Int -> Bool"
     );
-    assert_eq!(format!("{}", TypeExpr::Alias("MyType".to_string())), "MyType");
+    assert_eq!(
+        format!("{}", TypeExpr::Alias("MyType".to_string())),
+        "MyType"
+    );
 }
 
 /// Test Display implementation for TypeAlias expression
 #[test]
 fn test_type_alias_expr_display() {
     use parlang::ast::{Expr, TypeExpr};
-    
-    let expr = Expr::TypeAlias(
-        "MyInt".to_string(),
-        TypeExpr::Int,
-        Box::new(Expr::Int(42)),
-    );
+
+    let expr = Expr::TypeAlias("MyInt".to_string(), TypeExpr::Int, Box::new(Expr::Int(42)));
     assert_eq!(format!("{}", expr), "(type MyInt = Int in 42)");
 }
 
@@ -237,11 +240,11 @@ fn test_type_alias_with_comparison() {
 #[test]
 fn test_type_expr_equality() {
     use parlang::ast::TypeExpr;
-    
+
     let ty1 = TypeExpr::Int;
     let ty2 = TypeExpr::Int;
     assert_eq!(ty1, ty2);
-    
+
     let ty3 = ty1.clone();
     assert_eq!(ty1, ty3);
 }

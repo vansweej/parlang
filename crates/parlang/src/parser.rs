@@ -5,14 +5,16 @@ use combine::error::StreamError;
 use combine::parser::char::{alpha_num, letter, spaces, string};
 use combine::stream::StreamErrorFor;
 use combine::{
-    attempt, between, choice, many, many1, optional, parser, token, EasyParser, Parser,
-    ParseError, Stream,
+    attempt, between, choice, many, many1, optional, parser, token, EasyParser, ParseError, Parser,
+    Stream,
 };
 
 /// Helper function to check if a string starts with an uppercase ASCII character.
 /// Used to distinguish concrete types (Int, Bool) from type variables (a, b).
 fn starts_with_uppercase(s: &str) -> bool {
-    s.as_bytes().first().map_or(false, |c| c.is_ascii_uppercase())
+    s.as_bytes()
+        .first()
+        .map_or(false, |c| c.is_ascii_uppercase())
 }
 
 /// Parse an integer literal
@@ -26,15 +28,14 @@ where
         s.parse::<i64>()
             .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("integer overflow"))
     });
-    
-    (optional(token('-')), number)
-        .map(|(sign, n)| {
-            if sign.is_some() {
-                Expr::Int(-n)
-            } else {
-                Expr::Int(n)
-            }
-        })
+
+    (optional(token('-')), number).map(|(sign, n)| {
+        if sign.is_some() {
+            Expr::Int(-n)
+        } else {
+            Expr::Int(n)
+        }
+    })
 }
 
 /// Parse a floating point literal
@@ -52,19 +53,27 @@ where
         attempt((
             token('.'),
             combine::parser::combinator::look_ahead(combine::parser::char::digit()),
-            many1(combine::parser::char::digit())
-        ))
+            many1(combine::parser::char::digit()),
+        )),
     )
-    .and_then(|(sign, int_part, (_dot, _lookahead, frac_part)): (Option<char>, String, (char, char, String))| {
-        let num_str = format!("{}{}.{}", 
-            if sign.is_some() { "-" } else { "" },
-            int_part,
-            frac_part
-        );
-        num_str.parse::<f64>()
-            .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("invalid float"))
-    })
-    .map(Expr::Float)
+        .and_then(
+            |(sign, int_part, (_dot, _lookahead, frac_part)): (
+                Option<char>,
+                String,
+                (char, char, String),
+            )| {
+                let num_str = format!(
+                    "{}{}.{}",
+                    if sign.is_some() { "-" } else { "" },
+                    int_part,
+                    frac_part
+                );
+                num_str.parse::<f64>().map_err(|_| {
+                    StreamErrorFor::<Input>::unexpected_static_message("invalid float")
+                })
+            },
+        )
+        .map(Expr::Float)
 }
 
 /// Parse a byte literal (unsigned 8-bit integer with 'b' suffix)
@@ -74,15 +83,13 @@ where
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     // Parse digits followed by 'b' suffix
-    (
-        many1(combine::parser::char::digit()),
-        token('b')
-    )
-    .and_then(|(s, _): (String, char)| {
-        s.parse::<u8>()
-            .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("byte out of range (0-255)"))
-    })
-    .map(Expr::Byte)
+    (many1(combine::parser::char::digit()), token('b'))
+        .and_then(|(s, _): (String, char)| {
+            s.parse::<u8>().map_err(|_| {
+                StreamErrorFor::<Input>::unexpected_static_message("byte out of range (0-255)")
+            })
+        })
+        .map(Expr::Byte)
 }
 
 /// Parse a boolean literal
@@ -144,12 +151,12 @@ where
 }
 
 /// Parse a raw string for use in `load` expressions (file paths)
-/// 
+///
 /// Unlike `string_literal()`, this parser returns a `String` directly without
 /// desugaring and does not process escape sequences. This is specifically for
 /// parsing file paths in `load "filepath" in expr` expressions, where we need
 /// the literal string value to open the file.
-/// 
+///
 /// Use `string_literal()` for string literals in expressions that should desugar
 /// to `List Char`.
 fn raw_string<Input>() -> impl Parser<Input, Output = String>
@@ -165,7 +172,7 @@ where
 }
 
 /// Parse a string literal and desugar it to List Char (Cons/Nil constructors)
-/// 
+///
 /// String literals are syntactic sugar for lists of characters:
 /// - "abc" desugars to: Cons 'a' (Cons 'b' (Cons 'c' Nil))
 /// - "" desugars to: Nil
@@ -176,12 +183,7 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    between(
-        token('"'),
-        token('"'),
-        many(string_char()),
-    )
-    .map(|chars: Vec<char>| {
+    between(token('"'), token('"'), many(string_char())).map(|chars: Vec<char>| {
         // Desugar string to List Char
         // Empty string becomes Nil
         // "abc" becomes Cons 'a' (Cons 'b' (Cons 'c' Nil))
@@ -190,7 +192,7 @@ where
 }
 
 /// Helper function to desugar a vector of characters into a List Char expression
-/// 
+///
 /// Builds nested Cons and Nil constructors:
 /// - [] -> Nil
 /// - ['a', 'b', 'c'] -> Cons 'a' (Cons 'b' (Cons 'c' Nil))
@@ -206,7 +208,7 @@ fn desugar_string_to_list(chars: Vec<char>) -> Expr {
         |acc, c| {
             // Cons char acc
             Expr::Constructor("Cons".to_string(), vec![Expr::Char(c), acc])
-        }
+        },
     )
 }
 
@@ -226,8 +228,8 @@ where
 
 /// Reserved keywords that cannot be used as identifiers
 const KEYWORDS: &[&str] = &[
-    "let", "in", "if", "then", "else", "fun", "true", "false", 
-    "load", "rec", "match", "with", "type", "ref"
+    "let", "in", "if", "then", "else", "fun", "true", "false", "load", "rec", "match", "with",
+    "type", "ref",
 ];
 
 /// Parse an identifier (variable name) - ensures it's not a keyword
@@ -240,7 +242,9 @@ where
         // Reject keywords by returning a failing parser
         if KEYWORDS.contains(&name.as_str()) {
             // Use a parser that will never succeed to reject keywords
-            combine::unexpected("keyword").map(move |()| name.clone()).right()
+            combine::unexpected("keyword")
+                .map(move |()| name.clone())
+                .right()
         } else {
             combine::value(name).left()
         }
@@ -333,10 +337,11 @@ where
             (
                 identifier().skip(spaces()),
                 token(':').skip(spaces()),
-                expr().skip(spaces())
-            ).map(|(name, _, expr)| (name, expr)),
-            token(',').skip(spaces())
-        )
+                expr().skip(spaces()),
+            )
+                .map(|(name, _, expr)| (name, expr)),
+            token(',').skip(spaces()),
+        ),
     )
     .map(Expr::Record)
 }
@@ -350,10 +355,7 @@ where
     between(
         (token('['), token('|')).skip(spaces()),
         (token('|'), token(']')),
-        combine::sep_by(
-            expr().skip(spaces()),
-            token(',').skip(spaces())
-        )
+        combine::sep_by(expr().skip(spaces()), token(',').skip(spaces())),
     )
     .map(Expr::Array)
 }
@@ -423,7 +425,7 @@ where
         attempt(between(
             token('(').skip(spaces()),
             token(')'),
-            type_expr().skip(spaces())
+            type_expr().skip(spaces()),
         )),
         identifier().map(crate::ast::TypeExpr::Alias),
     ))
@@ -583,7 +585,7 @@ parser! {
                 for (_, ctor_name, ctor_types) in additional_ctors {
                     constructors.push((ctor_name, ctor_types));
                 }
-                
+
                 Expr::TypeDef {
                     name,
                     type_params,
@@ -1206,9 +1208,9 @@ parser! {
 }
 
 /// Parse a string into an expression
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if:
 /// - The input contains invalid syntax
 /// - There is unexpected input after a valid expression
@@ -1249,11 +1251,7 @@ mod tests {
 
     #[test]
     fn test_parse_binop() {
-        let expected = Expr::BinOp(
-            BinOp::Add,
-            Box::new(Expr::Int(1)),
-            Box::new(Expr::Int(2)),
-        );
+        let expected = Expr::BinOp(BinOp::Add, Box::new(Expr::Int(1)), Box::new(Expr::Int(2)));
         assert_eq!(parse("1 + 2"), Ok(expected));
     }
 
@@ -1303,92 +1301,56 @@ mod tests {
     // Test all arithmetic operators
     #[test]
     fn test_parse_subtraction() {
-        let expected = Expr::BinOp(
-            BinOp::Sub,
-            Box::new(Expr::Int(10)),
-            Box::new(Expr::Int(3)),
-        );
+        let expected = Expr::BinOp(BinOp::Sub, Box::new(Expr::Int(10)), Box::new(Expr::Int(3)));
         assert_eq!(parse("10 - 3"), Ok(expected));
     }
 
     #[test]
     fn test_parse_multiplication() {
-        let expected = Expr::BinOp(
-            BinOp::Mul,
-            Box::new(Expr::Int(4)),
-            Box::new(Expr::Int(5)),
-        );
+        let expected = Expr::BinOp(BinOp::Mul, Box::new(Expr::Int(4)), Box::new(Expr::Int(5)));
         assert_eq!(parse("4 * 5"), Ok(expected));
     }
 
     #[test]
     fn test_parse_division() {
-        let expected = Expr::BinOp(
-            BinOp::Div,
-            Box::new(Expr::Int(10)),
-            Box::new(Expr::Int(2)),
-        );
+        let expected = Expr::BinOp(BinOp::Div, Box::new(Expr::Int(10)), Box::new(Expr::Int(2)));
         assert_eq!(parse("10 / 2"), Ok(expected));
     }
 
     // Test all comparison operators
     #[test]
     fn test_parse_equality() {
-        let expected = Expr::BinOp(
-            BinOp::Eq,
-            Box::new(Expr::Int(5)),
-            Box::new(Expr::Int(5)),
-        );
+        let expected = Expr::BinOp(BinOp::Eq, Box::new(Expr::Int(5)), Box::new(Expr::Int(5)));
         assert_eq!(parse("5 == 5"), Ok(expected));
     }
 
     #[test]
     fn test_parse_inequality() {
-        let expected = Expr::BinOp(
-            BinOp::Neq,
-            Box::new(Expr::Int(5)),
-            Box::new(Expr::Int(3)),
-        );
+        let expected = Expr::BinOp(BinOp::Neq, Box::new(Expr::Int(5)), Box::new(Expr::Int(3)));
         assert_eq!(parse("5 != 3"), Ok(expected));
     }
 
     #[test]
     fn test_parse_less_than() {
-        let expected = Expr::BinOp(
-            BinOp::Lt,
-            Box::new(Expr::Int(3)),
-            Box::new(Expr::Int(5)),
-        );
+        let expected = Expr::BinOp(BinOp::Lt, Box::new(Expr::Int(3)), Box::new(Expr::Int(5)));
         assert_eq!(parse("3 < 5"), Ok(expected));
     }
 
     #[test]
     fn test_parse_less_equal() {
-        let expected = Expr::BinOp(
-            BinOp::Le,
-            Box::new(Expr::Int(3)),
-            Box::new(Expr::Int(5)),
-        );
+        let expected = Expr::BinOp(BinOp::Le, Box::new(Expr::Int(3)), Box::new(Expr::Int(5)));
         assert_eq!(parse("3 <= 5"), Ok(expected));
     }
 
     #[test]
     fn test_parse_greater_than() {
-        let expected = Expr::BinOp(
-            BinOp::Gt,
-            Box::new(Expr::Int(5)),
-            Box::new(Expr::Int(3)),
-        );
+        let expected = Expr::BinOp(BinOp::Gt, Box::new(Expr::Int(5)), Box::new(Expr::Int(3)));
         assert_eq!(parse("5 > 3"), Ok(expected));
     }
 
     #[test]
     fn test_parse_greater_equal() {
-        let expected = Expr::BinOp(
-            BinOp::Ge,
-            Box::new(Expr::Int(5)),
-            Box::new(Expr::Int(3)),
-        );
+        let expected = Expr::BinOp(BinOp::Ge, Box::new(Expr::Int(5)), Box::new(Expr::Int(3)));
         assert_eq!(parse("5 >= 3"), Ok(expected));
     }
 
@@ -1469,11 +1431,7 @@ mod tests {
 
     #[test]
     fn test_negative_in_expr() {
-        let expected = Expr::BinOp(
-            BinOp::Add,
-            Box::new(Expr::Int(-5)),
-            Box::new(Expr::Int(10)),
-        );
+        let expected = Expr::BinOp(BinOp::Add, Box::new(Expr::Int(-5)), Box::new(Expr::Int(10)));
         assert_eq!(parse("-5 + 10"), Ok(expected));
     }
 
@@ -1585,10 +1543,7 @@ mod tests {
     // Test load expressions
     #[test]
     fn test_parse_load_simple() {
-        let expected = Expr::Load(
-            "lib.par".to_string(),
-            Box::new(Expr::Var("x".to_string())),
-        );
+        let expected = Expr::Load("lib.par".to_string(), Box::new(Expr::Var("x".to_string())));
         assert_eq!(parse("load \"lib.par\" in x"), Ok(expected));
     }
 
@@ -1851,7 +1806,11 @@ mod tests {
         if let Ok(expr) = result {
             assert_eq!(
                 expr,
-                Expr::Tuple(vec![Expr::Int(42), Expr::Bool(true), Expr::Var("x".to_string())])
+                Expr::Tuple(vec![
+                    Expr::Int(42),
+                    Expr::Bool(true),
+                    Expr::Var("x".to_string())
+                ])
             );
         }
     }
@@ -2110,7 +2069,10 @@ mod tests {
                                     assert_eq!(args3.len(), 2);
                                     assert_eq!(args3[0], Expr::Char('c'));
                                     // Fourth should be Nil
-                                    assert_eq!(args3[1], Expr::Constructor("Nil".to_string(), vec![]));
+                                    assert_eq!(
+                                        args3[1],
+                                        Expr::Constructor("Nil".to_string(), vec![])
+                                    );
                                 }
                                 _ => panic!("Expected third Cons"),
                             }
@@ -2135,4 +2097,3 @@ mod tests {
         assert!(result.is_ok());
     }
 }
-
