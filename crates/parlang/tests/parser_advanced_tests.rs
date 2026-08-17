@@ -525,3 +525,21 @@ fn test_byte_suffix_no_longer_produces_a_byte_literal() {
         "expected `42b` to parse as application of 42 to variable b, got {rendered}"
     );
 }
+
+#[test]
+fn test_array_syntax_no_longer_parses() {
+    // Array literal / indexing syntax (`[|...|]`, `a[0]`) was removed from the
+    // surface language. Unlike the byte-suffix removal above, array syntax has
+    // no fallback meaning as some other valid expression, so we simply pin
+    // that both forms fail to parse.
+    //
+    // `[|1, 2|]`: there is no `token('[')` producer left anywhere in the
+    // parser, so this must fail outright.
+    assert!(parse("[|1, 2|]").is_err());
+
+    // `a[0]`: `proj_expr` no longer consumes `[0]` (only `.0` tuple projection
+    // and `.field` field access remain), so `a` parses as `Var("a")` and
+    // `[0]` is left over as trailing input. `parse()` requires the entire
+    // input to be consumed, so this must also fail.
+    assert!(parse("a[0]").is_err());
+}
