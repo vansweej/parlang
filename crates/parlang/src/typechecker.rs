@@ -254,10 +254,6 @@ fn apply_subst_with_visited(
                 .collect();
             Type::SumType(name.clone(), new_args)
         }
-        Type::Array(elem_ty, size) => {
-            let new_elem_ty = apply_subst_with_visited(subst, elem_ty, visited);
-            Type::Array(Box::new(new_elem_ty), *size)
-        }
         Type::Ref(inner_ty) => {
             let new_inner_ty = apply_subst_with_visited(subst, inner_ty, visited);
             Type::Ref(Box::new(new_inner_ty))
@@ -347,10 +343,6 @@ fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
             let new_args = args.iter().map(|arg| apply_row_subst(subst, arg)).collect();
             Type::SumType(name.clone(), new_args)
         }
-        Type::Array(elem_ty, size) => {
-            let new_elem_ty = apply_row_subst(subst, elem_ty);
-            Type::Array(Box::new(new_elem_ty), *size)
-        }
         Type::Ref(inner_ty) => {
             let new_inner_ty = apply_row_subst(subst, inner_ty);
             Type::Ref(Box::new(new_inner_ty))
@@ -414,7 +406,6 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
             }
             set
         }
-        Type::Array(elem_ty, _size) => free_type_vars(elem_ty),
         Type::Ref(inner_ty) => free_type_vars(inner_ty),
     }
 }
@@ -462,7 +453,6 @@ fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
             }
             set
         }
-        Type::Array(elem_ty, _size) => free_row_vars(elem_ty),
         Type::Ref(inner_ty) => free_row_vars(inner_ty),
     }
 }
@@ -1195,79 +1185,6 @@ fn infer_constructor(
     }
 }
 
-/// Type inference for an array literal (extracted from `infer` to keep its
-/// line count down).
-fn infer_array(elements: &[Expr], env: &mut TypeEnv) -> Result<(Type, Substitution), TypeError> {
-    if elements.is_empty() {
-        // Empty array - use fresh type variable for element type
-        let elem_ty = env.fresh_var();
-        Ok((Type::Array(Box::new(elem_ty), 0), HashMap::new()))
-    } else {
-        // Infer type of first element
-        let (first_ty, mut subst) = infer(&elements[0], env)?;
-
-        // Check that all other elements have the same type
-        for elem in &elements[1..] {
-            let (elem_ty, s) = infer(elem, env)?;
-            subst = compose_subst(&s, &subst);
-            let s2 = unify(
-                &apply_subst(&subst, &first_ty),
-                &apply_subst(&subst, &elem_ty),
-            )?;
-            subst = compose_subst(&s2, &subst);
-        }
-
-        let final_elem_ty = apply_subst(&subst, &first_ty);
-        let size = elements.len();
-        Ok((Type::Array(Box::new(final_elem_ty), size), subst))
-    }
-}
-
-/// Type inference for `arr_expr[index_expr]` (extracted from `infer` to keep
-/// its line count down).
-fn infer_array_index(
-    arr_expr: &Expr,
-    index_expr: &Expr,
-    env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
-    // Infer types of array and index
-    let (arr_ty, s1) = infer(arr_expr, env)?;
-    let (index_ty, s2) = infer(index_expr, env)?;
-    let mut subst = compose_subst(&s2, &s1);
-
-    // Index must be Int
-    let s3 = unify(&apply_subst(&subst, &index_ty), &Type::Int)?;
-    subst = compose_subst(&s3, &subst);
-
-    // Array must be Array type
-    let elem_ty = env.fresh_var();
-    // Array size is not validated during type inference - it's a runtime property
-    // We use 0 as a placeholder since the actual size will be checked at runtime
-    let size_var = 0;
-    let expected_arr_ty = Type::Array(Box::new(elem_ty.clone()), size_var);
-
-    // We need special handling for array unification because size may differ
-    // Extract the element type from the array
-    let arr_ty_subst = apply_subst(&subst, &arr_ty);
-    match arr_ty_subst {
-        Type::Array(actual_elem_ty, _size) => {
-            let s4 = unify(&elem_ty, &actual_elem_ty)?;
-            subst = compose_subst(&s4, &subst);
-            Ok((apply_subst(&subst, &actual_elem_ty), subst))
-        }
-        Type::Var(_) => {
-            // If it's still a type variable, unify with array type
-            let s4 = unify(&arr_ty_subst, &expected_arr_ty)?;
-            subst = compose_subst(&s4, &subst);
-            Ok((apply_subst(&subst, &elem_ty), subst))
-        }
-        _ => Err(TypeError::UnificationError(
-            Box::new(arr_ty_subst),
-            Box::new(expected_arr_ty),
-        )),
-    }
-}
-
 /// Type inference for `!ref_expr` (extracted from `infer` to keep its line
 /// count down).
 fn infer_deref(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), TypeError> {
@@ -1580,10 +1497,6 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
         }
 
         Expr::Constructor(name, args) => infer_constructor(name, args, env),
-
-        Expr::Array(elements) => infer_array(elements, env),
-
-        Expr::ArrayIndex(arr_expr, index_expr) => infer_array_index(arr_expr, index_expr, env),
 
         Expr::Ref(expr) => {
             // Type of ref expr is Ref T where T is the type of expr

@@ -336,22 +336,6 @@ fn dot_constructor(
     }
 }
 
-/// Emit DOT for an `ArrayIndex` node (extracted from `expr_to_dot` to keep
-/// its line count down).
-fn dot_array_index(
-    node_id: &str,
-    arr: &Expr,
-    index: &Expr,
-    output: &mut String,
-    gen: &mut NodeIdGenerator,
-) {
-    let _ = writeln!(output, "  {node_id} [label=\"ArrayIndex\"];");
-    let arr_id = expr_to_dot(arr, output, gen);
-    let index_id = expr_to_dot(index, output, gen);
-    let _ = writeln!(output, "  {node_id} -> {arr_id} [label=\"array\"];");
-    let _ = writeln!(output, "  {node_id} -> {index_id} [label=\"index\"];");
-}
-
 /// Emit DOT for a `RefAssign` node (extracted from `expr_to_dot` to keep
 /// its line count down).
 fn dot_ref_assign(
@@ -490,14 +474,6 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             body,
         } => dot_type_def(&node_id, name, type_params, constructors, body, output, gen),
         Expr::Constructor(name, args) => dot_constructor(&node_id, name, args, output, gen),
-        Expr::Array(elements) => {
-            let _ = writeln!(output, "  {node_id} [label=\"Array\"];");
-            for (i, elem) in elements.iter().enumerate() {
-                let elem_id = expr_to_dot(elem, output, gen);
-                let _ = writeln!(output, "  {node_id} -> {elem_id} [label=\"elem{i}\"];");
-            }
-        }
-        Expr::ArrayIndex(arr, index) => dot_array_index(&node_id, arr, index, output, gen),
         Expr::Ref(expr) => {
             let _ = writeln!(output, "  {node_id} [label=\"Ref\"];");
             let expr_id = expr_to_dot(expr, output, gen);
