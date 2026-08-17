@@ -14,8 +14,9 @@ type CtorSignature = (String, Vec<TypeAnnotation>);
 /// An additional `| Ctor T1 T2 ...` clause after the first constructor in a
 /// `type` definition, as `(pipe_token, ctor_name, ctor_payload_types)`.
 type AdditionalCtor = (char, String, Vec<TypeAnnotation>);
-/// One step in a chained tuple-projection / field-access / array-index
-/// expression, as `(kind_tag, tuple_index, field_name, array_index_expr)`.
+/// One step in a chained tuple-projection / field-access expression, as
+/// `(kind_tag, tuple_index, field_name, unused)`. The fourth field is
+/// always `None` (array indexing has been removed).
 type ProjectionStep = (u8, usize, String, Option<Expr>);
 /// A single top-level `let name [: Ty] = value;` binding in a `program`.
 type ProgramBinding = (String, Option<TypeAnnotation>, Expr);
@@ -339,20 +340,6 @@ where
     .map(Expr::Record)
 }
 
-/// Parse an array literal: [|e1, e2, e3|]
-fn array<Input>() -> impl Parser<Input, Output = Expr>
-where
-    Input: Stream<Token = char>,
-    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
-{
-    between(
-        (token('['), token('|')).skip(spaces()),
-        (token('|'), token(']')),
-        combine::sep_by(expr().skip(spaces()), token(',').skip(spaces())),
-    )
-    .map(Expr::Array)
-}
-
 parser! {
     fn atom[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -363,7 +350,6 @@ parser! {
             attempt(char_literal()),
             attempt(float()),
             attempt(int()),
-            attempt(array()),
             attempt(record()),
             attempt(constructor()),  // Try constructor before variable
             attempt(variable()),
@@ -880,38 +866,27 @@ parser! {
     {
         (
             primary().skip(spaces()),
-            // Parse projections and array indexing
-            many(choice((
-                // Array indexing: [expr]
-                attempt(between(
-                    token('[').skip(spaces()),
-                    token(']'),
-                    expr().skip(spaces())
-                ).map(|index_expr| (2, 0, String::new(), Some(index_expr)))),
-                // Tuple/field access: .number or .identifier
-                // But not ".." which is the range operator
-                attempt((
-                    token('.'),
-                    combine::parser::combinator::not_followed_by(token('.')),
-                ).with(choice((
-                    // Try to parse a number first (tuple projection)
-                    attempt(many1(combine::parser::char::digit()).and_then(|s: String| {
-                        s.parse::<usize>()
-                            .map(|n| (0, n, String::new(), None))
-                            .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("index overflow"))
-                    })),
-                    // Otherwise parse an identifier (field access)
-                    identifier().map(|name| (1, 0, name, None))
-                ))))
-            )))
+            // Parse tuple projections and field accesses
+            many(attempt((
+                token('.'),
+                combine::parser::combinator::not_followed_by(token('.')),
+            ).with(choice((
+                // Try to parse a number first (tuple projection)
+                attempt(many1(combine::parser::char::digit()).and_then(|s: String| {
+                    s.parse::<usize>()
+                        .map(|n| (0, n, String::new(), None))
+                        .map_err(|_| StreamErrorFor::<Input>::unexpected_static_message("index overflow"))
+                })),
+                // Otherwise parse an identifier (field access)
+                identifier().map(|name| (1, 0, name, None))
+            )))))
         )
             .map(|(base, projs): (Expr, Vec<ProjectionStep>)| {
                 projs.into_iter()
-                    .fold(base, |expr, (proj_type, index, field, index_expr)| {
+                    .fold(base, |expr, (proj_type, index, field, _index_expr)| {
                         match proj_type {
                             0 => Expr::TupleProj(Box::new(expr), index),
                             1 => Expr::FieldAccess(Box::new(expr), field),
-                            2 => Expr::ArrayIndex(Box::new(expr), Box::new(index_expr.unwrap())),
                             _ => unreachable!("Invalid projection type: {}", proj_type),
                         }
                     })

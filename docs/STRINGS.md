@@ -320,8 +320,7 @@ Since strings are lists:
 1. **Use string library functions** instead of reinventing
 2. **Pattern match for simple operations** (head, tail, empty check)
 3. **Build strings left-to-right** for efficiency
-4. **Consider using character arrays** for random access needs
-5. **Load string.par once** at the start of your program
+4. **Load string.par once** at the start of your program
 
 ## Limitations
 

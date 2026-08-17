@@ -203,14 +203,6 @@ pub enum Expr {
     /// Constructor application: Some 42, Cons 1 rest, Left x
     Constructor(String, Vec<Expr>),
 
-    /// Fixed-size array construction: [|e1, e2, e3|]
-    /// All elements must be of the same type
-    Array(Vec<Expr>),
-
-    /// Array indexing: arr[i]
-    /// Accesses element at index i (zero-based)
-    ArrayIndex(Box<Expr>, Box<Expr>),
-
     /// Reference creation: ref expr
     /// Creates a mutable reference to a value
     Ref(Box<Expr>),
@@ -305,19 +297,6 @@ fn fmt_type_def(
     write!(f, " in {body})")
 }
 
-/// Format an array literal (extracted from the `Expr` Display impl to keep
-/// its line count down).
-fn fmt_array(f: &mut fmt::Formatter, elements: &[Expr]) -> fmt::Result {
-    write!(f, "[|")?;
-    for (i, elem) in elements.iter().enumerate() {
-        if i > 0 {
-            write!(f, ", ")?;
-        }
-        write!(f, "{elem}")?;
-    }
-    write!(f, "|]")
-}
-
 /// Format a record literal (extracted from the `Expr` Display impl to keep
 /// its line count down).
 fn fmt_record(f: &mut fmt::Formatter, fields: &[(String, Expr)]) -> fmt::Result {
@@ -399,8 +378,6 @@ impl fmt::Display for Expr {
                 }
                 Ok(())
             }
-            Expr::Array(elements) => fmt_array(f, elements),
-            Expr::ArrayIndex(arr, index) => write!(f, "{arr}[{index}]"),
             Expr::Ref(expr) => write!(f, "(ref {expr})"),
             Expr::Deref(expr) => write!(f, "(!{expr})"),
             Expr::RefAssign(ref_expr, value) => write!(f, "({ref_expr} := {value})"),

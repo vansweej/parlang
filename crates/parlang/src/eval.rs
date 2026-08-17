@@ -38,11 +38,6 @@ pub enum Value {
     ///       None -> Variant("None", vec![])
     ///       Cons(1, rest) -> Variant("Cons", vec![Int(1), <list>])
     Variant(String, Vec<Value>),
-    /// Fixed-size array of values
-    /// Array: (size, elements)
-    /// e.g., [|1, 2, 3|] -> Array(3, vec![Int(1), Int(2), Int(3)])
-    /// All elements must be of the same type
-    Array(usize, Vec<Value>),
     /// Reference to a value
     /// Reference: (`unique_id`, `RefCell` for interior mutability)
     /// e.g., ref 42 -> Reference(0, RefCell(Int(42)))
@@ -111,17 +106,6 @@ impl fmt::Display for Value {
                     write!(f, ")")?;
                 }
                 Ok(())
-            }
-            Value::Array(size, values) => {
-                write!(f, "[|")?;
-                for (i, val) in values.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{val}")?;
-                }
-                write!(f, "|]")?;
-                write!(f, " (size: {size})")
             }
             Value::Reference(id, cell) => {
                 write!(f, "<ref #{id}: {}>", cell.borrow())
@@ -721,54 +705,6 @@ fn eval_constructor(ctor_name: &str, args: &[Expr], env: &Environment) -> Result
     Ok(Value::Variant(ctor_name.to_string(), values))
 }
 
-/// Evaluate `arr_expr[index_expr]` (extracted from `eval` to keep its line
-/// count down).
-fn eval_array_index(
-    arr_expr: &Expr,
-    index_expr: &Expr,
-    env: &Environment,
-) -> Result<Value, EvalError> {
-    // Evaluate the array and index expressions
-    let arr_val = eval(arr_expr, env)?;
-    let index_val = eval(index_expr, env)?;
-
-    // Check that the index is an integer
-    let Value::Int(index) = index_val else {
-        return Err(EvalError::TypeError(
-            "Array index must be an integer".to_string(),
-        ));
-    };
-
-    // Check that index is non-negative
-    if index < 0 {
-        return Err(EvalError::IndexOutOfBounds(format!(
-            "Array index {index} is negative"
-        )));
-    }
-
-    // Check that the value is an array
-    match arr_val {
-        Value::Array(size, values) => {
-            let Ok(idx) = usize::try_from(index) else {
-                return Err(EvalError::IndexOutOfBounds(format!(
-                    "Array index {index} out of bounds for array of size {size}"
-                )));
-            };
-            // Check bounds
-            if idx >= size {
-                Err(EvalError::IndexOutOfBounds(format!(
-                    "Array index {idx} out of bounds for array of size {size}"
-                )))
-            } else {
-                Ok(values[idx].clone())
-            }
-        }
-        _ => Err(EvalError::TypeError(
-            "Array indexing requires an array".to_string(),
-        )),
-    }
-}
-
 /// Evaluate `rec name -> body`, producing a recursive closure (extracted
 /// from `eval` to keep its line count down).
 fn eval_rec(name: &str, body: &Expr, env: &Environment) -> Result<Value, EvalError> {
@@ -957,18 +893,6 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
         } => eval_type_def(name, constructors, body, env),
 
         Expr::Constructor(ctor_name, args) => eval_constructor(ctor_name, args, env),
-
-        Expr::Array(elements) => {
-            // Evaluate all elements of the array
-            let mut values = Vec::new();
-            for elem in elements {
-                values.push(eval(elem, env)?);
-            }
-            let size = values.len();
-            Ok(Value::Array(size, values))
-        }
-
-        Expr::ArrayIndex(arr_expr, index_expr) => eval_array_index(arr_expr, index_expr, env),
 
         Expr::Ref(expr) => {
             // Create a reference to a value

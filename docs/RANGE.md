@@ -288,11 +288,9 @@ Potential future additions to Range functionality:
 - **Contains check**: Test if a value is within a range
 - **Range arithmetic**: Operations like union, intersection
 - **Step parameter**: Ranges with custom step sizes (e.g., `1..10:2` for odd numbers)
-- **Conversion to arrays**: Convert a range to an array of values
 
 ## See Also
 
 - [Type System](TYPE_SYSTEM.md) - Overview of ParLang's type system
-- [Arrays](ARRAYS.md) - Fixed-size array type
 - [Type Inference](TYPE_INFERENCE.md) - How type inference works in ParLang
 - [Examples](../examples/range.par) - Example code using ranges

@@ -372,24 +372,6 @@ fn test_ref_with_match() {
 }
 
 #[test]
-fn test_ref_in_array() {
-    // Test references inside arrays
-    let code = r"
-        let r1 = ref 1 in
-        let r2 = ref 2 in
-        let r3 = ref 3 in
-        let arr = [|r1, r2, r3|] in
-        let dummy = arr[0] := 10 in
-        !r1
-    ";
-    let expr = parse(code).unwrap();
-    let env = Environment::new();
-    let result = eval(&expr, &env).unwrap();
-
-    assert_eq!(result, Value::Int(10));
-}
-
-#[test]
 fn test_nested_ref() {
     // Test reference to a reference
     let code = r"
