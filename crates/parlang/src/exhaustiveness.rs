@@ -132,7 +132,9 @@ pub fn check_exhaustiveness(patterns: &[Pattern], env: &Environment) -> Exhausti
 
 /// Check if patterns contain a catch-all (wildcard or variable)
 fn has_catch_all(patterns: &[Pattern]) -> bool {
-    patterns.iter().any(|p| matches!(p, Pattern::Wildcard | Pattern::Var(_)))
+    patterns
+        .iter()
+        .any(|p| matches!(p, Pattern::Wildcard | Pattern::Var(_)))
 }
 
 /// Recursively analyze a pattern to collect information
@@ -329,14 +331,20 @@ mod tests {
     fn test_constructor_exhaustive() {
         let mut env = Environment::new();
         // Register Option type constructors
-        env.register_constructor("Some".to_string(), ConstructorInfo {
-            type_name: "Option".to_string(),
-            arity: 1,
-        });
-        env.register_constructor("None".to_string(), ConstructorInfo {
-            type_name: "Option".to_string(),
-            arity: 0,
-        });
+        env.register_constructor(
+            "Some".to_string(),
+            ConstructorInfo {
+                type_name: "Option".to_string(),
+                arity: 1,
+            },
+        );
+        env.register_constructor(
+            "None".to_string(),
+            ConstructorInfo {
+                type_name: "Option".to_string(),
+                arity: 0,
+            },
+        );
 
         let patterns = vec![
             Pattern::Constructor("Some".to_string(), vec![Pattern::Wildcard]),
@@ -350,19 +358,26 @@ mod tests {
     fn test_constructor_non_exhaustive() {
         let mut env = Environment::new();
         // Register Option type constructors
-        env.register_constructor("Some".to_string(), ConstructorInfo {
-            type_name: "Option".to_string(),
-            arity: 1,
-        });
-        env.register_constructor("None".to_string(), ConstructorInfo {
-            type_name: "Option".to_string(),
-            arity: 0,
-        });
+        env.register_constructor(
+            "Some".to_string(),
+            ConstructorInfo {
+                type_name: "Option".to_string(),
+                arity: 1,
+            },
+        );
+        env.register_constructor(
+            "None".to_string(),
+            ConstructorInfo {
+                type_name: "Option".to_string(),
+                arity: 0,
+            },
+        );
 
         // Only match Some, missing None
-        let patterns = vec![
-            Pattern::Constructor("Some".to_string(), vec![Pattern::Wildcard]),
-        ];
+        let patterns = vec![Pattern::Constructor(
+            "Some".to_string(),
+            vec![Pattern::Wildcard],
+        )];
         let result = check_exhaustiveness(&patterns, &env);
         assert!(!result.is_exhaustive());
         if let ExhaustivenessResult::NonExhaustive(missing) = result {
@@ -373,19 +388,28 @@ mod tests {
     #[test]
     fn test_nested_constructor() {
         let mut env = Environment::new();
-        env.register_constructor("Some".to_string(), ConstructorInfo {
-            type_name: "Option".to_string(),
-            arity: 1,
-        });
-        env.register_constructor("None".to_string(), ConstructorInfo {
-            type_name: "Option".to_string(),
-            arity: 0,
-        });
+        env.register_constructor(
+            "Some".to_string(),
+            ConstructorInfo {
+                type_name: "Option".to_string(),
+                arity: 1,
+            },
+        );
+        env.register_constructor(
+            "None".to_string(),
+            ConstructorInfo {
+                type_name: "Option".to_string(),
+                arity: 0,
+            },
+        );
 
         let patterns = vec![
             Pattern::Constructor(
                 "Some".to_string(),
-                vec![Pattern::Constructor("Some".to_string(), vec![Pattern::Wildcard])],
+                vec![Pattern::Constructor(
+                    "Some".to_string(),
+                    vec![Pattern::Wildcard],
+                )],
             ),
             Pattern::Constructor(
                 "Some".to_string(),

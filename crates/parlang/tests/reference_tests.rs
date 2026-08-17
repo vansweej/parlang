@@ -1,5 +1,5 @@
 /// Unit tests for reference/pointer types
-use parlang::{parse, eval, Environment, Value, EvalError, typecheck};
+use parlang::{eval, parse, typecheck, Environment, EvalError, Value};
 
 #[test]
 fn test_ref_creation() {
@@ -7,7 +7,7 @@ fn test_ref_creation() {
     let expr = parse("ref 42").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     // Should be a reference
     match result {
         Value::Reference(_, cell) => {
@@ -23,7 +23,7 @@ fn test_ref_deref() {
     let expr = parse("!(ref 42)").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(42));
 }
 
@@ -33,7 +33,7 @@ fn test_ref_assignment() {
     let expr = parse("let r = ref 10 in r := 20").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     // Assignment returns unit
     assert_eq!(result, Value::Tuple(vec![]));
 }
@@ -44,7 +44,7 @@ fn test_ref_assignment_with_deref() {
     let expr = parse("let r = ref 10 in let dummy = r := 20 in !r").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(20));
 }
 
@@ -54,7 +54,7 @@ fn test_ref_bool() {
     let expr = parse("let r = ref true in !r").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Bool(true));
 }
 
@@ -64,7 +64,7 @@ fn test_ref_float() {
     let expr = parse("let r = ref 3.14 in !r").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Float(3.14));
 }
 
@@ -80,7 +80,7 @@ fn test_ref_in_function() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(6));
 }
 
@@ -98,7 +98,7 @@ fn test_counter() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(3));
 }
 
@@ -123,7 +123,7 @@ fn test_ref_closure_capture() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     // Should be 10 + 11 + 12 = 33
     assert_eq!(result, Value::Int(33));
 }
@@ -138,7 +138,7 @@ fn test_ref_tuple() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Tuple(vec![Value::Int(1), Value::Int(2)]));
 }
 
@@ -155,7 +155,7 @@ fn test_multiple_refs() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(30));
 }
 
@@ -171,7 +171,7 @@ fn test_ref_aliasing() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     // Both r and alias point to the same reference
     assert_eq!(result, Value::Int(10));
 }
@@ -182,7 +182,7 @@ fn test_deref_non_reference() {
     let expr = parse("!42").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env);
-    
+
     assert!(matches!(result, Err(EvalError::TypeError(_))));
 }
 
@@ -192,7 +192,7 @@ fn test_assign_non_reference() {
     let expr = parse("42 := 10").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env);
-    
+
     assert!(matches!(result, Err(EvalError::TypeError(_))));
 }
 
@@ -202,7 +202,7 @@ fn test_ref_type() {
     // Test type of ref expr
     let expr = parse("ref 42").unwrap();
     let ty = typecheck(&expr).unwrap();
-    
+
     assert_eq!(ty.to_string(), "Ref Int");
 }
 
@@ -211,7 +211,7 @@ fn test_deref_type() {
     // Test type of deref expr
     let expr = parse("!(ref 42)").unwrap();
     let ty = typecheck(&expr).unwrap();
-    
+
     assert_eq!(ty.to_string(), "Int");
 }
 
@@ -220,7 +220,7 @@ fn test_ref_assign_type() {
     // Test type of assignment expr
     let expr = parse("let r = ref 10 in r := 20").unwrap();
     let ty = typecheck(&expr).unwrap();
-    
+
     // Assignment returns unit type
     assert_eq!(ty.to_string(), "()");
 }
@@ -230,7 +230,7 @@ fn test_ref_polymorphic() {
     // Test polymorphic reference in function
     let expr = parse("fun x -> ref x").unwrap();
     let ty = typecheck(&expr).unwrap();
-    
+
     // Should be: t0 -> Ref t0
     assert!(ty.to_string().contains("Ref"));
 }
@@ -240,7 +240,7 @@ fn test_ref_type_mismatch() {
     // Test that assigning wrong type fails type checking
     let expr = parse("let r = ref 10 in r := true").unwrap();
     let result = typecheck(&expr);
-    
+
     assert!(result.is_err());
 }
 
@@ -253,7 +253,7 @@ fn test_deref_type_inference() {
     ";
     let expr = parse(code).unwrap();
     let ty = typecheck(&expr).unwrap();
-    
+
     assert_eq!(ty.to_string(), "Int");
 }
 
@@ -268,7 +268,7 @@ fn test_ref_in_record() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(5));
 }
 
@@ -289,7 +289,7 @@ fn test_swap_function() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Tuple(vec![Value::Int(20), Value::Int(10)]));
 }
 
@@ -313,7 +313,7 @@ fn test_accumulator() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     // Should be 0 + 5 + 10 + 15 = 30
     assert_eq!(result, Value::Int(30));
 }
@@ -329,7 +329,7 @@ fn test_ref_with_if() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(10));
 }
 
@@ -351,7 +351,7 @@ fn test_ref_recursive() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(5));
 }
 
@@ -367,7 +367,7 @@ fn test_ref_with_match() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(10));
 }
 
@@ -385,7 +385,7 @@ fn test_ref_in_array() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(10));
 }
 
@@ -401,7 +401,7 @@ fn test_nested_ref() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(42));
 }
 
@@ -417,7 +417,7 @@ fn test_ref_assignment_chain() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(15));
 }
 
@@ -427,7 +427,7 @@ fn test_ref_char() {
     let expr = parse("let r = ref 'x' in !r").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Char('x'));
 }
 
@@ -442,7 +442,7 @@ fn test_ref_update_same_value() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     assert_eq!(result, Value::Int(10));
 }
 
@@ -457,7 +457,7 @@ fn test_ref_with_arithmetic() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
-    
+
     // Should be 10 + (20 * 2) = 50
     assert_eq!(result, Value::Int(50));
 }

@@ -1,5 +1,5 @@
 /// Tests for Range type functionality
-use parlang::{parse, eval, typecheck, Environment, Value};
+use parlang::{eval, parse, typecheck, Environment, Value};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
     let expr = parse(input)?;
@@ -16,67 +16,43 @@ fn parse_and_typecheck(input: &str) -> Result<String, String> {
 // Basic range creation tests
 #[test]
 fn test_simple_range() {
-    assert_eq!(
-        parse_and_eval("1..10"),
-        Ok(Value::Range(1, 10))
-    );
+    assert_eq!(parse_and_eval("1..10"), Ok(Value::Range(1, 10)));
 }
 
 #[test]
 fn test_range_with_negative_start() {
-    assert_eq!(
-        parse_and_eval("-5..5"),
-        Ok(Value::Range(-5, 5))
-    );
+    assert_eq!(parse_and_eval("-5..5"), Ok(Value::Range(-5, 5)));
 }
 
 #[test]
 fn test_range_with_negative_end() {
-    assert_eq!(
-        parse_and_eval("0..-10"),
-        Ok(Value::Range(0, -10))
-    );
+    assert_eq!(parse_and_eval("0..-10"), Ok(Value::Range(0, -10)));
 }
 
 #[test]
 fn test_range_both_negative() {
-    assert_eq!(
-        parse_and_eval("-10..-1"),
-        Ok(Value::Range(-10, -1))
-    );
+    assert_eq!(parse_and_eval("-10..-1"), Ok(Value::Range(-10, -1)));
 }
 
 #[test]
 fn test_range_zero_to_zero() {
-    assert_eq!(
-        parse_and_eval("0..0"),
-        Ok(Value::Range(0, 0))
-    );
+    assert_eq!(parse_and_eval("0..0"), Ok(Value::Range(0, 0)));
 }
 
 #[test]
 fn test_range_descending() {
-    assert_eq!(
-        parse_and_eval("10..1"),
-        Ok(Value::Range(10, 1))
-    );
+    assert_eq!(parse_and_eval("10..1"), Ok(Value::Range(10, 1)));
 }
 
 #[test]
 fn test_range_large_numbers() {
-    assert_eq!(
-        parse_and_eval("1000..2000"),
-        Ok(Value::Range(1000, 2000))
-    );
+    assert_eq!(parse_and_eval("1000..2000"), Ok(Value::Range(1000, 2000)));
 }
 
 // Range with expressions
 #[test]
 fn test_range_with_arithmetic() {
-    assert_eq!(
-        parse_and_eval("1+1..10*2"),
-        Ok(Value::Range(2, 20))
-    );
+    assert_eq!(parse_and_eval("1+1..10*2"), Ok(Value::Range(2, 20)));
 }
 
 #[test]
@@ -232,19 +208,13 @@ fn test_nested_range_expressions() {
 #[test]
 fn test_range_precedence_with_addition() {
     // Should parse as (1+2)..(3+4) = 3..7
-    assert_eq!(
-        parse_and_eval("1+2..3+4"),
-        Ok(Value::Range(3, 7))
-    );
+    assert_eq!(parse_and_eval("1+2..3+4"), Ok(Value::Range(3, 7)));
 }
 
 #[test]
 fn test_range_precedence_with_multiplication() {
     // Should parse as (2*3)..(4*5) = 6..20
-    assert_eq!(
-        parse_and_eval("2*3..4*5"),
-        Ok(Value::Range(6, 20))
-    );
+    assert_eq!(parse_and_eval("2*3..4*5"), Ok(Value::Range(6, 20)));
 }
 
 #[test]
@@ -258,43 +228,28 @@ fn test_range_with_comparison() {
 // Range equality
 #[test]
 fn test_range_equality_true() {
-    assert_eq!(
-        parse_and_eval("1..10 == 1..10"),
-        Ok(Value::Bool(true))
-    );
+    assert_eq!(parse_and_eval("1..10 == 1..10"), Ok(Value::Bool(true)));
 }
 
 #[test]
 fn test_range_equality_false_different_start() {
-    assert_eq!(
-        parse_and_eval("1..10 == 2..10"),
-        Ok(Value::Bool(false))
-    );
+    assert_eq!(parse_and_eval("1..10 == 2..10"), Ok(Value::Bool(false)));
 }
 
 #[test]
 fn test_range_equality_false_different_end() {
-    assert_eq!(
-        parse_and_eval("1..10 == 1..11"),
-        Ok(Value::Bool(false))
-    );
+    assert_eq!(parse_and_eval("1..10 == 1..11"), Ok(Value::Bool(false)));
 }
 
 #[test]
 fn test_range_inequality() {
-    assert_eq!(
-        parse_and_eval("1..10 != 2..10"),
-        Ok(Value::Bool(true))
-    );
+    assert_eq!(parse_and_eval("1..10 != 2..10"), Ok(Value::Bool(true)));
 }
 
 // Edge cases
 #[test]
 fn test_range_very_large() {
-    assert_eq!(
-        parse_and_eval("0..1000000"),
-        Ok(Value::Range(0, 1000000))
-    );
+    assert_eq!(parse_and_eval("0..1000000"), Ok(Value::Range(0, 1000000)));
 }
 
 #[test]
@@ -352,7 +307,7 @@ fn test_multiple_ranges_sequential() {
 #[test]
 fn test_range_in_recursive_function() {
     let result = parse_and_eval(
-        "let makeRange = rec f -> fun n -> if n == 0 then 0..0 else 0..n in makeRange 10"
+        "let makeRange = rec f -> fun n -> if n == 0 then 0..0 else 0..n in makeRange 10",
     );
     assert_eq!(result, Ok(Value::Range(0, 10)));
 }

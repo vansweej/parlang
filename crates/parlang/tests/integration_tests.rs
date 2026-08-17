@@ -1,6 +1,6 @@
 /// Integration tests combining parser and evaluator
 /// These tests verify the full pipeline from source code to evaluation
-use parlang::{parse, eval, extract_bindings, Environment, Value};
+use parlang::{eval, extract_bindings, parse, Environment, Value};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
     let expr = parse(input)?;
@@ -13,13 +13,12 @@ fn parse_and_eval(input: &str) -> Result<Value, String> {
 fn parse_eval_and_extract(input: &str, env: &Environment) -> Result<(Value, Environment), String> {
     let expr = parse(input)?;
     let value = eval(&expr, env).map_err(|e| e.to_string())?;
-    
+
     // Extract bindings from the expression to persist them
     let new_env = extract_bindings(&expr, env).map_err(|e| e.to_string())?;
-    
+
     Ok((value, new_env))
 }
-
 
 #[test]
 fn test_int_literal() {
@@ -118,12 +117,18 @@ fn test_if_false() {
 
 #[test]
 fn test_if_with_comparison() {
-    assert_eq!(parse_and_eval("if 5 > 3 then 100 else 0"), Ok(Value::Int(100)));
+    assert_eq!(
+        parse_and_eval("if 5 > 3 then 100 else 0"),
+        Ok(Value::Int(100))
+    );
 }
 
 #[test]
 fn test_nested_if() {
-    assert_eq!(parse_and_eval("if true then if false then 1 else 2 else 3"), Ok(Value::Int(2)));
+    assert_eq!(
+        parse_and_eval("if true then if false then 1 else 2 else 3"),
+        Ok(Value::Int(2))
+    );
 }
 
 #[test]
@@ -138,12 +143,18 @@ fn test_let_with_operation() {
 
 #[test]
 fn test_nested_let() {
-    assert_eq!(parse_and_eval("let x = 1 in let y = 2 in x + y"), Ok(Value::Int(3)));
+    assert_eq!(
+        parse_and_eval("let x = 1 in let y = 2 in x + y"),
+        Ok(Value::Int(3))
+    );
 }
 
 #[test]
 fn test_let_shadowing() {
-    assert_eq!(parse_and_eval("let x = 1 in let x = 2 in x"), Ok(Value::Int(2)));
+    assert_eq!(
+        parse_and_eval("let x = 1 in let x = 2 in x"),
+        Ok(Value::Int(2))
+    );
 }
 
 #[test]
@@ -158,47 +169,74 @@ fn test_increment_function() {
 
 #[test]
 fn test_function_with_let() {
-    assert_eq!(parse_and_eval("let inc = fun x -> x + 1 in inc 41"), Ok(Value::Int(42)));
+    assert_eq!(
+        parse_and_eval("let inc = fun x -> x + 1 in inc 41"),
+        Ok(Value::Int(42))
+    );
 }
 
 #[test]
 fn test_double_function() {
-    assert_eq!(parse_and_eval("let double = fun x -> x + x in double 21"), Ok(Value::Int(42)));
+    assert_eq!(
+        parse_and_eval("let double = fun x -> x + x in double 21"),
+        Ok(Value::Int(42))
+    );
 }
 
 #[test]
 fn test_curried_addition() {
-    assert_eq!(parse_and_eval("(fun x -> fun y -> x + y) 40 2"), Ok(Value::Int(42)));
+    assert_eq!(
+        parse_and_eval("(fun x -> fun y -> x + y) 40 2"),
+        Ok(Value::Int(42))
+    );
 }
 
 #[test]
 fn test_partial_application() {
-    assert_eq!(parse_and_eval("let add = fun x -> fun y -> x + y in let add5 = add 5 in add5 10"), Ok(Value::Int(15)));
+    assert_eq!(
+        parse_and_eval("let add = fun x -> fun y -> x + y in let add5 = add 5 in add5 10"),
+        Ok(Value::Int(15))
+    );
 }
 
 #[test]
 fn test_closure_captures_environment() {
-    assert_eq!(parse_and_eval("let x = 10 in (fun y -> x + y) 32"), Ok(Value::Int(42)));
+    assert_eq!(
+        parse_and_eval("let x = 10 in (fun y -> x + y) 32"),
+        Ok(Value::Int(42))
+    );
 }
 
 #[test]
 fn test_higher_order_function() {
-    assert_eq!(parse_and_eval("let f = fun g -> g 5 in let inc = fun x -> x + 1 in f inc"), Ok(Value::Int(6)));
+    assert_eq!(
+        parse_and_eval("let f = fun g -> g 5 in let inc = fun x -> x + 1 in f inc"),
+        Ok(Value::Int(6))
+    );
 }
 
 #[test]
 fn test_complex_nested_expression() {
-    assert_eq!(parse_and_eval("let a = 1 in let b = 2 in let c = 3 in a + b * c"), Ok(Value::Int(7)));
+    assert_eq!(
+        parse_and_eval("let a = 1 in let b = 2 in let c = 3 in a + b * c"),
+        Ok(Value::Int(7))
+    );
 }
 
 #[test]
 fn test_function_in_if() {
-    assert_eq!(parse_and_eval("if true then (fun x -> x + 1) 5 else 0"), Ok(Value::Int(6)));
+    assert_eq!(
+        parse_and_eval("if true then (fun x -> x + 1) 5 else 0"),
+        Ok(Value::Int(6))
+    );
 }
 
 #[test]
 fn test_comparison_result_in_let() {
-    assert_eq!(parse_and_eval("let b = 5 > 3 in if b then 1 else 0"), Ok(Value::Int(1)));
+    assert_eq!(
+        parse_and_eval("let b = 5 > 3 in if b then 1 else 0"),
+        Ok(Value::Int(1))
+    );
 }
 
 #[test]
@@ -213,13 +251,19 @@ fn test_boolean_inequality() {
 
 #[test]
 fn test_multiple_function_calls() {
-    assert_eq!(parse_and_eval("let f = fun x -> x * 2 in f (f 5)"), Ok(Value::Int(20)));
+    assert_eq!(
+        parse_and_eval("let f = fun x -> x * 2 in f (f 5)"),
+        Ok(Value::Int(20))
+    );
 }
 
 #[test]
 fn test_nested_closures() {
     // f captures x = 1, not x = 10
-    assert_eq!(parse_and_eval("let x = 1 in let f = fun y -> x + y in let x = 10 in f 5"), Ok(Value::Int(6)));
+    assert_eq!(
+        parse_and_eval("let x = 1 in let f = fun y -> x + y in let x = 10 in f 5"),
+        Ok(Value::Int(6))
+    );
 }
 
 #[test]
@@ -250,13 +294,19 @@ fn test_zero_division() {
 #[test]
 fn test_realistic_example_1() {
     // Absolute value function
-    assert_eq!(parse_and_eval("let abs = fun x -> if x < 0 then 0 - x else x in abs (-5)"), Ok(Value::Int(5)));
+    assert_eq!(
+        parse_and_eval("let abs = fun x -> if x < 0 then 0 - x else x in abs (-5)"),
+        Ok(Value::Int(5))
+    );
 }
 
 #[test]
 fn test_realistic_example_2() {
     // Max function using currying
-    assert_eq!(parse_and_eval("let max = fun a -> fun b -> if a > b then a else b in max 10 20"), Ok(Value::Int(20)));
+    assert_eq!(
+        parse_and_eval("let max = fun a -> fun b -> if a > b then a else b in max 10 20"),
+        Ok(Value::Int(20))
+    );
 }
 
 #[test]
@@ -270,7 +320,10 @@ fn test_realistic_example_3() {
 
 #[test]
 fn test_all_operators_together() {
-    assert_eq!(parse_and_eval("if 10 + 5 * 2 == 20 then 1 else 0"), Ok(Value::Int(1)));
+    assert_eq!(
+        parse_and_eval("if 10 + 5 * 2 == 20 then 1 else 0"),
+        Ok(Value::Int(1))
+    );
 }
 
 // ========================================
@@ -284,7 +337,7 @@ fn test_repl_persistence_simple_binding() {
     let env = Environment::new();
     let (value1, env) = parse_eval_and_extract("let x = 42; 0", &env).unwrap();
     assert_eq!(value1, Value::Int(0));
-    
+
     // Use the variable in the next evaluation
     let (value2, _) = parse_eval_and_extract("x", &env).unwrap();
     assert_eq!(value2, Value::Int(42));
@@ -296,7 +349,7 @@ fn test_repl_persistence_function_definition() {
     let env = Environment::new();
     let (value1, env) = parse_eval_and_extract("let double = fun x -> x + x; 0", &env).unwrap();
     assert_eq!(value1, Value::Int(0));
-    
+
     // Use the function in the next evaluation
     let (value2, _) = parse_eval_and_extract("double 21", &env).unwrap();
     assert_eq!(value2, Value::Int(42));
@@ -306,14 +359,14 @@ fn test_repl_persistence_function_definition() {
 fn test_repl_persistence_multiple_functions() {
     // Define multiple functions across different evaluations
     let env = Environment::new();
-    
+
     let (_, env) = parse_eval_and_extract("let double = fun x -> x + x; 0", &env).unwrap();
     let (_, env) = parse_eval_and_extract("let triple = fun x -> x + x + x; 0", &env).unwrap();
-    
+
     // Use both functions
     let (value1, env) = parse_eval_and_extract("double 5", &env).unwrap();
     assert_eq!(value1, Value::Int(10));
-    
+
     let (value2, _) = parse_eval_and_extract("triple 10", &env).unwrap();
     assert_eq!(value2, Value::Int(30));
 }
@@ -322,10 +375,11 @@ fn test_repl_persistence_multiple_functions() {
 fn test_repl_persistence_chained_definitions() {
     // Define a function, then use it in another function
     let env = Environment::new();
-    
+
     let (_, env) = parse_eval_and_extract("let double = fun x -> x + x; 0", &env).unwrap();
-    let (_, env) = parse_eval_and_extract("let quadruple = fun x -> double (double x); 0", &env).unwrap();
-    
+    let (_, env) =
+        parse_eval_and_extract("let quadruple = fun x -> double (double x); 0", &env).unwrap();
+
     // Use the second function
     let (value, _) = parse_eval_and_extract("quadruple 5", &env).unwrap();
     assert_eq!(value, Value::Int(20));
@@ -335,16 +389,16 @@ fn test_repl_persistence_chained_definitions() {
 fn test_repl_persistence_load_library() {
     // Load a library and verify functions persist
     let env = Environment::new();
-    
+
     let (_, env) = parse_eval_and_extract("load \"examples/stdlib.par\" in 0", &env).unwrap();
-    
+
     // Use functions from the loaded library
     let (value1, env) = parse_eval_and_extract("double 21", &env).unwrap();
     assert_eq!(value1, Value::Int(42));
-    
+
     let (value2, env) = parse_eval_and_extract("triple 14", &env).unwrap();
     assert_eq!(value2, Value::Int(42));
-    
+
     // Use max function with currying
     let (value3, _) = parse_eval_and_extract("max 10 20", &env).unwrap();
     assert_eq!(value3, Value::Int(20));
@@ -354,11 +408,11 @@ fn test_repl_persistence_load_library() {
 fn test_repl_persistence_shadowing() {
     // Define a variable, then shadow it
     let env = Environment::new();
-    
+
     let (_, env) = parse_eval_and_extract("let x = 10; 0", &env).unwrap();
     let (value1, env) = parse_eval_and_extract("x", &env).unwrap();
     assert_eq!(value1, Value::Int(10));
-    
+
     // Shadow the variable
     let (_, env) = parse_eval_and_extract("let x = 20; 0", &env).unwrap();
     let (value2, _) = parse_eval_and_extract("x", &env).unwrap();
@@ -369,9 +423,9 @@ fn test_repl_persistence_shadowing() {
 fn test_repl_persistence_seq_multiple_bindings() {
     // Define multiple bindings in a single expression
     let env = Environment::new();
-    
+
     let (_, env) = parse_eval_and_extract("let x = 1; let y = 2; let z = 3; 0", &env).unwrap();
-    
+
     // Use all three variables
     let (value, _) = parse_eval_and_extract("x + y + z", &env).unwrap();
     assert_eq!(value, Value::Int(6));
@@ -381,10 +435,10 @@ fn test_repl_persistence_seq_multiple_bindings() {
 fn test_repl_persistence_function_using_persistent_var() {
     // Define a variable, then a function that uses it
     let env = Environment::new();
-    
+
     let (_, env) = parse_eval_and_extract("let base = 10; 0", &env).unwrap();
     let (_, env) = parse_eval_and_extract("let add_base = fun x -> x + base; 0", &env).unwrap();
-    
+
     // Use the function
     let (value, _) = parse_eval_and_extract("add_base 5", &env).unwrap();
     assert_eq!(value, Value::Int(15));
@@ -398,10 +452,10 @@ fn test_repl_persistence_function_using_persistent_var() {
 fn test_optional_body_simple_binding() {
     // Define a binding without trailing 0
     let env = Environment::new();
-    
+
     let (value, env) = parse_eval_and_extract("let x = 42;", &env).unwrap();
     assert_eq!(value, Value::Int(0)); // Should default to 0
-    
+
     // Use the variable
     let (value, _) = parse_eval_and_extract("x", &env).unwrap();
     assert_eq!(value, Value::Int(42));
@@ -411,10 +465,10 @@ fn test_optional_body_simple_binding() {
 fn test_optional_body_function_definition() {
     // Define a function without trailing 0
     let env = Environment::new();
-    
+
     let (value, env) = parse_eval_and_extract("let double = fun x -> x + x;", &env).unwrap();
     assert_eq!(value, Value::Int(0)); // Should default to 0
-    
+
     // Use the function
     let (value, _) = parse_eval_and_extract("double 21", &env).unwrap();
     assert_eq!(value, Value::Int(42));
@@ -424,10 +478,10 @@ fn test_optional_body_function_definition() {
 fn test_optional_body_multiple_bindings() {
     // Define multiple bindings without trailing expression
     let env = Environment::new();
-    
+
     let (value, env) = parse_eval_and_extract("let x = 1; let y = 2; let z = 3;", &env).unwrap();
     assert_eq!(value, Value::Int(0)); // Should default to 0
-    
+
     // Use the variables
     let (value, _) = parse_eval_and_extract("x + y + z", &env).unwrap();
     assert_eq!(value, Value::Int(6));
@@ -437,10 +491,10 @@ fn test_optional_body_multiple_bindings() {
 fn test_optional_body_load_library() {
     // Load a library without "in 0"
     let env = Environment::new();
-    
+
     let (value, env) = parse_eval_and_extract("load \"examples/stdlib.par\"", &env).unwrap();
     assert_eq!(value, Value::Int(0)); // Should default to 0
-    
+
     // Use functions from the loaded library
     let (value, _) = parse_eval_and_extract("double 21", &env).unwrap();
     assert_eq!(value, Value::Int(42));
@@ -450,13 +504,13 @@ fn test_optional_body_load_library() {
 fn test_optional_body_backwards_compatible() {
     // Verify old syntax with explicit body still works
     let env = Environment::new();
-    
+
     let (value, env) = parse_eval_and_extract("let x = 10; 0", &env).unwrap();
     assert_eq!(value, Value::Int(0));
-    
+
     let (value, env) = parse_eval_and_extract("let y = 20; x + 5", &env).unwrap();
     assert_eq!(value, Value::Int(15)); // x is 10, so 10 + 5 = 15
-    
+
     let (value, _) = parse_eval_and_extract("y", &env).unwrap();
     assert_eq!(value, Value::Int(20));
 }
@@ -465,10 +519,10 @@ fn test_optional_body_backwards_compatible() {
 fn test_optional_body_load_with_in() {
     // Verify old load syntax with "in" still works
     let env = Environment::new();
-    
+
     let (value, env) = parse_eval_and_extract("load \"examples/stdlib.par\" in 0", &env).unwrap();
     assert_eq!(value, Value::Int(0));
-    
+
     let (value, _) = parse_eval_and_extract("triple 14", &env).unwrap();
     assert_eq!(value, Value::Int(42));
 }
@@ -653,7 +707,7 @@ fn test_rec_even_odd() {
         ) 10
     ";
     assert_eq!(parse_and_eval(even), Ok(Value::Bool(true)));
-    
+
     let odd = r"
         (rec is_even -> fun n ->
             if n == 0
@@ -931,7 +985,9 @@ fn test_match_error_no_match() {
     let code = "match 100 with | 0 -> 1 | 1 -> 2";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Pattern match is non-exhaustive"));
+    assert!(result
+        .unwrap_err()
+        .contains("Pattern match is non-exhaustive"));
 }
 
 #[test]
@@ -947,7 +1003,7 @@ fn test_match_replaces_nested_if() {
             else 999
         in category 1
     ";
-    
+
     let match_code = r"
         let category = fun n ->
             match n with
@@ -957,7 +1013,7 @@ fn test_match_replaces_nested_if() {
             | _ -> 999
         in category 1
     ";
-    
+
     assert_eq!(parse_and_eval(if_code), parse_and_eval(match_code));
     assert_eq!(parse_and_eval(match_code), Ok(Value::Int(1)));
 }
@@ -1138,7 +1194,9 @@ fn test_tuple_projection_non_tuple() {
     // Use let binding to force tuple projection on an integer
     let result = parse_and_eval("let x = 42 in x.0");
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Tuple projection requires a tuple"));
+    assert!(result
+        .unwrap_err()
+        .contains("Tuple projection requires a tuple"));
 }
 
 #[test]
@@ -1146,7 +1204,9 @@ fn test_match_tuple_wrong_pattern_size() {
     let code = "match (1, 2) with | (x, y, z) -> x";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Pattern match is non-exhaustive"));
+    assert!(result
+        .unwrap_err()
+        .contains("Pattern match is non-exhaustive"));
 }
 
 #[test]
@@ -1154,7 +1214,9 @@ fn test_match_tuple_wrong_literal() {
     let code = "match (1, 2) with | (0, 0) -> 0";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("Pattern match is non-exhaustive"));
+    assert!(result
+        .unwrap_err()
+        .contains("Pattern match is non-exhaustive"));
 }
 
 // Complex realistic examples
@@ -1324,7 +1386,7 @@ fn test_char_display() {
 fn test_char_in_function() {
     let code = "let is_a = fun c -> c == 'a' in is_a 'a'";
     assert_eq!(parse_and_eval(code), Ok(Value::Bool(true)));
-    
+
     let code2 = "let is_a = fun c -> c == 'a' in is_a 'b'";
     assert_eq!(parse_and_eval(code2), Ok(Value::Bool(false)));
 }
@@ -1584,4 +1646,3 @@ fn test_string_pattern_match_empty() {
     "#;
     assert_eq!(parse_and_eval(code), Ok(Value::Int(0)));
 }
-

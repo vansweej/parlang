@@ -1,6 +1,6 @@
 /// Advanced parser tests
 /// Tests for operator precedence, invalid syntax, and edge cases
-use parlang::{parse};
+use parlang::parse;
 
 // Operator Precedence Tests
 

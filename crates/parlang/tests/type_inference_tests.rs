@@ -49,14 +49,7 @@ fn test_complete_program_arithmetic() {
 
 #[test]
 fn test_complete_program_comparison() {
-    let programs = vec![
-        "5 > 3",
-        "5 >= 3",
-        "3 < 5",
-        "3 <= 5",
-        "1 == 1",
-        "1 != 2",
-    ];
+    let programs = vec!["5 > 3", "5 >= 3", "3 < 5", "3 <= 5", "1 == 1", "1 != 2"];
 
     for source in programs {
         let expr = parse(source).unwrap();
@@ -140,7 +133,10 @@ fn test_error_unbound_variable_in_function() {
 #[test]
 fn test_complex_polymorphic_program() {
     // const function: a -> b -> a
-    let expr = parse("let const = fun x -> fun y -> x in let a = const 42 100 in let b = const 10 20 in a + b").unwrap();
+    let expr = parse(
+        "let const = fun x -> fun y -> x in let a = const 42 100 in let b = const 10 20 in a + b",
+    )
+    .unwrap();
     let ty = typecheck(&expr).unwrap();
     assert_eq!(ty, Type::Int);
 }
@@ -162,7 +158,7 @@ fn test_type_preserving_evaluation() {
         let expr = parse(source).unwrap();
         let ty = typecheck(&expr).unwrap();
         assert_eq!(ty, expected_type, "Failed for program: {source}");
-        
+
         // Also verify it evaluates without runtime errors
         use parlang::{eval, Environment};
         let result = eval(&expr, &Environment::new());
@@ -174,7 +170,7 @@ fn test_type_preserving_evaluation() {
 fn test_function_type_structure() {
     let expr = parse("fun x -> x + 1").unwrap();
     let ty = typecheck(&expr).unwrap();
-    
+
     if let Type::Fun(arg, ret) = ty {
         assert_eq!(*arg, Type::Int);
         assert_eq!(*ret, Type::Int);
@@ -187,7 +183,7 @@ fn test_function_type_structure() {
 fn test_curried_function_type_structure() {
     let expr = parse("fun x -> fun y -> x + y").unwrap();
     let ty = typecheck(&expr).unwrap();
-    
+
     // Should be: Int -> (Int -> Int)
     if let Type::Fun(arg1, rest) = ty {
         assert_eq!(*arg1, Type::Int);
@@ -226,7 +222,8 @@ fn test_shadowing() {
 
 #[test]
 fn test_nested_functions() {
-    let expr = parse("let outer = fun x -> let inner = fun y -> x + y in inner in outer 5 10").unwrap();
+    let expr =
+        parse("let outer = fun x -> let inner = fun y -> x + y in inner in outer 5 10").unwrap();
     let ty = typecheck(&expr).unwrap();
     assert_eq!(ty, Type::Int);
 }
@@ -265,7 +262,10 @@ fn test_type_error_display_occurs_check() {
 fn test_type_error_display_recursion() {
     use parlang::TypeError;
     let error = TypeError::RecursionRequiresAnnotation;
-    assert_eq!(format!("{error}"), "Recursive functions require type annotations");
+    assert_eq!(
+        format!("{error}"),
+        "Recursive functions require type annotations"
+    );
 }
 
 #[test]
@@ -273,7 +273,11 @@ fn test_recursion_supported() {
     // Recursive functions are now fully supported in the typechecker
     let expr = parse("rec f -> fun x -> f x").unwrap();
     let result = typecheck(&expr);
-    assert!(result.is_ok(), "Recursive functions should be supported: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Recursive functions should be supported: {:?}",
+        result
+    );
     // The type should be a function type
     if let Ok(ty) = result {
         assert!(matches!(ty, parlang::Type::Fun(_, _)));
@@ -334,7 +338,10 @@ fn test_rec_factorial_type() {
 #[test]
 fn test_rec_fibonacci_type() {
     // Test fibonacci: rec fib -> fun n -> if n == 0 then 0 else if n == 1 then 1 else fib (n - 1) + fib (n - 2)
-    let expr = parse("rec fib -> fun n -> if n == 0 then 0 else if n == 1 then 1 else fib (n - 1) + fib (n - 2)").unwrap();
+    let expr = parse(
+        "rec fib -> fun n -> if n == 0 then 0 else if n == 1 then 1 else fib (n - 1) + fib (n - 2)",
+    )
+    .unwrap();
     let ty = typecheck(&expr).unwrap();
     assert_eq!(ty, Type::Fun(Box::new(Type::Int), Box::new(Type::Int)));
 }
@@ -354,7 +361,8 @@ fn test_rec_identity_type() {
 #[test]
 fn test_rec_with_let_binding() {
     // Test recursive function used in let binding
-    let expr = parse("let fact = rec f -> fun n -> if n == 0 then 1 else n * f (n - 1) in fact 5").unwrap();
+    let expr = parse("let fact = rec f -> fun n -> if n == 0 then 1 else n * f (n - 1) in fact 5")
+        .unwrap();
     let ty = typecheck(&expr).unwrap();
     assert_eq!(ty, Type::Int);
 }
@@ -366,7 +374,10 @@ fn test_rec_curried_function() {
     let expr = parse("rec f -> fun x -> fun y -> if y == 0 then x else f (x + 1) (y - 1)").unwrap();
     let result = typecheck(&expr);
     // This actually fails with occurs check because f's type would be infinite
-    assert!(result.is_err(), "Curried recursive function creates infinite type");
+    assert!(
+        result.is_err(),
+        "Curried recursive function creates infinite type"
+    );
     if let Err(e) = result {
         assert!(matches!(e, parlang::TypeError::OccursCheckFailed(_, _)));
     }
@@ -395,7 +406,10 @@ fn test_rec_type_error_inconsistent() {
     let expr = parse("rec f -> fun n -> if n == 0 then 1 else true").unwrap();
     let result = typecheck(&expr);
     // This should fail because if branches have different types
-    assert!(result.is_err(), "Should fail: inconsistent return types in if branches");
+    assert!(
+        result.is_err(),
+        "Should fail: inconsistent return types in if branches"
+    );
     if let Err(e) = result {
         assert!(matches!(e, parlang::TypeError::UnificationError(_, _)));
     }
@@ -407,7 +421,10 @@ fn test_rec_type_error_wrong_argument() {
     // rec f -> fun n -> if n == 0 then 1 else f true  (f expects Int but gets Bool)
     let expr = parse("rec f -> fun n -> if n == 0 then 1 else f true").unwrap();
     let result = typecheck(&expr);
-    assert!(result.is_err(), "Should fail: recursive function called with wrong type");
+    assert!(
+        result.is_err(),
+        "Should fail: recursive function called with wrong type"
+    );
     if let Err(e) = result {
         assert!(matches!(e, parlang::TypeError::UnificationError(_, _)));
     }
@@ -421,7 +438,7 @@ fn test_rec_polymorphic() {
     let expr = parse("rec f -> fun x -> x").unwrap();
     let result = typecheck(&expr);
     assert!(result.is_ok());
-    
+
     // Test a simpler case: use the recursive function at one type
     let expr2 = parse("let id = rec f -> fun x -> x in id 42").unwrap();
     let ty = typecheck(&expr2).unwrap();
@@ -445,7 +462,7 @@ fn test_infer_char_literal() {
     let expr = parse("'a'").unwrap();
     let ty = typecheck(&expr).unwrap();
     assert_eq!(ty, Type::Char);
-    
+
     let expr2 = parse("'\\n'").unwrap();
     let ty2 = typecheck(&expr2).unwrap();
     assert_eq!(ty2, Type::Char);
@@ -457,16 +474,16 @@ fn test_char_comparison_types() {
     let expr1 = parse("'a' == 'b'").unwrap();
     let ty1 = typecheck(&expr1).unwrap();
     assert_eq!(ty1, Type::Bool);
-    
+
     let expr2 = parse("'a' != 'z'").unwrap();
     let ty2 = typecheck(&expr2).unwrap();
     assert_eq!(ty2, Type::Bool);
-    
+
     // Ordering comparisons
     let expr3 = parse("'a' < 'z'").unwrap();
     let ty3 = typecheck(&expr3).unwrap();
     assert_eq!(ty3, Type::Bool);
-    
+
     let expr4 = parse("'x' <= 'y'").unwrap();
     let ty4 = typecheck(&expr4).unwrap();
     assert_eq!(ty4, Type::Bool);
@@ -478,7 +495,7 @@ fn test_char_in_function() {
     let expr = parse("fun c -> c == 'a'").unwrap();
     let result = typecheck(&expr);
     assert!(result.is_ok());
-    
+
     // Function taking char and returning char
     let expr2 = parse("fun c -> c").unwrap();
     let result2 = typecheck(&expr2);
@@ -491,17 +508,17 @@ fn test_char_type_error_arithmetic() {
     let expr = parse("'a' + 'b'").unwrap();
     let result = typecheck(&expr);
     assert!(result.is_err());
-    
+
     // Cannot subtract chars
     let expr2 = parse("'a' - 'b'").unwrap();
     let result2 = typecheck(&expr2);
     assert!(result2.is_err());
-    
+
     // Cannot multiply chars
     let expr3 = parse("'a' * 'b'").unwrap();
     let result3 = typecheck(&expr3);
     assert!(result3.is_err());
-    
+
     // Cannot divide chars
     let expr4 = parse("'a' / 'b'").unwrap();
     let result4 = typecheck(&expr4);
@@ -514,7 +531,7 @@ fn test_char_type_error_mixed() {
     let expr = parse("'a' == 42").unwrap();
     let result = typecheck(&expr);
     assert!(result.is_err());
-    
+
     // Cannot order compare char with int
     let expr2 = parse("'a' < 42").unwrap();
     let result2 = typecheck(&expr2);

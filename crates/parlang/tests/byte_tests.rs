@@ -1,5 +1,5 @@
 /// Tests for Byte type support
-use parlang::{parse, eval, typecheck, Environment, Value};
+use parlang::{eval, parse, typecheck, Environment, Value};
 
 // Parser tests for Byte literals
 
@@ -42,11 +42,16 @@ fn test_parse_byte_various_values() {
         ("200b", 200u8),
         ("255b", 255u8),
     ];
-    
+
     let env = Environment::new();
     for (input, expected) in test_cases {
         let expr = parse(input).unwrap();
-        assert_eq!(eval(&expr, &env), Ok(Value::Byte(expected)), "Failed for input: {}", input);
+        assert_eq!(
+            eval(&expr, &env),
+            Ok(Value::Byte(expected)),
+            "Failed for input: {}",
+            input
+        );
     }
 }
 
@@ -141,7 +146,10 @@ fn test_byte_subtraction_underflow() {
     let expr = parse("10b - 20b").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env);
-    assert!(result.is_err(), "Should underflow when subtracting 20 from 10");
+    assert!(
+        result.is_err(),
+        "Should underflow when subtracting 20 from 10"
+    );
 }
 
 #[test]
@@ -170,7 +178,10 @@ fn test_byte_multiplication_overflow() {
     let expr = parse("20b * 20b").unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env);
-    assert!(result.is_err(), "Should overflow when multiplying 20 * 20 = 400");
+    assert!(
+        result.is_err(),
+        "Should overflow when multiplying 20 * 20 = 400"
+    );
 }
 
 #[test]
@@ -198,7 +209,10 @@ fn test_byte_division_by_one() {
 fn test_byte_division_by_zero() {
     let expr = parse("42b / 0b").unwrap();
     let env = Environment::new();
-    assert!(eval(&expr, &env).is_err(), "Should error on division by zero");
+    assert!(
+        eval(&expr, &env).is_err(),
+        "Should error on division by zero"
+    );
 }
 
 #[test]
@@ -346,7 +360,10 @@ fn test_byte_function_comparison() {
 fn test_byte_type_inference() {
     let expr = parse("42b").unwrap();
     let result = typecheck(&expr);
-    assert!(result.is_ok(), "Type checking should succeed for byte literal");
+    assert!(
+        result.is_ok(),
+        "Type checking should succeed for byte literal"
+    );
 }
 
 #[test]
@@ -354,17 +371,23 @@ fn test_byte_type_inference_arithmetic() {
     let expr = parse("10b + 20b").unwrap();
     let result = typecheck(&expr);
     match &result {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => panic!("Type checking failed with error: {:?}", e),
     }
-    assert!(result.is_ok(), "Type checking should succeed for byte arithmetic");
+    assert!(
+        result.is_ok(),
+        "Type checking should succeed for byte arithmetic"
+    );
 }
 
 #[test]
 fn test_byte_type_inference_function() {
     let expr = parse("fun x -> x + 1b").unwrap();
     let result = typecheck(&expr);
-    assert!(result.is_ok(), "Type checking should succeed for byte function");
+    assert!(
+        result.is_ok(),
+        "Type checking should succeed for byte function"
+    );
 }
 
 // Display tests
@@ -438,10 +461,15 @@ fn test_byte_boundary_values() {
         ("254b", 254u8),
         ("255b", 255u8),
     ];
-    
+
     let env = Environment::new();
     for (input, expected) in test_cases {
         let expr = parse(input).unwrap();
-        assert_eq!(eval(&expr, &env), Ok(Value::Byte(expected)), "Failed for input: {}", input);
+        assert_eq!(
+            eval(&expr, &env),
+            Ok(Value::Byte(expected)),
+            "Failed for input: {}",
+            input
+        );
     }
 }

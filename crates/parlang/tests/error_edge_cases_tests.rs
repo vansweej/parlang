@@ -18,7 +18,10 @@ fn test_rec_self_application_type_error() {
     let code = "rec f -> f";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("function") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("function")
+    });
 }
 
 #[test]
@@ -68,7 +71,10 @@ fn test_pattern_match_non_exhaustive_runtime_failure() {
     "#;
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("non-exhaustive") || err.contains("Pattern match") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("non-exhaustive") || err.contains("Pattern match")
+    });
 }
 
 #[test]
@@ -125,7 +131,10 @@ fn test_eval_unbound_variable() {
     let code = "x + 1";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("Unbound variable") || err.contains("x") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("Unbound variable") || err.contains("x")
+    });
 }
 
 #[test]
@@ -171,7 +180,10 @@ fn test_eval_non_function_application() {
     let code = "42 5";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("Type error") || err.contains("not a function") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("Type error") || err.contains("not a function")
+    });
 }
 
 #[test]
@@ -180,7 +192,10 @@ fn test_eval_tuple_projection_out_of_bounds() {
     let code = "(1, 2).5";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("out of bounds") || err.contains("Index") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("out of bounds") || err.contains("Index")
+    });
 }
 
 #[test]
@@ -206,7 +221,10 @@ fn test_eval_empty_tuple_projection() {
     let code = "().0";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("out of bounds") || err.contains("Index") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("out of bounds") || err.contains("Index")
+    });
 }
 
 // ============================================================================
@@ -219,7 +237,10 @@ fn test_record_access_nonexistent_field() {
     let code = "{ x: 1, y: 2 }.z";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("not found") || err.contains("Field") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("not found") || err.contains("Field")
+    });
 }
 
 #[test]
@@ -228,7 +249,10 @@ fn test_record_access_nested_nonexistent() {
     let code = "{ outer: { inner: 42 } }.outer.nonexistent";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("not found") || err.contains("Field") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("not found") || err.contains("Field")
+    });
 }
 
 #[test]
@@ -237,7 +261,10 @@ fn test_record_access_on_non_record() {
     let code = "42.field";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("Expected record") || err.contains("Type error") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("Expected record") || err.contains("Type error")
+    });
 }
 
 #[test]
@@ -295,7 +322,10 @@ fn test_constructor_undefined_at_runtime() {
     let code = "UndefinedConstructor 42";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("Unknown constructor") || err.contains("Unbound") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("Unknown constructor") || err.contains("Unbound")
+    });
 }
 
 #[test]
@@ -414,7 +444,10 @@ fn test_type_mismatch_adding_bool_and_int() {
     let code = "1 + true";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("Type error") || err.contains("type") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("Type error") || err.contains("type")
+    });
 }
 
 #[test]
@@ -423,7 +456,10 @@ fn test_type_mismatch_if_non_bool_condition() {
     let code = "if 1 then 2 else 3";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("Type error") || err.contains("type") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("Type error") || err.contains("type")
+    });
 }
 
 #[test]
@@ -432,5 +468,8 @@ fn test_type_mismatch_comparison_incompatible_types() {
     let code = "1 == true";
     let result = parse_and_eval(code);
     assert!(result.is_err());
-    assert!({ let err = result.unwrap_err(); err.contains("Type error") || err.contains("type") });
+    assert!({
+        let err = result.unwrap_err();
+        err.contains("Type error") || err.contains("type")
+    });
 }

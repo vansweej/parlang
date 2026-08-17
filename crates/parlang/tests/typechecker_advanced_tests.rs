@@ -300,7 +300,7 @@ fn test_type_inference_with_records_and_generics() {
 
 #[test]
 fn test_type_inference_curried_with_generics() {
-    // Test curried functions with generic types  
+    // Test curried functions with generic types
     let code = r"
         type Option a = Some a | None in
         let makeOption = fun x -> Some x in

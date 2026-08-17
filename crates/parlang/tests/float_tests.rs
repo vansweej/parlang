@@ -1,5 +1,5 @@
 /// Tests for floating point type support
-use parlang::{parse, eval, typecheck, Environment, Value};
+use parlang::{eval, parse, typecheck, Environment, Value};
 
 // Parser tests for Float literals
 

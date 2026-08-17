@@ -1,6 +1,6 @@
 /// Advanced evaluation tests
 /// Tests for tail call optimization, deep recursion, and error handling edge cases
-use parlang::{parse, eval, Environment, Value, EvalError};
+use parlang::{eval, parse, Environment, EvalError, Value};
 
 // Tail Call Optimization (TCO) Stress Tests
 
@@ -72,7 +72,7 @@ fn test_tco_tail_recursive_fibonacci_with_accumulator() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env);
-    // 10th fibonacci number  
+    // 10th fibonacci number
     assert_eq!(result, Ok(Value::Int(55)));
 }
 

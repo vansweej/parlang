@@ -1,5 +1,5 @@
 /// Tests for fixed-size array type functionality
-use parlang::{parse, eval, Environment, Value};
+use parlang::{eval, parse, Environment, Value};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
     let expr = parse(input)?;
@@ -8,17 +8,17 @@ fn parse_and_eval(input: &str) -> Result<Value, String> {
 
 #[test]
 fn test_empty_array() {
-    assert_eq!(
-        parse_and_eval("[||]"),
-        Ok(Value::Array(0, vec![]))
-    );
+    assert_eq!(parse_and_eval("[||]"), Ok(Value::Array(0, vec![])));
 }
 
 #[test]
 fn test_array_of_integers() {
     assert_eq!(
         parse_and_eval("[|1, 2, 3|]"),
-        Ok(Value::Array(3, vec![Value::Int(1), Value::Int(2), Value::Int(3)]))
+        Ok(Value::Array(
+            3,
+            vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+        ))
     );
 }
 
@@ -26,7 +26,10 @@ fn test_array_of_integers() {
 fn test_array_of_booleans() {
     assert_eq!(
         parse_and_eval("[|true, false, true|]"),
-        Ok(Value::Array(3, vec![Value::Bool(true), Value::Bool(false), Value::Bool(true)]))
+        Ok(Value::Array(
+            3,
+            vec![Value::Bool(true), Value::Bool(false), Value::Bool(true)]
+        ))
     );
 }
 
@@ -42,32 +45,26 @@ fn test_array_single_element() {
 fn test_array_with_expressions() {
     assert_eq!(
         parse_and_eval("[|1 + 1, 2 * 2, 3|]"),
-        Ok(Value::Array(3, vec![Value::Int(2), Value::Int(4), Value::Int(3)]))
+        Ok(Value::Array(
+            3,
+            vec![Value::Int(2), Value::Int(4), Value::Int(3)]
+        ))
     );
 }
 
 #[test]
 fn test_array_indexing_first() {
-    assert_eq!(
-        parse_and_eval("[|10, 20, 30|][0]"),
-        Ok(Value::Int(10))
-    );
+    assert_eq!(parse_and_eval("[|10, 20, 30|][0]"), Ok(Value::Int(10)));
 }
 
 #[test]
 fn test_array_indexing_middle() {
-    assert_eq!(
-        parse_and_eval("[|10, 20, 30|][1]"),
-        Ok(Value::Int(20))
-    );
+    assert_eq!(parse_and_eval("[|10, 20, 30|][1]"), Ok(Value::Int(20)));
 }
 
 #[test]
 fn test_array_indexing_last() {
-    assert_eq!(
-        parse_and_eval("[|10, 20, 30|][2]"),
-        Ok(Value::Int(30))
-    );
+    assert_eq!(parse_and_eval("[|10, 20, 30|][2]"), Ok(Value::Int(30)));
 }
 
 #[test]
@@ -135,7 +132,10 @@ fn test_nested_array_indexing() {
 fn test_array_with_characters() {
     assert_eq!(
         parse_and_eval("[|'a', 'b', 'c'|]"),
-        Ok(Value::Array(3, vec![Value::Char('a'), Value::Char('b'), Value::Char('c')]))
+        Ok(Value::Array(
+            3,
+            vec![Value::Char('a'), Value::Char('b'), Value::Char('c')]
+        ))
     );
 }
 

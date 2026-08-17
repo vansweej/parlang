@@ -1,5 +1,5 @@
 /// Unit tests for additional coverage
-use parlang::{parse, eval, Environment, Value, EvalError, dot};
+use parlang::{dot, eval, parse, Environment, EvalError, Value};
 use std::fs;
 
 #[test]
@@ -33,18 +33,18 @@ fn test_dot_write_ast_to_file() {
     // Test writing AST to DOT file
     let expr = parse("1 + 2").unwrap();
     let temp_file = std::env::temp_dir().join("test_dot_output.dot");
-    
+
     let result = dot::write_ast_to_dot_file(&expr, temp_file.to_str().unwrap());
     assert!(result.is_ok());
-    
+
     // Verify file was created
     assert!(fs::metadata(&temp_file).is_ok());
-    
+
     // Verify file contains valid DOT content
     let content = fs::read_to_string(&temp_file).unwrap();
     assert!(content.contains("digraph"));
     assert!(content.contains("BinOp"));
-    
+
     // Cleanup
     fs::remove_file(temp_file).ok();
 }
@@ -93,15 +93,15 @@ fn test_load_invalid_syntax() {
     // Create a temp file with invalid syntax
     let temp_file = std::env::temp_dir().join("test_invalid_syntax.par");
     fs::write(&temp_file, "let x = in y").unwrap();
-    
+
     let code = format!("load \"{}\" in 42", temp_file.display());
     let expr = parse(&code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env);
-    
+
     // Cleanup first
     fs::remove_file(&temp_file).ok();
-    
+
     assert!(matches!(result, Err(EvalError::LoadError(_))));
 }
 
@@ -130,7 +130,7 @@ fn test_rec_if_branches_evaluation() {
         eval(&parse(code1).unwrap(), &Environment::new()),
         Ok(Value::Int(0))
     );
-    
+
     let code2 = r"(rec f -> fun n -> if n == 1 then 1 else f (n - 1)) 5";
     assert_eq!(
         eval(&parse(code2).unwrap(), &Environment::new()),
@@ -143,9 +143,9 @@ fn test_type_error_is_error() {
     // Test that TypeError implements std::error::Error
     use parlang::TypeError;
     use std::error::Error;
-    
+
     let err = TypeError::UnboundVariable("x".to_string());
-    let _: &dyn Error = &err;  // Should compile if it implements Error
+    let _: &dyn Error = &err; // Should compile if it implements Error
 }
 
 #[test]
@@ -153,12 +153,12 @@ fn test_occurs_check_failure() {
     // Try to create a situation that triggers occurs check
     // This is tricky because the type system might prevent it at parse time
     // We test the error formatting instead
-    use parlang::{TypeError, TypeVar, Type};
-    
+    use parlang::{Type, TypeError, TypeVar};
+
     let var = TypeVar(0);
     let ty = Type::Fun(Box::new(Type::Var(TypeVar(0))), Box::new(Type::Int));
     let err = TypeError::OccursCheckFailed(var, ty);
-    
+
     let msg = format!("{err}");
     assert!(msg.contains("Occurs check failed"));
 }
@@ -168,7 +168,7 @@ fn test_typechecker_bind_var_same_var() {
     // This tests the early return in bind_var when binding a var to itself
     // We do this indirectly through type inference
     use parlang::typecheck;
-    
+
     let expr = parse("fun x -> x").unwrap();
     let ty = typecheck(&expr).unwrap();
     // Should succeed - identity function

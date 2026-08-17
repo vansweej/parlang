@@ -11,7 +11,7 @@ fn test_option_int_type() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     // The type should be Option Int
     let ty = result.unwrap();
     match ty {
@@ -34,7 +34,7 @@ fn test_option_bool_type() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
@@ -56,7 +56,7 @@ fn test_option_none_type() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
@@ -78,7 +78,7 @@ fn test_either_left_type() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
@@ -101,7 +101,7 @@ fn test_either_right_type() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
@@ -124,7 +124,7 @@ fn test_list_nil_type() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
@@ -146,7 +146,7 @@ fn test_list_cons_int() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
@@ -169,7 +169,7 @@ fn test_nested_generic_types() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match &ty {
         Type::SumType(name, args) => {
@@ -200,7 +200,7 @@ fn test_generic_type_let_binding() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
@@ -223,7 +223,7 @@ fn test_generic_type_function_arg() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
@@ -245,7 +245,7 @@ fn test_display_option_int() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok());
-    
+
     let ty = result.unwrap();
     assert_eq!(format!("{}", ty), "Option Int");
 }
@@ -260,7 +260,7 @@ fn test_display_either() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok());
-    
+
     let ty = result.unwrap();
     let display = format!("{}", ty);
     assert!(display.starts_with("Either"));
@@ -276,7 +276,7 @@ fn test_display_list_int() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok());
-    
+
     let ty = result.unwrap();
     assert_eq!(format!("{}", ty), "List Int");
 }
@@ -293,7 +293,7 @@ fn test_multiple_generic_uses() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
@@ -314,7 +314,7 @@ fn test_result_type() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
@@ -336,7 +336,7 @@ fn test_tree_type() {
     let expr = parse(input).expect("Parse failed");
     let result = typecheck(&expr);
     assert!(result.is_ok(), "Type check failed: {:?}", result.err());
-    
+
     let ty = result.unwrap();
     match ty {
         Type::SumType(name, args) => {
