@@ -22,7 +22,7 @@ pub enum Type {
     /// Type variable (for polymorphism): α, β, γ
     Var(TypeVar),
     /// Record type: { field1: Type1, field2: Type2, ... }
-    /// Uses HashMap for O(1) field lookup during type checking
+    /// Uses `HashMap` for O(1) field lookup during type checking
     Record(std::collections::HashMap<String, Type>),
     /// Record type with row polymorphism: { field1: Type1, field2: Type2 | r }
     /// The row variable represents "the rest of the fields"
@@ -143,14 +143,14 @@ impl fmt::Display for TypeScheme {
         } else {
             write!(f, "forall ")?;
             let mut first = true;
-            for var in self.vars.iter() {
+            for var in &self.vars {
                 if !first {
                     write!(f, ", ")?;
                 }
                 write!(f, "t{}", var.0)?;
                 first = false;
             }
-            for row_var in self.row_vars.iter() {
+            for row_var in &self.row_vars {
                 if !first {
                     write!(f, ", ")?;
                 }
