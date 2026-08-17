@@ -7,7 +7,6 @@ A small ML-alike functional language written in Rust, with a parser built using 
 ParLang is a simple functional programming language with:
 
 - **Basic Types**: Integers, booleans, characters, and floating point numbers
-- **Reference Types**: Mutable references for controlled mutation (`ref`, `!`, `:=`)
 - **Type Inference**: Optional Hindley-Milner type system with automatic type inference
 - **Type Aliases**: Define alternative names for types for better code documentation
 - **Generic Types**: Full support for parameterized types (Option Int, List Bool, Either A B)
@@ -200,7 +199,7 @@ let swap = fun p -> (p.1, p.0)
 in swap (5, 10)          # Result: (10, 5)
 ```
 
-### References (Pointers)
+### Records
 
 References provide mutable containers for values, enabling controlled mutation in an otherwise functional language.
 
