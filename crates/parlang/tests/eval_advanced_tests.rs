@@ -146,7 +146,7 @@ fn test_non_tail_recursive_factorial() {
     let expr = parse(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env);
-    assert_eq!(result, Ok(Value::Int(3628800)));
+    assert_eq!(result, Ok(Value::Int(3_628_800)));
 }
 
 #[test]

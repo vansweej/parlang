@@ -35,7 +35,7 @@ fn test_parse_float_small() {
 fn test_parse_float_large() {
     let expr = parse("123456.789").unwrap();
     let env = Environment::new();
-    assert_eq!(eval(&expr, &env), Ok(Value::Float(123456.789)));
+    assert_eq!(eval(&expr, &env), Ok(Value::Float(123_456.789)));
 }
 
 // Arithmetic operations with Float
