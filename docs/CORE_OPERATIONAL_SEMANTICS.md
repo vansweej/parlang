@@ -113,6 +113,12 @@ then evaluated under `ρ[x ↦ recclosure]`.
 - **`Con("eq", [a, b])`**: base-type operands only. `Float` operands are
   compared via `f64::to_bits` bit-equality. `Closure`/`RecClosure`/`Con`
   operands yield `NotComparable`.
+- **`Con("strlen", [s])`**: host string primitive; `s` must evaluate to
+  `Str`, and the result is `Int` (the character count). Non-`Str` operands
+  yield `TypeMismatch`.
+- **`Con("strcat", [a, b])`**: host string primitive; both `a` and `b` must
+  evaluate to `Str`, and the result is their concatenation as `Str`.
+  Non-`Str` operands yield `TypeMismatch`.
 - A generic `Con(name, args)` with a non-reserved `name` evaluates all `args`
   strictly, left-to-right, and yields `Con(name, [v..])`.
 
