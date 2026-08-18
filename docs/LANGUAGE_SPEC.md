@@ -64,12 +64,12 @@ The lexical structure consists of the following token categories:
 Keywords are reserved identifiers with special syntactic meaning:
 
 ```
-let     in      if      then    else    fun     true    false   load    rec     match   with    type
+let     in      if      then    else    fun     true    false   load    rec     match   with    type    data
 ```
 
 **Formal Definition:**
 ```
-keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with" | "type"
+keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with" | "type" | "data"
 ```
 
 #### 2.2.2 Identifiers
@@ -343,6 +343,9 @@ rec_expr ::= "rec" identifier "->" expression
 fun_expr ::= "fun" identifier "->" expression
 
 type_alias_expr ::= "type" identifier '=' type_expr "in" expression
+
+data_decl_expr ::= "data" identifier {identifier} '=' constructor {'|' constructor} "in" expression
+constructor ::= identifier {type_expr}
 
 (* Type expressions *)
 type_expr ::= type_atom ("->" type_expr)?
@@ -716,6 +719,19 @@ type MyInt = Int in 42      # evaluates to Int(42)
 
 # The type alias is stripped during evaluation
 ```
+
+#### 5.2.7.2 Algebraic Data Types (data)
+
+Algebraic data types (sum types) are declared using the `data` keyword,
+distinct from `type` aliases. A `data` declaration introduces a new type
+name, optionally parameterised by type variables, together with one or more
+constructors separated by `|`. Each constructor may take zero or more
+payload types. The `type` keyword remains reserved for non-parameterised,
+non-alternative aliases (i.e. `type Name = TypeExpr`), while `data` is used
+whenever a declaration introduces multiple alternative constructors and/or
+type parameters. At runtime and in `Display` output, ADT definitions are
+rendered using the `data` keyword (e.g. `(data Color = Red | Green in ...)`),
+not `type`.
 
 #### 5.2.8 Function Definition
 
