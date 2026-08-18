@@ -2,7 +2,7 @@
 /// This implements a parser for ML-alike functional language syntax
 use crate::ast::{BinOp, Expr, Literal, Pattern, TypeAnnotation};
 use combine::error::StreamError;
-use combine::parser::char::{alpha_num, letter, spaces, string};
+use combine::parser::char::{alpha_num, letter, string};
 use combine::stream::StreamErrorFor;
 use combine::{
     attempt, between, choice, many, many1, optional, parser, token, EasyParser, ParseError, Parser,
@@ -25,6 +25,60 @@ type ProgramBinding = (String, Option<TypeAnnotation>, Expr);
 /// Used to distinguish concrete types (Int, Bool) from type variables (a, b).
 fn starts_with_uppercase(s: &str) -> bool {
     s.as_bytes().first().is_some_and(u8::is_ascii_uppercase)
+}
+
+/// Parse a line comment starting with two dashes and extending to (but not
+/// including) the end of the line.
+///
+/// The two-dash marker is only committed once fully matched, so a lone dash,
+/// an arrow, or a closing comment marker remain available to other parsers.
+fn line_comment<Input>() -> impl Parser<Input, Output = ()>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    (
+        string("--"),
+        combine::skip_many(combine::satisfy(|c: char| c != '\n')),
+    )
+        .map(|_| ())
+}
+
+parser! {
+    /// Parse a block comment delimited by an opening and closing marker,
+    /// supporting proper nesting of inner block comments.
+    ///
+    /// An unterminated block comment results in a parse failure rather than
+    /// consuming the remainder of the input silently.
+    fn block_comment[Input]()(Input) -> ()
+    where [Input: Stream<Token = char>]
+    {
+        (
+            string("{-"),
+            combine::skip_many(choice((
+                attempt(block_comment()),
+                combine::parser::combinator::not_followed_by(string("-}"))
+                    .with(combine::satisfy(|_: char| true).map(|_| ())),
+            ))),
+            string("-}"),
+        )
+            .map(|_| ())
+    }
+}
+
+/// Parse zero or more whitespace characters, line comments, and block
+/// comments, treating all of them as insignificant separators between
+/// tokens.
+fn spaces<Input>() -> impl Parser<Input, Output = ()>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    combine::skip_many(choice((
+        attempt(combine::satisfy(|c: char| c.is_whitespace()).map(|_| ())),
+        attempt(line_comment()),
+        attempt(block_comment()),
+    )))
 }
 
 /// Parse an integer literal
@@ -1109,6 +1163,24 @@ pub fn parse(input: &str) -> Result<Expr, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_unterminated_block_comment_is_error() {
+        let result = parse("{- unterminated");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nested_block_comment() {
+        let result = parse("{- outer {- inner -} still outer -} 9");
+        assert_eq!(result, Ok(Expr::Int(9)));
+    }
+
+    #[test]
+    fn test_line_comments_around_expression() {
+        let result = parse("-- leading comment\n42 -- trailing comment");
+        assert_eq!(result, Ok(Expr::Int(42)));
+    }
 
     #[test]
     fn test_parse_int() {

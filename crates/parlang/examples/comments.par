@@ -1,0 +1,7 @@
+-- This example demonstrates ParLang's comment syntax.
+-- Line comments start with two dashes and run to the end of the line.
+
+{- Block comments can span multiple lines
+   and {- nest -} inside each other. -}
+
+42 {- inline comment -} -- trailing comment

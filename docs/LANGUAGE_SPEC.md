@@ -268,7 +268,10 @@ Whitespace is **not** significant for expression structure, except to separate k
 
 #### 2.2.8 Comments
 
-**Current Version:** ParLang 1.0 does not support comments.
+`--` begins a greedy line comment that runs to the end of the line, so `1--2`
+is `1` followed by a comment. `{- ... -}` introduces a block comment; block
+comments may nest. `-- |` and `-- ^` are currently ordinary line comments,
+with Haddock-style attachment deferred to a later language slice.
 
 ---
 
