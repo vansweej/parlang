@@ -6,9 +6,9 @@ fn test_data_keyword_parses_adt() {
 }
 
 #[test]
-fn test_type_keyword_still_parses_adt() {
+fn test_type_keyword_rejected_for_adt() {
     // Note: this synonym acceptance is intentionally removed in Slice 2b Plan B.
-    assert!(parse("type Color = Red | Green in Red").is_ok());
+    assert!(parse("type Color = Red | Green in Red").is_err());
 }
 
 #[test]
