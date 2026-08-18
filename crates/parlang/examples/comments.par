@@ -4,4 +4,4 @@
 {- Block comments can span multiple lines
    and {- nest -} inside each other. -}
 
-let x = 40 in {- inline comment -} x + 2 -- trailing comment
+42 {- inline comment -} -- trailing comment

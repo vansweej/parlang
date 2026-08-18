@@ -27,6 +27,23 @@ ParLang is a simple functional programming language with:
 
 ## Syntax
 
+### Comments
+
+`--` begins a greedy line comment that runs to the end of the line; therefore,
+`1--2` parses as `1` followed by a comment. Block comments use `{- ... -}` and
+may nest. `-- |` and `-- ^` are currently ordinary line comments; Haddock-style
+attachment is deferred to a later language slice.
+
+```parlang
+-- This example demonstrates ParLang's comment syntax.
+-- Line comments start with two dashes and run to the end of the line.
+
+{- Block comments can span multiple lines
+   and {- nest -} inside each other. -}
+
+42 {- inline comment -} -- trailing comment
+```
+
 ### Literals
 ```
 42          # Integer

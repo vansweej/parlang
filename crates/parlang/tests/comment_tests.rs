@@ -1,4 +1,4 @@
-use parlang::{parse, Expr};
+use parlang::{parse, BinOp, Expr};
 
 #[test]
 fn leading_line_comment() {
@@ -50,25 +50,45 @@ fn nested_block_comment() {
 
 #[test]
 fn inline_comments_around_arithmetic_operands() {
-    let expr = parse("1 {- one -} + {- plus -} 2 {- two -}").unwrap();
-    let expected = parse("1 + 2").unwrap();
-    assert_eq!(expr, expected);
+    assert_eq!(
+        parse("1 {- one -} + {- plus -} 2 {- two -}"),
+        Ok(Expr::BinOp(
+            BinOp::Add,
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::Int(2)),
+        ))
+    );
 }
 
 #[test]
 fn line_comment_between_operands() {
     let src = "1 +\n-- add two\n2";
-    let expr = parse(src).unwrap();
-    let expected = parse("1 + 2").unwrap();
-    assert_eq!(expr, expected);
+    assert_eq!(
+        parse(src),
+        Ok(Expr::BinOp(
+            BinOp::Add,
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::Int(2)),
+        ))
+    );
 }
 
 #[test]
 fn comments_within_let_expression() {
     let src = "let x = 10 -- bind x\nin x + 1 -- use x";
-    let expr = parse(src).unwrap();
-    let expected = parse("let x = 10 in x + 1").unwrap();
-    assert_eq!(expr, expected);
+    assert_eq!(
+        parse(src),
+        Ok(Expr::Let(
+            "x".to_string(),
+            None,
+            Box::new(Expr::Int(10)),
+            Box::new(Expr::BinOp(
+                BinOp::Add,
+                Box::new(Expr::Var("x".to_string())),
+                Box::new(Expr::Int(1)),
+            )),
+        ))
+    );
 }
 
 #[test]
@@ -79,15 +99,55 @@ fn unterminated_block_comment_is_error() {
 #[test]
 fn comment_between_if_branches() {
     let src = "if true -- cond\nthen 1 -- then branch\nelse 2 -- else branch";
-    let expr = parse(src).unwrap();
-    let expected = parse("if true then 1 else 2").unwrap();
-    assert_eq!(expr, expected);
+    assert_eq!(
+        parse(src),
+        Ok(Expr::If(
+            Box::new(Expr::Bool(true)),
+            Box::new(Expr::Int(1)),
+            Box::new(Expr::Int(2)),
+        ))
+    );
 }
 
 #[test]
 fn comment_only_between_function_application() {
     let src = "(fun x -> x + 1) {- apply -} 41";
-    let expr = parse(src).unwrap();
-    let expected = parse("(fun x -> x + 1) 41").unwrap();
-    assert_eq!(expr, expected);
+    assert_eq!(
+        parse(src),
+        Ok(Expr::App(
+            Box::new(Expr::Fun(
+                "x".to_string(),
+                None,
+                Box::new(Expr::BinOp(
+                    BinOp::Add,
+                    Box::new(Expr::Var("x".to_string())),
+                    Box::new(Expr::Int(1)),
+                )),
+            )),
+            Box::new(Expr::Int(41)),
+        ))
+    );
+}
+
+fn string_expr(text: &str) -> Expr {
+    text.chars().rev().fold(
+        Expr::Constructor("Nil".to_string(), vec![]),
+        |rest, character| Expr::Constructor("Cons".to_string(), vec![Expr::Char(character), rest]),
+    )
+}
+
+#[test]
+fn line_comment_markers_inside_string_are_not_comments() {
+    assert_eq!(parse("\"has -- inside\""), Ok(string_expr("has -- inside")));
+}
+
+#[test]
+fn block_comment_markers_inside_string_are_not_comments() {
+    assert_eq!(parse("\"has {- inside\""), Ok(string_expr("has {- inside")));
+}
+
+#[test]
+fn comment_example_parses_to_42() {
+    let source = include_str!("../examples/comments.par");
+    assert_eq!(parse(source), Ok(Expr::Int(42)));
 }
