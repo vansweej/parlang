@@ -543,3 +543,32 @@ fn test_array_syntax_no_longer_parses() {
     // input to be consumed, so this must also fail.
     assert!(parse("a[0]").is_err());
 }
+
+#[test]
+fn test_reference_syntax_no_longer_parses() {
+    // The reference feature (`ref`, unary `!` deref, and `:=` assignment) was
+    // removed from the surface language. This pin is MIXED, because the three
+    // forms degrade differently.
+    //
+    // `ref 5` STILL PARSES: `ref` was removed from KEYWORDS, so `identifier()`
+    // now accepts it as an ordinary variable and `ref 5` becomes application of
+    // the variable `ref` to 5 (it fails later as an unbound variable). This is
+    // the same fallback-meaning situation as the byte suffix above, so we pin
+    // the rendered form rather than an error.
+    let expr = parse("ref 5").expect("`ref 5` should still parse (as application)");
+    let rendered = format!("{expr}");
+    assert_eq!(
+        rendered, "(ref 5)",
+        "expected `ref 5` to parse as application of variable ref to 5, got {rendered}"
+    );
+
+    // `!x`: the unary deref parser is gone and no `atom` alternative starts
+    // with `!` (the only surviving `!` is inside `string("!=")`), so there is
+    // no producer for a leading `!` and this must fail outright.
+    assert!(parse("!x").is_err());
+
+    // `x := 5`: `:=` has no producer, so `x` parses as the body and `:= 5` is
+    // left over as trailing input. `parse()` requires the entire input to be
+    // consumed, so this must also fail.
+    assert!(parse("x := 5").is_err());
+}

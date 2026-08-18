@@ -169,7 +169,7 @@ let r1 = 1..10 in
 
 The range operator `..` has specific precedence in ParLang's expression hierarchy:
 
-- **Higher precedence than**: Comparisons (`==`, `!=`, `<`, `>`, etc.), Assignment (`:=`)
+- **Higher precedence than**: Comparisons (`==`, `!=`, `<`, `>`, etc.)
 - **Lower precedence than**: Addition/Subtraction (`+`, `-`), Multiplication/Division (`*`, `/`)
 
 Examples:

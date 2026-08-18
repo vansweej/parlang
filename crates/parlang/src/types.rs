@@ -33,9 +33,6 @@ pub enum Type {
     /// E.g., Option Int, List Bool, Either Int Bool
     /// First element is the type constructor name, second is the list of type arguments
     SumType(String, Vec<Type>),
-    /// Reference type: Ref T
-    /// Represents a mutable reference to a value of type T
-    Ref(Box<Type>),
     /// Range type: Range
     /// Represents an inclusive integer range from start to end
     Range,
@@ -117,9 +114,6 @@ impl fmt::Display for Type {
                     }
                 }
                 Ok(())
-            }
-            Type::Ref(inner) => {
-                write!(f, "Ref {inner}")
             }
             Type::Range => write!(f, "Range"),
         }
