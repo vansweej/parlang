@@ -545,6 +545,22 @@ fn test_array_syntax_no_longer_parses() {
 }
 
 #[test]
+fn test_range_syntax_no_longer_parses() {
+    // The range operator `..` was removed from the surface language: there is
+    // no `..` producer left anywhere in the parser, so `1..10` fails not
+    // because of any specific parser internal, but because `..10` remains as
+    // unconsumed trailing input after `1` is parsed, and `parse()` requires
+    // the entire input to be consumed.
+    assert!(parse("1..10").is_err());
+
+    // Positive guards: the single `.` token is still load-bearing elsewhere
+    // (float literals and tuple projection) — only the two-dot `..` sequence
+    // died with range removal.
+    assert!(parse("1.5").is_ok());
+    assert!(parse("(1, 2).0").is_ok());
+}
+
+#[test]
 fn test_reference_syntax_no_longer_parses() {
     // The reference feature (`ref`, unary `!` deref, and `:=` assignment) was
     // removed from the surface language. This pin is MIXED, because the three

@@ -202,10 +202,6 @@ pub enum Expr {
 
     /// Constructor application: Some 42, Cons 1 rest, Left x
     Constructor(String, Vec<Expr>),
-
-    /// Range construction: start..end
-    /// Creates an inclusive integer range from start to end
-    Range(Box<Expr>, Box<Expr>),
 }
 
 /// Binary operators
@@ -366,7 +362,6 @@ impl fmt::Display for Expr {
                 }
                 Ok(())
             }
-            Expr::Range(start, end) => write!(f, "{start}..{end}"),
         }
     }
 }

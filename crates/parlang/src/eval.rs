@@ -28,10 +28,6 @@ pub enum Value {
     ///       None -> Variant("None", vec![])
     ///       Cons(1, rest) -> Variant("Cons", vec![Int(1), <list>])
     Variant(String, Vec<Value>),
-    /// Range value: (start, end)
-    /// Represents an inclusive integer range
-    /// e.g., 1..10 -> Range(1, 10)
-    Range(i64, i64),
 }
 
 impl fmt::Display for Value {
@@ -91,9 +87,6 @@ impl fmt::Display for Value {
                     write!(f, ")")?;
                 }
                 Ok(())
-            }
-            Value::Range(start, end) => {
-                write!(f, "{start}..{end}")
             }
         }
     }
@@ -852,20 +845,6 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
         } => eval_type_def(name, constructors, body, env),
 
         Expr::Constructor(ctor_name, args) => eval_constructor(ctor_name, args, env),
-
-        Expr::Range(start_expr, end_expr) => {
-            // Evaluate start and end expressions
-            let start_val = eval(start_expr, env)?;
-            let end_val = eval(end_expr, env)?;
-
-            // Check that both are integers
-            match (start_val, end_val) {
-                (Value::Int(start), Value::Int(end)) => Ok(Value::Range(start, end)),
-                _ => Err(EvalError::TypeError(
-                    "Range requires integer start and end values".to_string(),
-                )),
-            }
-        }
     }
 }
 
@@ -940,14 +919,6 @@ fn eval_binop(op: BinOp, left: Value, right: Value) -> Result<Value, EvalError> 
         (BinOp::Le, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a <= b)),
         (BinOp::Gt, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a > b)),
         (BinOp::Ge, Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a >= b)),
-
-        // Comparison operations for Range
-        (BinOp::Eq, Value::Range(start1, end1), Value::Range(start2, end2)) => {
-            Ok(Value::Bool(start1 == start2 && end1 == end2))
-        }
-        (BinOp::Neq, Value::Range(start1, end1), Value::Range(start2, end2)) => {
-            Ok(Value::Bool(start1 != start2 || end1 != end2))
-        }
 
         (op, left, right) => Err(EvalError::TypeError(format!(
             "Type error in binary operation {op:?}: cannot apply to {left:?} and {right:?}"
