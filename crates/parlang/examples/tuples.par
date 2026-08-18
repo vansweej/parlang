@@ -2,7 +2,7 @@ let pair = (42, true);
 let first = pair.0;
 let second = pair.1;
 let nested = ((1, 2), (3, 4));
-let data = (100, fun x -> x * 2, true);
+let datum = (100, fun x -> x * 2, true);
 let swap = fun p -> (p.1, p.0);
 let add_pair = fun p ->
     match p with

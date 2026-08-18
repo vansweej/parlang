@@ -277,7 +277,7 @@ where
 /// Reserved keywords that cannot be used as identifiers
 const KEYWORDS: &[&str] = &[
     "let", "in", "if", "then", "else", "fun", "true", "false", "load", "rec", "match", "with",
-    "type",
+    "type", "data",
 ];
 
 /// Parse an identifier (variable name) - ensures it's not a keyword
@@ -574,7 +574,7 @@ parser! {
     where [Input: Stream<Token = char>]
     {
         (
-            string("type").skip(spaces()),
+            choice((attempt(string("data")), string("type"))).skip(spaces()),
             raw_identifier().skip(spaces()),  // type name
             // Type parameters: lowercase identifiers
             many(attempt((

@@ -279,8 +279,8 @@ fn test_record_with_mixed_types() {
 #[test]
 fn test_deeply_nested_field_access() {
     let source = r"
-        let data = { a: { b: { c: 42 } } }
-        in data.a.b.c
+        let datum = { a: { b: { c: 42 } } }
+        in datum.a.b.c
     ";
 
     let expr = parse(source).expect("Parse error");
@@ -351,8 +351,8 @@ fn test_higher_order_function_with_records() {
     let source = r"
         let mapField = fun f -> fun record -> { value: f record.value }
         in let inc = fun x -> x + 1
-        in let data = { value: 41 }
-        in (mapField inc data).value
+        in let datum = { value: 41 }
+        in (mapField inc datum).value
     ";
 
     let expr = parse(source).expect("Parse error");
