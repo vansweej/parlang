@@ -365,11 +365,11 @@ fn test_complex_nested_pattern_matching() {
 fn test_nested_records_and_tuples() {
     // Test nested records and tuples
     let code = r"
-        let data = { 
+        let datum = { 
             point: (10, 20), 
             info: { value: 30, active: true } 
         } in
-        data.point.0 + data.point.1 + data.info.value
+        datum.point.0 + datum.point.1 + datum.info.value
     ";
     let expr = parse(code).unwrap();
     let env = Environment::new();
