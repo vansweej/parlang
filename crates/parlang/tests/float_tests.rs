@@ -1,13 +1,15 @@
 /// Tests for floating point type support
 use parlang::{eval, parse, typecheck, Environment, Value};
 
+const THREE_POINT_FOURTEEN: f64 = 314.0 / 100.0;
+
 // Parser tests for Float literals
 
 #[test]
 fn test_parse_float_positive() {
     let expr = parse("3.14").unwrap();
     let env = Environment::new();
-    assert_eq!(eval(&expr, &env), Ok(Value::Float(3.14)));
+    assert_eq!(eval(&expr, &env), Ok(Value::Float(THREE_POINT_FOURTEEN)));
 }
 
 #[test]
@@ -224,7 +226,7 @@ fn test_float_in_record() {
     let result = eval(&expr, &env).unwrap();
     match result {
         Value::Record(fields) => {
-            assert_eq!(fields.get("pi"), Some(&Value::Float(3.14)));
+            assert_eq!(fields.get("pi"), Some(&Value::Float(THREE_POINT_FOURTEEN)));
             assert_eq!(fields.get("e"), Some(&Value::Float(2.71)));
         }
         _ => panic!("Expected record"),
@@ -235,7 +237,7 @@ fn test_float_in_record() {
 fn test_float_record_field_access() {
     let expr = parse("let r = { pi: 3.14 } in r.pi").unwrap();
     let env = Environment::new();
-    assert_eq!(eval(&expr, &env), Ok(Value::Float(3.14)));
+    assert_eq!(eval(&expr, &env), Ok(Value::Float(THREE_POINT_FOURTEEN)));
 }
 
 // Tuple with Float elements
