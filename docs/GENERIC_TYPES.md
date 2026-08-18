@@ -14,7 +14,13 @@ Generic types enable you to write type-safe code that works with multiple types 
 
 ## Defining Generic Types
 
-You can define generic types using the `type` keyword with type parameters:
+You can define generic types using the `data` keyword with type parameters:
+
+> **Note (Slice 2b):** As of Slice 2b, generic/parameterised declarations
+> require the `data` keyword; `type` is retained only for non-parameterised
+> aliases (`type Name = TypeExpr`). The parser keeps the zero-width
+> `spaces()` boundary between the `data`/`type` keyword and the following
+> identifier (no `not_followed_by` guard) as known debt.
 
 ```parlang
 data Option a = Some a | None
