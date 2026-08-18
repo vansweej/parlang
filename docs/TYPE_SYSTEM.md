@@ -399,10 +399,15 @@ Type: Int
 
 **Multiple field accesses:**
 ```parlang
-> let addXY = fun r -> r.x + r.y
-  in addXY { x: 10, y: 20, z: 30 }
+> let p = { x: 10, y: 20, z: 30 } in p.x + p.y
 Type: Int
 30
+```
+
+**Field access on an unconstrained parameter is rejected:**
+```parlang
+> fun r -> r.x
+type error: Expected record type, got t0
 ```
 
 **Nested records:**

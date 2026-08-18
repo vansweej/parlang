@@ -140,13 +140,24 @@ in match data with
 
 ### Records as Function Parameters
 
-Pass records to functions:
+Record types are closed, so a function cannot pull a field out of a bare
+parameter — the parameter's type is still an unconstrained type variable at that
+point, and inference reports `RecordExpected`. Destructure the parameter with a
+record pattern instead:
 
 ```parlang
-let getAge = fun person -> person.age
+let getAge = fun person -> match person with
+  | { age: a } -> a
+  | _ -> 0
 
+in getAge { name: 42, age: 25 }  # Returns 25
+```
+
+Field access works directly whenever the record's type is already known:
+
+```parlang
 let person = { name: 42, age: 25 }
-in getAge person  # Returns 25
+in person.age  # Returns 25
 ```
 
 ### Records as Return Values
@@ -171,15 +182,14 @@ let point = (makePoint 10) 20  # Returns { x: 10, y: 20 }
 
 ### Higher-Order Functions
 
-Use records with higher-order functions:
+A higher-order function can transform a field once the record's type is known at
+the point of access:
 
 ```parlang
-let mapField = fun f -> fun record -> 
-  { value: f record.value }
-
 let inc = fun x -> x + 1
-let data = { value: 41 }
-in (mapField inc data).value  # Returns 42
+in let data = { value: 41 }
+in let mapped = { value: inc data.value }
+in mapped.value  # Returns 42
 ```
 
 ## Type Inference
@@ -193,21 +203,31 @@ let person = { name: 42, age: 30 }
 # Type: Int
 person.age
 
-# Type: { age: t1 } -> t1
+# Rejected: `p` is an unconstrained type variable, so field access on it
+# reports RecordExpected
 fun p -> p.age
 ```
 
-### Polymorphic Record Types
+### Closed Record Types
 
-Functions can work with any record having specific fields:
+Record types are **closed** and matched exactly: `{ name: Int, age: Int }` is a
+different type from `{ age: Int }`, and neither is a subtype of the other. A
+function therefore cannot accept "any record that has an `age` field":
 
 ```parlang
-# Works with any record that has an 'age' field
+# Rejected: nothing constrains `p` to be a record
 let getAge = fun p -> p.age
+```
 
-# Can be used with different record types
-getAge { name: 42, age: 25 }        # Works
-getAge { age: 30, active: true }    # Also works
+A record-consuming function must destructure its argument with a record pattern,
+which fixes the argument's shape:
+
+```parlang
+let getAge = fun p -> match p with
+  | { age: a } -> a
+  | _ -> 0
+
+in getAge { name: 42, age: 25 }  # Returns 25
 ```
 
 ### Type Checking
@@ -273,14 +293,14 @@ let makeRecord = fun flag ->
 
 ### Record Transformation Pipelines
 
-Chain functions to transform records:
+Chain transformations by rebuilding the record at each step, binding the
+intermediate result so its type stays known:
 
 ```parlang
-let addOne = fun r -> { value: r.value + 1 }
-let double = fun r -> { value: r.value * 2 }
-
 let initial = { value: 5 }
-let result = double (addOne initial)  # { value: 12 }
+in let once = { value: initial.value + 1 }
+in let twice = { value: once.value * 2 }
+in twice  # { value: 12 }
 ```
 
 ## Error Handling
@@ -442,6 +462,6 @@ Records in ParLang provide:
 ✓ **Immutability** for functional programming  
 ✓ **Pattern matching** for flexible data access  
 ✓ **Nested structures** for complex data  
-✓ **Polymorphism** for reusable functions  
+✓ **Closed, exact record types** for predictable inference  
 
 Records make ParLang suitable for building structured applications while maintaining the elegance of functional programming.

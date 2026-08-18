@@ -236,9 +236,12 @@ in match person with
 
 **Functions with records:**
 ```
-let getAge = fun p -> p.age
-in let person = { name: 42, age: 25 }
-in getAge person                       # Result: 25
+# Record types are closed, so a function destructures its argument with a
+# record pattern rather than projecting a field out of a bare parameter
+let getAge = fun p -> match p with
+  | { age: a } -> a
+  | _ -> 0
+in getAge { name: 42, age: 25 }        # Result: 25
 
 # Function returning a record
 let makePerson = fun n -> fun a -> { name: n, age: a }
