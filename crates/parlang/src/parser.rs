@@ -574,7 +574,7 @@ parser! {
     where [Input: Stream<Token = char>]
     {
         (
-            choice((attempt(string("data")), string("type"))).skip(spaces()),
+            string("data").skip(spaces()),
             raw_identifier().skip(spaces()),  // type name
             // Type parameters: lowercase identifiers
             many(attempt((
