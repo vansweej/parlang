@@ -236,9 +236,12 @@ in match person with
 
 **Functions with records:**
 ```
-let getAge = fun p -> p.age
-in let person = { name: 42, age: 25 }
-in getAge person                       # Result: 25
+# Record types are closed, so a function destructures its argument with a
+# record pattern rather than projecting a field out of a bare parameter
+let getAge = fun p -> match p with
+  | { age: a } -> a
+  | _ -> 0
+in getAge { name: 42, age: 25 }        # Result: 25
 
 # Function returning a record
 let makePerson = fun n -> fun a -> { name: n, age: a }
@@ -252,27 +255,6 @@ let person = { name: 42, age: 30 }
 in let olderPerson = { name: person.name, age: person.age + 1 }
 in olderPerson                         # Result: { name: 42, age: 31 }
 ```
-
-**Row Polymorphism:**
-
-Records support **row polymorphism**, allowing functions to work with any record that has at least certain fields:
-
-```
-# Function that works with any record having an 'age' field
-let getAge = fun r -> r.age
-
-# Works with different record types
-getAge { name: 42, age: 30 }           # Result: 30
-getAge { age: 25, city: 100 }          # Result: 25
-```
-
-When type checking is enabled, row polymorphic functions show their flexible type:
-```
-> fun p -> p.age
-Type: { age: t0 | r0 } -> t0
-```
-
-The type `{ age: t0 | r0 }` means "a record with at least an `age` field (type `t0`), plus any other fields (`r0`)". This provides flexibility while maintaining type safety. See [docs/RECORDS.md](docs/RECORDS.md) for comprehensive documentation and advanced examples.
 
 ### Type Aliases
 

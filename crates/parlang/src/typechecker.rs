@@ -1,6 +1,6 @@
 /// Hindley-Milner type inference implementation
 use crate::ast::{BinOp, Expr};
-use crate::types::{RowVar, Type, TypeScheme, TypeVar};
+use crate::types::{Type, TypeScheme, TypeVar};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -20,7 +20,6 @@ pub struct ConstructorInfo {
 pub struct TypeEnv {
     bindings: HashMap<String, TypeScheme>,
     next_var: usize,
-    next_row_var: usize,
     type_aliases: HashMap<String, Type>,
     /// Constructor information: maps constructor name to its type info
     constructors: HashMap<String, ConstructorInfo>,
@@ -31,7 +30,6 @@ impl TypeEnv {
         TypeEnv {
             bindings: HashMap::new(),
             next_var: 0,
-            next_row_var: 0,
             type_aliases: HashMap::new(),
             constructors: HashMap::new(),
         }
@@ -42,24 +40,6 @@ impl TypeEnv {
         let var = Type::Var(TypeVar(self.next_var));
         self.next_var += 1;
         var
-    }
-
-    /// Generate a fresh row variable
-    ///
-    /// Row variables represent "the rest of the fields" in record types.
-    /// They enable row polymorphism, allowing functions to work with records
-    /// that have at least certain fields.
-    ///
-    /// # Example
-    /// ```
-    /// // When type-checking: fun r -> r.age
-    /// // We create a row variable to represent unknown fields:
-    /// // Type: { age: t0 | r0 } -> t0
-    /// ```
-    pub fn fresh_row_var(&mut self) -> RowVar {
-        let row_var = RowVar(self.next_row_var);
-        self.next_row_var += 1;
-        row_var
     }
 
     /// Look up a variable and instantiate its type scheme
@@ -77,20 +57,13 @@ impl TypeEnv {
     #[must_use]
     pub fn extend(&self, name: String, ty: Type) -> Self {
         let mut new_env = self.clone();
-        new_env.bind(
-            name,
-            TypeScheme {
-                vars: vec![],
-                row_vars: vec![],
-                ty,
-            },
-        );
+        new_env.bind(name, TypeScheme { vars: vec![], ty });
         new_env
     }
 
     /// Instantiate a type scheme by replacing quantified variables with fresh ones
     fn instantiate(&mut self, scheme: &TypeScheme) -> Type {
-        if scheme.vars.is_empty() && scheme.row_vars.is_empty() {
+        if scheme.vars.is_empty() {
             return scheme.ty.clone();
         }
 
@@ -99,16 +72,10 @@ impl TypeEnv {
             subst.insert(var.clone(), self.fresh_var());
         }
 
-        let mut row_subst = HashMap::new();
-        for row_var in &scheme.row_vars {
-            row_subst.insert(row_var.clone(), Type::Row(self.fresh_row_var()));
-        }
-
-        let ty_after_subst = apply_subst(&subst, &scheme.ty);
-        apply_row_subst(&row_subst, &ty_after_subst)
+        apply_subst(&subst, &scheme.ty)
     }
 
-    /// Generalize a type by quantifying free type variables and row variables
+    /// Generalize a type by quantifying free type variables
     pub fn generalize(&self, ty: &Type) -> TypeScheme {
         let free_in_env = self.free_vars();
         let free_in_type = free_type_vars(ty);
@@ -116,18 +83,8 @@ impl TypeEnv {
         let mut quantified: Vec<TypeVar> = free_in_type.difference(&free_in_env).cloned().collect();
         quantified.sort();
 
-        let free_row_in_env = self.free_row_vars();
-        let free_row_in_type = free_row_vars(ty);
-
-        let mut quantified_rows: Vec<RowVar> = free_row_in_type
-            .difference(&free_row_in_env)
-            .cloned()
-            .collect();
-        quantified_rows.sort();
-
         TypeScheme {
             vars: quantified,
-            row_vars: quantified_rows,
             ty: ty.clone(),
         }
     }
@@ -140,20 +97,6 @@ impl TypeEnv {
                 let mut free = free_type_vars(&scheme.ty);
                 for var in &scheme.vars {
                     free.remove(var);
-                }
-                free
-            })
-            .collect()
-    }
-
-    /// Get free row variables in the environment
-    fn free_row_vars(&self) -> HashSet<RowVar> {
-        self.bindings
-            .values()
-            .flat_map(|scheme| {
-                let mut free = free_row_vars(&scheme.ty);
-                for row_var in &scheme.row_vars {
-                    free.remove(row_var);
                 }
                 free
             })
@@ -239,98 +182,11 @@ fn apply_subst_with_visited(
             }
             Type::Record(new_fields)
         }
-        Type::RecordRow(fields, row_var) => {
-            let mut new_fields = HashMap::new();
-            for (name, ty) in fields {
-                new_fields.insert(name.clone(), apply_subst_with_visited(subst, ty, visited));
-            }
-            Type::RecordRow(new_fields, row_var.clone())
-        }
-        Type::Row(row_var) => Type::Row(row_var.clone()),
         Type::SumType(name, args) => {
             let new_args = args
                 .iter()
                 .map(|arg| apply_subst_with_visited(subst, arg, visited))
                 .collect();
-            Type::SumType(name.clone(), new_args)
-        }
-    }
-}
-
-/// Row substitution (maps `RowVar` to Type)
-///
-/// Row substitutions map row variables to concrete types, allowing us to
-/// resolve row polymorphic types to concrete record types during unification.
-type RowSubstitution = HashMap<RowVar, Type>;
-
-/// Apply row substitution to a type
-///
-/// This function applies row variable substitutions to types, which is essential
-/// for row polymorphism. When we have a type like `{ age: Int | r0 }` and a
-/// substitution `r0 -> { name: Int }`, we can merge them to get
-/// `{ age: Int, name: Int }`.
-///
-/// # Arguments
-/// * `subst` - The row substitution mapping row variables to types
-/// * `ty` - The type to apply the substitution to
-///
-/// # Returns
-/// The type with row variables substituted
-fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
-    match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Unit | Type::Var(_) => ty.clone(),
-        Type::Fun(arg, ret) => Type::Fun(
-            Box::new(apply_row_subst(subst, arg)),
-            Box::new(apply_row_subst(subst, ret)),
-        ),
-        Type::Record(fields) => {
-            let mut new_fields = HashMap::new();
-            for (name, field_ty) in fields {
-                new_fields.insert(name.clone(), apply_row_subst(subst, field_ty));
-            }
-            Type::Record(new_fields)
-        }
-        Type::RecordRow(fields, row_var) => {
-            let mut new_fields = HashMap::new();
-            for (name, field_ty) in fields {
-                new_fields.insert(name.clone(), apply_row_subst(subst, field_ty));
-            }
-            // If there's a substitution for this row variable, apply it
-            if let Some(row_ty) = subst.get(row_var) {
-                // Merge fields with the substituted row
-                match row_ty {
-                    Type::Record(row_fields) => {
-                        // Merge new_fields with row_fields
-                        let mut merged = row_fields.clone();
-                        merged.extend(new_fields);
-                        Type::Record(merged)
-                    }
-                    Type::RecordRow(row_fields, new_row_var) => {
-                        // Merge new_fields with row_fields, keeping the new row variable
-                        let mut merged = row_fields.clone();
-                        merged.extend(new_fields);
-                        Type::RecordRow(merged, new_row_var.clone())
-                    }
-                    Type::Row(new_row_var) => {
-                        // Keep the fields, replace the row variable
-                        Type::RecordRow(new_fields, new_row_var.clone())
-                    }
-                    _ => Type::RecordRow(new_fields, row_var.clone()),
-                }
-            } else {
-                Type::RecordRow(new_fields, row_var.clone())
-            }
-        }
-        Type::Row(row_var) => {
-            // If there's a substitution for this row variable, use it
-            if let Some(row_ty) = subst.get(row_var) {
-                row_ty.clone()
-            } else {
-                ty.clone()
-            }
-        }
-        Type::SumType(name, args) => {
-            let new_args = args.iter().map(|arg| apply_row_subst(subst, arg)).collect();
             Type::SumType(name.clone(), new_args)
         }
     }
@@ -354,9 +210,7 @@ fn apply_row_subst(subst: &RowSubstitution, ty: &Type) -> Type {
 /// - For `{ age: t0 }`: returns `{t0}`
 fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
     match ty {
-        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Unit | Type::Row(_) => {
-            HashSet::new()
-        }
+        Type::Int | Type::Bool | Type::Char | Type::Float | Type::Unit => HashSet::new(),
         Type::Var(v) => {
             let mut set = HashSet::new();
             set.insert(v.clone());
@@ -374,62 +228,10 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
             }
             set
         }
-        Type::RecordRow(fields, _row_var) => {
-            let mut set = HashSet::new();
-            for ty in fields.values() {
-                set.extend(free_type_vars(ty));
-            }
-            set
-        }
         Type::SumType(_name, args) => {
             let mut set = HashSet::new();
             for arg in args {
                 set.extend(free_type_vars(arg));
-            }
-            set
-        }
-    }
-}
-
-/// Get free row variables in a type
-///
-/// Row variables that appear in a type but are not bound by any quantifier
-/// are considered "free". This function collects all such free row variables.
-///
-/// # Example
-/// For the type `{ age: Int | r0 }`, this returns `{r0}`.
-/// For the type `forall r0. { age: Int | r0 }`, after instantiation r0 is bound.
-fn free_row_vars(ty: &Type) -> HashSet<RowVar> {
-    match ty {
-        Type::Int
-        | Type::Bool
-        | Type::Char
-        | Type::Float
-        | Type::Unit
-        | Type::Var(_)
-        | Type::Record(_) => HashSet::new(),
-        Type::RecordRow(fields, row_var) => {
-            let mut set = HashSet::new();
-            set.insert(row_var.clone());
-            for field_ty in fields.values() {
-                set.extend(free_row_vars(field_ty));
-            }
-            set
-        }
-        Type::Row(row_var) => {
-            let mut set = HashSet::new();
-            set.insert(row_var.clone());
-            set
-        }
-        Type::Fun(arg, ret) => {
-            let mut set = free_row_vars(arg);
-            set.extend(free_row_vars(ret));
-            set
-        }
-        Type::SumType(_name, args) => {
-            let mut set = HashSet::new();
-            for arg in args {
-                set.extend(free_row_vars(arg));
             }
             set
         }
@@ -536,114 +338,6 @@ impl fmt::Display for TypeError {
 impl std::error::Error for TypeError {}
 
 /// Unification algorithm
-/// Unify a closed record with a row-polymorphic record.
-///
-/// Handles cases like: `{ x: Int, y: Int }` ~ `{ x: Int | r0 }`. The closed
-/// record must have at least the fields in the row-polymorphic record.
-fn unify_record_with_row(
-    fields: &HashMap<String, Type>,
-    row_fields: &HashMap<String, Type>,
-    row_var: &RowVar,
-) -> Result<Substitution, TypeError> {
-    let mut subst = HashMap::new();
-
-    // Unify the common fields
-    for (name, row_ty) in row_fields {
-        match fields.get(name) {
-            Some(field_ty) => {
-                let row_ty = apply_subst(&subst, row_ty);
-                let field_ty = apply_subst(&subst, field_ty);
-                let s = unify(&row_ty, &field_ty)?;
-                subst = compose_subst(&s, &subst);
-            }
-            None => {
-                return Err(TypeError::FieldNotFound(
-                    name.clone(),
-                    fields.keys().cloned().collect(),
-                ));
-            }
-        }
-    }
-
-    // The row variable should represent the remaining fields
-    let mut remaining = fields.clone();
-    for name in row_fields.keys() {
-        remaining.remove(name);
-    }
-
-    // Bind the row variable to the remaining fields
-    let mut row_subst = HashMap::new();
-    row_subst.insert(row_var.clone(), Type::Record(remaining));
-
-    // Compose the substitutions - we need to convert row_subst to regular subst
-    // For now, we'll just return the type substitution
-    Ok(subst)
-}
-
-/// Unify two row-polymorphic records.
-///
-/// Handles cases like: `{ x: Int | r0 }` ~ `{ y: Int | r1 }`. Common fields
-/// are unified; the row variables are only accepted as compatible when they
-/// coincide or neither side has fields unique to it.
-fn unify_row_with_row(
-    fields1: &HashMap<String, Type>,
-    row1: &RowVar,
-    fields2: &HashMap<String, Type>,
-    row2: &RowVar,
-) -> Result<Substitution, TypeError> {
-    // Find common fields and unify them
-    let mut subst = HashMap::new();
-    let mut fields1_only = HashMap::new();
-    let mut fields2_only = HashMap::new();
-
-    // Collect fields only in fields1
-    for (name, ty) in fields1 {
-        if !fields2.contains_key(name) {
-            fields1_only.insert(name.clone(), ty.clone());
-        }
-    }
-
-    // Collect fields only in fields2
-    for (name, ty) in fields2 {
-        if !fields1.contains_key(name) {
-            fields2_only.insert(name.clone(), ty.clone());
-        }
-    }
-
-    // Unify common fields
-    for (name, ty1) in fields1 {
-        if let Some(ty2) = fields2.get(name) {
-            let ty1 = apply_subst(&subst, ty1);
-            let ty2 = apply_subst(&subst, ty2);
-            let s = unify(&ty1, &ty2)?;
-            subst = compose_subst(&s, &subst);
-        }
-    }
-
-    // Now we need to handle the row variables
-    // row1 should contain fields2_only + some rest
-    // row2 should contain fields1_only + some rest
-    // For simplicity, if both have the same row variable, they unify
-    if row1 == row2 {
-        Ok(subst)
-    } else {
-        // More complex case: bind one row variable to include the other's unique fields
-        // For now, we'll bind row1 to contain fields2_only and row2
-        if !fields2_only.is_empty() {
-            // Can't easily represent this with current substitution system
-            // This would require row variable constraints which is complex
-            // For now, require exact match
-            Err(TypeError::RecordFieldMismatch)
-        } else if !fields1_only.is_empty() {
-            Err(TypeError::RecordFieldMismatch)
-        } else {
-            // No unique fields on either side, just unify the row variables
-            // by binding row1 to row2
-            Ok(subst)
-        }
-    }
-}
-
 fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
     match (t1, t2) {
         (Type::Int, Type::Int)
@@ -685,43 +379,6 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
             }
 
             Ok(subst)
-        }
-
-        // Unify closed record with row-polymorphic record
-        // This handles cases like: { x: Int, y: Int } ~ { x: Int | r0 }
-        (Type::Record(fields), Type::RecordRow(row_fields, row_var))
-        | (Type::RecordRow(row_fields, row_var), Type::Record(fields)) => {
-            unify_record_with_row(fields, row_fields, row_var)
-        }
-
-        // Unify two row-polymorphic records
-        // This handles cases like: { x: Int | r0 } ~ { y: Int | r1 }
-        (Type::RecordRow(fields1, row1), Type::RecordRow(fields2, row2)) => {
-            unify_row_with_row(fields1, row1, fields2, row2)
-        }
-
-        // Unify Row with Row
-        (Type::Row(r1), Type::Row(r2)) => {
-            if r1 == r2 {
-                Ok(HashMap::new())
-            } else {
-                // Row variables can be unified, but we don't have row substitution in our
-                // regular substitution. For now, we'll accept them as compatible.
-                Ok(HashMap::new())
-            }
-        }
-
-        // Unify Row with Record or RecordRow
-        (Type::Row(_row), Type::Record(_fields)) | (Type::Record(_fields), Type::Row(_row)) => {
-            // A row variable can unify with a closed record
-            // This would bind the row variable to that record
-            Ok(HashMap::new())
-        }
-
-        (Type::Row(_row), Type::RecordRow(_fields, _row_var))
-        | (Type::RecordRow(_fields, _row_var), Type::Row(_row)) => {
-            // A row variable can unify with a row-polymorphic record
-            Ok(HashMap::new())
         }
 
         (Type::SumType(name1, args1), Type::SumType(name2, args2)) => {
@@ -1054,52 +711,6 @@ fn infer_field_access(
                 let available: Vec<String> = fields.keys().cloned().collect();
                 Err(TypeError::FieldNotFound(field_name.to_string(), available))
             }
-        }
-        Type::RecordRow(fields, _) => {
-            // Look up the field type in the known fields
-            if let Some(field_ty) = fields.get(field_name) {
-                Ok((field_ty.clone(), s1))
-            } else {
-                // Field might be in the row variable, but we can't know for sure
-                // For now, report an error with available fields
-                let available: Vec<String> = fields.keys().cloned().collect();
-                Err(TypeError::FieldNotFound(field_name.to_string(), available))
-            }
-        }
-        Type::Var(_) => {
-            // Polymorphic record - create a fresh type variable for the field
-            // Use row polymorphism: create a record type with at least this field
-            let field_ty = env.fresh_var();
-            let row_var = env.fresh_row_var();
-
-            // Create a record type with at least this field plus other fields (row variable)
-            let mut fields = HashMap::new();
-            fields.insert(field_name.to_string(), field_ty.clone());
-            let record_with_field = Type::RecordRow(fields, row_var);
-
-            // Unify with the record type
-            let s2 = unify(&record_ty, &record_with_field)?;
-            let subst = compose_subst(&s2, &s1);
-
-            Ok((field_ty, subst))
-        }
-        Type::Row(row_var) => {
-            // A row variable on its own - we need to constrain it to have this field
-            // Create a fresh type variable for the field type
-            let field_ty = env.fresh_var();
-            let new_row_var = env.fresh_row_var();
-
-            // Create a record type with this field
-            let mut fields = HashMap::new();
-            fields.insert(field_name.to_string(), field_ty.clone());
-            let record_with_field = Type::RecordRow(fields, new_row_var);
-
-            // Unify the row variable with this record type
-            let row_ty = Type::Row(row_var.clone());
-            let s2 = unify(&row_ty, &record_with_field)?;
-            let subst = compose_subst(&s2, &s1);
-
-            Ok((field_ty, subst))
         }
         _ => Err(TypeError::RecordExpected(format!("{record_ty}"))),
     }

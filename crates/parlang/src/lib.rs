@@ -44,4 +44,4 @@ pub use eval::{eval, extract_bindings, Environment, EvalError, Value};
 pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
 pub use parser::parse;
 pub use typechecker::{typecheck, TypeEnv, TypeError};
-pub use types::{RowVar, Type, TypeScheme, TypeVar};
+pub use types::{Type, TypeScheme, TypeVar};

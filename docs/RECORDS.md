@@ -140,13 +140,24 @@ in match data with
 
 ### Records as Function Parameters
 
-Pass records to functions:
+Record types are closed, so a function cannot pull a field out of a bare
+parameter — the parameter's type is still an unconstrained type variable at that
+point, and inference reports `RecordExpected`. Destructure the parameter with a
+record pattern instead:
 
 ```parlang
-let getAge = fun person -> person.age
+let getAge = fun person -> match person with
+  | { age: a } -> a
+  | _ -> 0
 
+in getAge { name: 42, age: 25 }  # Returns 25
+```
+
+Field access works directly whenever the record's type is already known:
+
+```parlang
 let person = { name: 42, age: 25 }
-in getAge person  # Returns 25
+in person.age  # Returns 25
 ```
 
 ### Records as Return Values
@@ -171,15 +182,14 @@ let point = (makePoint 10) 20  # Returns { x: 10, y: 20 }
 
 ### Higher-Order Functions
 
-Use records with higher-order functions:
+A higher-order function can transform a field once the record's type is known at
+the point of access:
 
 ```parlang
-let mapField = fun f -> fun record -> 
-  { value: f record.value }
-
 let inc = fun x -> x + 1
-let data = { value: 41 }
-in (mapField inc data).value  # Returns 42
+in let data = { value: 41 }
+in let mapped = { value: inc data.value }
+in mapped.value  # Returns 42
 ```
 
 ## Type Inference
@@ -193,21 +203,31 @@ let person = { name: 42, age: 30 }
 # Type: Int
 person.age
 
-# Type: { age: t1 } -> t1
+# Rejected: `p` is an unconstrained type variable, so field access on it
+# reports RecordExpected
 fun p -> p.age
 ```
 
-### Polymorphic Record Types
+### Closed Record Types
 
-Functions can work with any record having specific fields:
+Record types are **closed** and matched exactly: `{ name: Int, age: Int }` is a
+different type from `{ age: Int }`, and neither is a subtype of the other. A
+function therefore cannot accept "any record that has an `age` field":
 
 ```parlang
-# Works with any record that has an 'age' field
+# Rejected: nothing constrains `p` to be a record
 let getAge = fun p -> p.age
+```
 
-# Can be used with different record types
-getAge { name: 42, age: 25 }        # Works
-getAge { age: 30, active: true }    # Also works
+A record-consuming function must destructure its argument with a record pattern,
+which fixes the argument's shape:
+
+```parlang
+let getAge = fun p -> match p with
+  | { age: a } -> a
+  | _ -> 0
+
+in getAge { name: 42, age: 25 }  # Returns 25
 ```
 
 ### Type Checking
@@ -273,14 +293,14 @@ let makeRecord = fun flag ->
 
 ### Record Transformation Pipelines
 
-Chain functions to transform records:
+Chain transformations by rebuilding the record at each step, binding the
+intermediate result so its type stays known:
 
 ```parlang
-let addOne = fun r -> { value: r.value + 1 }
-let double = fun r -> { value: r.value * 2 }
-
 let initial = { value: 5 }
-let result = double (addOne initial)  # { value: 12 }
+in let once = { value: initial.value + 1 }
+in let twice = { value: once.value * 2 }
+in twice  # { value: 12 }
 ```
 
 ## Error Handling
@@ -359,116 +379,6 @@ Future versions may add syntactic sugar like:
 { person with age: 31 }
 ```
 
-### Type Inference with Row Polymorphism
-
-ParLang implements **row polymorphism** for record types, allowing functions to work with records that have **at least** certain fields, without requiring knowledge of all fields.
-
-#### What is Row Polymorphism?
-
-Row polymorphism enables flexible, reusable functions that work with any record containing specific fields:
-
-```parlang
-# This function works with ANY record that has an 'age' field
-fun person -> person.age
-# Type: { age: t0 | r1 } -> t0
-```
-
-The type `{ age: t0 | r1 }` means:
-- The record must have an `age` field of type `t0`
-- The `| r1` part (row variable) represents "any other fields"
-- The function returns the type `t0` (the type of the age field)
-
-#### Benefits of Row Polymorphism
-
-**1. Flexible Functions**
-```parlang
-let getAge = fun r -> r.age
-in let person = { name: 42, age: 30, city: 100 }
-in let employee = { age: 25, department: 5 }
-in getAge person + getAge employee
-# Works! Returns 55
-```
-
-The same `getAge` function works with both `person` and `employee`, even though they have different fields.
-
-**2. Type Safety**
-```parlang
-let getAge = fun r -> r.age
-in let config = { port: 8080, active: true }
-in getAge config
-# Type error! 'age' field not found
-```
-
-Even though `getAge` is polymorphic, the type system still catches field access errors at compile time.
-
-**3. Composable Functions**
-```parlang
-let getName = fun r -> r.name
-let getAge = fun r -> r.age
-# describe only works with records that have both 'name' and 'age'
-let describe = fun r -> getName r + getAge r
-```
-
-#### Row Variable Display
-
-When type checking is enabled, you'll see row variables in function types:
-
-```parlang
-> fun p -> p.age
-Type: { age: t0 | r0 } -> t0
-```
-
-- `t0` is a type variable (represents any type)
-- `r0` is a row variable (represents "rest of the fields")
-- The entire type means: "takes a record with at least an `age` field, returns that field's type"
-
-#### Advanced Row Polymorphism Examples
-
-**Multiple field access:**
-```parlang
-let addCoordinates = fun r -> r.x + r.y
-in let point2D = { x: 10, y: 20 }
-in let point3D = { x: 5, y: 15, z: 25 }
-in addCoordinates point2D + addCoordinates point3D
-# Returns 50
-```
-
-**Row polymorphism with currying:**
-```parlang
-let compareAges = fun r1 -> fun r2 -> r1.age == r2.age
-in let person = { name: 42, age: 30 }
-in let employee = { id: 123, age: 30, dept: 5 }
-in compareAges person employee
-# Returns true
-```
-
-**Row polymorphism with higher-order functions:**
-```parlang
-let mapAge = fun f -> fun r -> f r.age
-in let double = fun x -> x + x
-in let person = { name: 42, age: 21, active: true }
-in mapAge double person
-# Returns 42
-```
-
-#### Limitations
-
-**Known Limitations of Current Implementation:**
-
-1. **Multiple accesses on same row variable:** When accessing multiple fields on a function parameter in a single expression without a concrete record, the type system may not track all accesses properly:
-   ```parlang
-   # This works when applied to a concrete record:
-   let addXY = fun r -> r.x + r.y
-   in addXY { x: 10, y: 20 }  # OK!
-   
-   # But type inference for just the function may be limited
-   fun r -> r.x + r.y  # Type checking may have issues
-   ```
-
-2. **Row unification complexity:** Complex row variable constraints (like ensuring two records share specific fields) may not be fully supported in all cases.
-
-Despite these limitations, row polymorphism greatly enhances the flexibility and reusability of record-handling code while maintaining type safety.
-
 ## Examples
 
 ### Example 1: Point Operations
@@ -531,7 +441,7 @@ in handleRequest getRequest  # Returns 100
 
 1. **No record update syntax** - must manually copy all fields
 2. **No field punning** - can't write `{ name, age }` instead of `{ name: name, age: age }`
-3. **Simple row polymorphism** - doesn't track all possible field presence
+3. **Closed records only** - field access requires an exact record type; a bare parameter cannot be refined into a record
 4. **No record extension** - can't inherit or extend record types
 
 ### Planned Enhancements
@@ -541,7 +451,6 @@ Future versions may include:
 - **Record update syntax**: `{ record with field: newValue }`
 - **Field punning**: `{ name, age }` for `{ name: name, age: age }`
 - **Type aliases for records**: `type Person = { name: Int, age: Int }`
-- **Advanced row polymorphism**: More precise type tracking
 - **Record concatenation**: Merge records together
 
 ## Summary
@@ -553,6 +462,6 @@ Records in ParLang provide:
 ✓ **Immutability** for functional programming  
 ✓ **Pattern matching** for flexible data access  
 ✓ **Nested structures** for complex data  
-✓ **Polymorphism** for reusable functions  
+✓ **Closed, exact record types** for predictable inference  
 
 Records make ParLang suitable for building structured applications while maintaining the elegance of functional programming.

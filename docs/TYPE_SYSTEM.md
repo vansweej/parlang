@@ -388,71 +388,6 @@ Type: { age: Int, name: Int }
 
 Record types show all fields and their types. Fields are displayed in alphabetical order for consistency.
 
-### Row Polymorphism
-
-ParLang implements **row polymorphism** for records, allowing functions to work with any record that has **at least** certain fields.
-
-#### Row Variables
-
-A row variable (denoted `r0`, `r1`, etc.) represents "unknown additional fields" in a record:
-
-```parlang
-> fun p -> p.age
-Type: { age: t0 | r0 } -> t0
-```
-
-This type means:
-- The function takes a record with at least an `age` field (type `t0`)
-- The record may have other fields (represented by `r0`)
-- The function returns the value of the `age` field (type `t0`)
-
-#### Benefits of Row Polymorphism
-
-**Flexible, reusable functions:**
-```parlang
-let getAge = fun r -> r.age
-# Works with any record that has an 'age' field
-
-> getAge { name: 42, age: 30 }
-Type: Int
-30
-
-> getAge { age: 25, city: 100, active: true }
-Type: Int
-25
-```
-
-**Type safety is maintained:**
-```parlang
-> let getAge = fun r -> r.age
-  in let config = { port: 8080 }
-  in getAge config
-Type error: Field 'age' not found
-```
-
-#### Type Variables and Row Variables
-
-Type schemes can quantify both type variables and row variables:
-
-```parlang
-> let id = fun x -> x in id
-Type: forall t0. t0 -> t0
-
-> let getAge = fun r -> r.age in getAge
-Type: forall t0, r0. { age: t0 | r0 } -> t0
-```
-
-The `forall t0, r0` means:
-- `t0` can be any type (the type of the age field)
-- `r0` can be any set of additional fields
-
-#### Closed vs Open Records
-
-- **Closed record**: `{ x: Int, y: Int }` - exactly these fields, no more
-- **Open record**: `{ x: Int | r0 }` - at least x field, possibly more
-
-Row polymorphism allows functions to work with open records, providing flexibility while maintaining type safety.
-
 ### Record Type Examples
 
 **Simple field access:**
@@ -462,18 +397,17 @@ Type: Int
 30
 ```
 
-**Polymorphic field access:**
-```parlang
-> fun r -> r.value
-Type: { value: t0 | r0 } -> t0
-```
-
 **Multiple field accesses:**
 ```parlang
-> let addXY = fun r -> r.x + r.y
-  in addXY { x: 10, y: 20, z: 30 }
+> let p = { x: 10, y: 20, z: 30 } in p.x + p.y
 Type: Int
 30
+```
+
+**Field access on an unconstrained parameter is rejected:**
+```parlang
+> fun r -> r.x
+type error: Expected record type, got t0
 ```
 
 **Nested records:**
@@ -483,7 +417,7 @@ Type: { city: Int }
 { city: 100 }
 ```
 
-For more details on record types and row polymorphism, see [RECORDS.md](RECORDS.md).
+For more details on record types, see [RECORDS.md](RECORDS.md).
 
 ## Type Aliases
 
@@ -864,19 +798,20 @@ match value with
 
 **Future Plans**: Implement full case analysis with exhaustiveness and redundancy checking.
 
-### 3. No Row Polymorphism for Records
+### 3. Records Are Closed and Exact-Match
 
-Record field access requires exact type matches:
+Record field access requires the record type to be known exactly:
 
 ```parlang
 fun p -> p.age
-# Current type: {age: Int} -> Int (exact match only)
-# Desired type: {age: Int, ...rest} -> Int (row polymorphism)
+# Rejected: the type of `p` is still an unconstrained type variable, so
+# inference reports RecordExpected.
+
+let p = { age: 30 } in p.age
+# Accepted: `p` has the exact record type { age: Int }.
 ```
 
 This means a function expecting `{age: Int}` won't accept `{age: Int, name: String}`.
-
-**Future Plans**: Implement row polymorphism with row type variables.
 
 ### 4. No Type Annotations
 

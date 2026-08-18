@@ -400,10 +400,9 @@ Why is this change needed? What problem does it solve?
 
 ### Medium Priority
 
-1. **Row polymorphism**: Better record type inference
-2. **Better error messages**: More context in error messages
-3. **Standard library**: Expand the standard library (`examples/stdlib.par`)
-4. **Editor support**: Language server protocol implementation
+1. **Better error messages**: More context in error messages
+2. **Standard library**: Expand the standard library (`examples/stdlib.par`)
+3. **Editor support**: Language server protocol implementation
 
 ### Documentation Needs
 
