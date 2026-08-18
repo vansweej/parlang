@@ -4,7 +4,7 @@ Sum types (also known as algebraic data types or tagged unions) allow you to def
 
 ## Defining Sum Types
 
-Use the `type` keyword followed by type parameters (if any), then `=`, then a list of constructors separated by `|`:
+Use the `data` keyword followed by type parameters (if any), then `=`, then a list of constructors separated by `|`:
 
 ```parlang
 # Option type - represents an optional value
