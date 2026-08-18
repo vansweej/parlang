@@ -1,4 +1,4 @@
-# Type Checker Module (`src/typechecker.rs`)
+# Type Checker Module (`crates/parlang/src/typechecker.rs`)
 
 The Type Checker module implements Hindley-Milner type inference for ParLang.
 

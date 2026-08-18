@@ -1,4 +1,4 @@
-# Types Module (`src/types.rs`)
+# Types Module (`crates/parlang/src/types.rs`)
 
 The Types module provides type representations for ParLang's Hindley-Milner type system.
 

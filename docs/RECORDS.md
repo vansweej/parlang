@@ -37,11 +37,11 @@ Records can contain other records, enabling hierarchical data structures:
 
 ```parlang
 # Nested address within person
-let address = { street: 123, city: 456 }
-let person = { name: 789, address: address }
+let address = { street: 123, city: 456 };
+let person = { name: 789, address: address };
 
 # Deeply nested structures
-let datum = { a: { b: { c: 42 } } }
+let datum = { a: { b: { c: 42 } } };
 ```
 
 ### Records from Expressions
@@ -49,9 +49,9 @@ let datum = { a: { b: { c: 42 } } }
 Field values can be any expression:
 
 ```parlang
-let x = 10
-let y = 20
-let point = { x: x + 5, y: y * 2 }  # { x: 15, y: 40 }
+let x = 10;
+let y = 20;
+let point = { x: x + 5, y: y * 2 };  # { x: 15, y: 40 }
 ```
 
 ## Field Access
@@ -166,9 +166,9 @@ Return records from functions:
 
 ```parlang
 let makePerson = fun name -> fun age -> 
-  { name: name, age: age }
+  { name: name, age: age };
 
-let person = makePerson 42 30  # Returns { name: 42, age: 30 }
+let person = makePerson 42 30;  # Returns { name: 42, age: 30 }
 ```
 
 ### Curried Functions with Records
@@ -176,8 +176,8 @@ let person = makePerson 42 30  # Returns { name: 42, age: 30 }
 Build records incrementally with currying:
 
 ```parlang
-let makePoint = fun x -> fun y -> { x: x, y: y }
-let point = (makePoint 10) 20  # Returns { x: 10, y: 20 }
+let makePoint = fun x -> fun y -> { x: x, y: y };
+let point = (makePoint 10) 20;  # Returns { x: 10, y: 20 }
 ```
 
 ### Higher-Order Functions
@@ -198,7 +198,7 @@ ParLang automatically infers record types:
 
 ```parlang
 # Type: { name: Int, age: Int }
-let person = { name: 42, age: 30 }
+let person = { name: 42, age: 30 };
 
 # Type: Int
 person.age
@@ -247,7 +247,7 @@ Records in ParLang are **immutable** - they cannot be modified after creation. T
 
 ```parlang
 # Create original record
-let person = { name: 42, age: 30 }
+let person = { name: 42, age: 30 };
 
 # "Update" by creating new record
 let olderPerson = { name: person.name, age: person.age + 1 }
@@ -260,10 +260,10 @@ Build updated records using field access:
 
 ```parlang
 let incrementAge = fun person ->
-  { name: person.name, age: person.age + 1 }
+  { name: person.name, age: person.age + 1 };
 
-let person = { name: 42, age: 30 }
-let updated = incrementAge person  # { name: 42, age: 31 }
+let person = { name: 42, age: 30 };
+let updated = incrementAge person;  # { name: 42, age: 31 }
 ```
 
 ## Advanced Patterns
@@ -384,8 +384,8 @@ Future versions may add syntactic sugar like:
 ### Example 1: Point Operations
 
 ```parlang
-let origin = { x: 0, y: 0 }
-let point = { x: 3, y: 4 }
+let origin = { x: 0, y: 0 };
+let point = { x: 3, y: 4 };
 
 let distance = fun p1 -> fun p2 ->
   let dx = p1.x - p2.x in
@@ -398,8 +398,8 @@ in distance origin point  # Returns 25
 ### Example 2: Configuration Management
 
 ```parlang
-let defaultConfig = { port: 8080, verbose: false }
-let customConfig = { port: 3000, verbose: true }
+let defaultConfig = { port: 8080, verbose: false };
+let customConfig = { port: 3000, verbose: true };
 
 let selectConfig = fun useCustom ->
   if useCustom 
@@ -412,7 +412,7 @@ in (selectConfig true).port  # Returns 3000
 ### Example 3: Data Pipeline
 
 ```parlang
-let datum = { value: 10, count: 5 }
+let datum = { value: 10, count: 5 };
 
 let process = fun r ->
   let doubled = { value: r.value * 2, count: r.count } in

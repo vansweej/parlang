@@ -7,7 +7,7 @@ A small ML-alike functional language written in Rust, with a parser built using 
 ParLang is a simple functional programming language with:
 
 - **Basic Types**: Integers, booleans, characters, and floating point numbers
-- **Type Inference**: Optional Hindley-Milner type system with automatic type inference
+- **Type Inference**: Hindley-Milner type system with automatic type inference (mandatory, runs before evaluation)
 - **Type Aliases**: Define alternative names for types for better code documentation
 - **Generic Types**: Full support for parameterized types (Option Int, List Bool, Either A B)
 - **Sum Types**: Algebraic data types with constructors and pattern matching (Option, Either, List, etc.)
@@ -531,9 +531,9 @@ let triple = fun x -> x * 3;
 
 ## Type System
 
-ParLang includes an optional Hindley-Milner type inference system that can catch type errors before runtime.
+ParLang runs a mandatory Hindley-Milner type inference pass before evaluation, catching type errors before runtime.
 
-### Enabling Type Checking
+### Mandatory Type Checking
 
 Type checking is mandatory: every expression is type-checked with Hindley-Milner inference before evaluation, so type errors are caught before your program runs:
 
@@ -543,7 +543,7 @@ cargo run
 
 ### Type Inference Examples
 
-When type checking is enabled, the REPL displays inferred types before evaluation:
+The REPL displays inferred types before evaluation:
 
 ```
 > 42
@@ -755,6 +755,18 @@ See the `examples/` directory for sample programs:
 - `type_alias_binary.par` - Binary operation type alias
 - `type_alias_nested.par` - Nested type aliases
 - `type_annotations.par` - Explicit type annotations for variables
+- `comments.par` - Line, block, nested, and inline comments
+- `string.par` - Recursive string utility functions over character lists
+- `use_strings.par` - Loading and using the string utility functions
+- `sum_types.par` - Generic list declaration and recursive list sum
+- `exhaustiveness.par` - Exhaustive matching on a generic option type
+- `recursive_type_check.par` - Type checking recursive factorial, Fibonacci, and accumulator functions
+- `generic_list.par` - Summing values in a generic list
+- `generic_result.par` - Handling success and error values with a generic result type
+- `generic_tree.par` - Summing values in a generic binary tree
+- `generic_types.par` - Matching on a parameterized option type
+- `stdlib/map.par` - Association-list map operations and demonstration
+- `stdlib/treemap.par` - Binary-search-tree map operations and demonstration
 
 ## Documentation
 
@@ -791,13 +803,14 @@ Comprehensive documentation is available in the `docs/` directory:
 
 The language implementation consists of:
 
-1. **AST** (`src/ast.rs`): Abstract syntax tree definitions for expressions
-2. **Parser** (`src/parser.rs`): Parser built with the `combine` library
-3. **Types** (`src/types.rs`): Type representations for the type system
-4. **Type Checker** (`src/typechecker.rs`): Hindley-Milner type inference implementation
-5. **Evaluator** (`src/eval.rs`): Interpreter that evaluates expressions
-6. **DOT** (`src/dot.rs`): AST visualization in Graphviz DOT format
-7. **REPL/CLI** (`src/main.rs`): Command-line interface using clap
+1. **AST** (`crates/parlang/src/ast.rs`): Abstract syntax tree definitions for expressions
+2. **Parser** (`crates/parlang/src/parser.rs`): Parser built with the `combine` library
+3. **Types** (`crates/parlang/src/types.rs`): Type representations for the type system
+4. **Type Checker** (`crates/parlang/src/typechecker.rs`): Hindley-Milner type inference implementation
+5. **Evaluator** (`crates/parlang/src/eval.rs`): Interpreter that evaluates expressions
+6. **DOT** (`crates/parlang/src/dot.rs`): AST visualization in Graphviz DOT format
+7. **REPL/CLI** (`crates/parlang/src/main.rs`): Command-line interface using clap
+8. **Exhaustiveness** (`crates/parlang/src/exhaustiveness.rs`): Pattern-match exhaustiveness checker
 
 For detailed architecture information, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

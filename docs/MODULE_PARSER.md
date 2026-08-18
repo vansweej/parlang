@@ -4,8 +4,7 @@
 
 The `parser.rs` module implements a parser for the ParLang language using the `combine` parser combinator library. It transforms source code text into an Abstract Syntax Tree (AST).
 
-**Location**: `src/parser.rs`  
-**Lines of Code**: ~718  
+**Location**: `crates/parlang/src/parser.rs`  
 **Key Exports**: `parse()` function  
 **External Dependencies**: `combine` crate (v4.6)
 
@@ -201,14 +200,15 @@ fn identifier<Input>() -> impl Parser<Input, Output = String>
 - Cannot be a keyword
 
 **Keywords** (rejected):
-- `let`, `in`, `if`, `then`, `else`, `fun`, `true`, `false`, `load`, `rec`
+- `let`, `in`, `if`, `then`, `else`, `fun`, `true`, `false`, `load`, `rec`, `match`, `with`, `type`, `data`
 
 **Implementation**:
+The shared `KEYWORDS` constant contains the reserved-word slice, which
+`identifier()` checks after parsing a raw identifier.
+
 ```rust
 raw_identifier().then(|name: String| {
-    if matches!(name.as_str(),
-        "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec"
-    ) {
+    if KEYWORDS.contains(&name.as_str()) {
         combine::unexpected("keyword").map(move |_: ()| name.clone()).right()
     } else {
         combine::value(name).left()

@@ -4,7 +4,7 @@
 
 The `eval.rs` module implements the runtime evaluator/interpreter for the ParLang language. It executes ParLang Abstract Syntax Trees (ASTs) by recursively evaluating expressions and managing variable bindings through environments.
 
-**Location**: `src/eval.rs`  
+**Location**: `crates/parlang/src/eval.rs`  
 **Lines of Code**: ~855  
 **Key Exports**: `eval()` function, `Value` enum, `Environment` struct, `EvalError` enum
 

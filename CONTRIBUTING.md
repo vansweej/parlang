@@ -210,7 +210,7 @@ choice((
 
 ### Unit Tests
 
-- Place unit tests in the same file as the code they test (in a `#[cfg(test)]` mod tests` block)
+- Place unit tests in the same file as the code they test (in a `#[cfg(test)] mod tests` block)
 - Test both success and failure cases
 - Use descriptive test names that explain what is being tested
 
@@ -393,10 +393,7 @@ Why is this change needed? What problem does it solve?
 
 ### High Priority
 
-1. **Recursive function type checking**: Add support for typing recursive functions
-2. **Pattern matching exhaustiveness**: Check that match expressions cover all cases
-3. **Type annotations**: Add syntax for explicit type annotations
-4. **Performance optimization**: Optimize environment cloning and substitution
+1. **Performance optimization**: Optimize environment cloning and substitution
 
 ### Medium Priority
 

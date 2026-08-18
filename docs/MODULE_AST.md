@@ -4,7 +4,7 @@
 
 The `ast.rs` module defines the Abstract Syntax Tree (AST) data structures for ParLang. The AST represents the structure of ParLang programs in a tree format that can be traversed and evaluated.
 
-**Location**: `src/ast.rs`  
+**Location**: `crates/parlang/src/ast.rs`  
 **Lines of Code**: ~365  
 **Key Exports**: `Expr`, `BinOp`
 
@@ -111,7 +111,7 @@ Expr::Var("counter".to_string())
 **Notes**:
 - Variable names must start with a letter
 - Can contain letters, numbers, and underscores
-- Cannot be keywords (`let`, `in`, `if`, `then`, `else`, `fun`, `true`, `false`)
+- Cannot be keywords (`let`, `in`, `if`, `then`, `else`, `fun`, `true`, `false`, `load`, `rec`, `match`, `with`, `type`, `data`)
 
 ##### 4. `BinOp(BinOp, Box<Expr>, Box<Expr>)` - Binary Operation
 

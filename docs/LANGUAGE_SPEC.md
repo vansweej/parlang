@@ -28,7 +28,7 @@ ParLang is a minimalist functional programming language in the ML family, featur
 - **Pure functional semantics** with immutable bindings
 - **First-class functions** with full closure support
 - **Lexical scoping** with environment-based variable resolution
-- **Dynamic typing** with runtime type checking
+- **Static typing** via mandatory Hindley-Milner (Algorithm W) inference run before evaluation
 - **Expression-oriented** syntax (no statements)
 - **Eager evaluation** (call-by-value semantics)
 
@@ -307,6 +307,7 @@ primary_expr ::= atom
               | rec_expr
               | fun_expr
               | type_alias_expr
+              | data_decl_expr
 
 (* Atomic expressions *)
 atom ::= integer
@@ -391,7 +392,7 @@ digit ::= '0'..'9'
 
 ### 4.1 Type Categories
 
-ParLang employs **dynamic typing** with runtime type checking. Values have types, but variables do not have static type annotations.
+ParLang employs **static typing** via mandatory Hindley-Milner inference run before evaluation. Variables may carry explicit type annotations, and all types are inferred and checked ahead of execution.
 
 #### 4.1.1 Value Types
 
@@ -464,7 +465,7 @@ Type mismatches are detected at runtime and raise `TypeError` exceptions:
 
 ### 4.3 Type Inference
 
-ParLang does not perform static type inference. All type checking is **dynamic** (runtime).
+ParLang performs mandatory static type inference (Algorithm W) before evaluation; type checking is **static**, not runtime.
 
 ---
 

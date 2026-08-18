@@ -1355,4 +1355,4 @@ For more examples and patterns, see:
 - **Parser Module**: [MODULE_PARSER.md](MODULE_PARSER.md)
 - **Evaluator Module**: [MODULE_EVAL.md](MODULE_EVAL.md)
 - **Language Specification**: [LANGUAGE_SPEC.md](LANGUAGE_SPEC.md)
-- **Source Code**: Check `src/lib.rs`, `src/ast.rs`, `src/parser.rs`, `src/eval.rs`
+- **Source Code**: Check `crates/parlang/src/lib.rs`, `crates/parlang/src/ast.rs`, `crates/parlang/src/parser.rs`, `crates/parlang/src/eval.rs`

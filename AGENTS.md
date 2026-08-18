@@ -1,8 +1,10 @@
 # AGENTS.md
 
-ParLang: a small ML-alike functional language interpreter in Rust (single crate,
-edition 2021). Parser built on the `combine` combinator library; optional
-Hindley-Milner (Algorithm W) type inference.
+ParLang: a small ML-alike functional language interpreter in Rust (a 3-crate
+Cargo workspace: `crates/parlang` for the surface language—parser, typechecker,
+tree-walking evaluator, and CLI/REPL; `crates/parlang-core` for the Core IR; and
+`crates/parlang-driver` for the runner binary), edition 2021. Parser built on
+the `combine` combinator library; Hindley-Milner (Algorithm W) type inference.
 
 ## Build & test
 
@@ -30,17 +32,19 @@ nix develop . --command <cmd>
 - Clippy runs with `pedantic` warnings enabled (`Cargo.toml` `[lints.clippy]`).
   `module_name_repetitions` and `must_use_candidate` are allowed; keep all other
   pedantic lints clean.
-- `#![recursion_limit = "512"]` in `src/lib.rs` is required by the `combine`
+- `#![recursion_limit = "512"]` in `crates/parlang/src/lib.rs` is required by the `combine`
   parser — do not lower it.
-- Both a binary (`parlang`, `src/main.rs`) and a library (`src/lib.rs`) target
-  exist. The library re-exports the full public API from `src/lib.rs`.
+- The `parlang` binary (`crates/parlang/src/main.rs`) and library
+  (`crates/parlang/src/lib.rs`) targets exist, alongside the `parlang-driver`
+  runner binary (`crates/parlang-driver/src/main.rs`). The library re-exports
+  the full public API from `crates/parlang/src/lib.rs`.
 
 ## Running the interpreter
 
 ```bash
 cargo run                                       # REPL
-cargo run -- examples/simple.par               # run a file
-cargo run -- examples/simple.par --dump-dot > ast.dot  # dump AST as DOT to stdout
+cargo run -- crates/parlang/examples/simple.par               # run a file
+cargo run -- crates/parlang/examples/simple.par --dump-dot > ast.dot  # dump AST as DOT to stdout
 cargo run                                       # HM type checking runs automatically
 ```
 
@@ -48,7 +52,7 @@ Type checking is **mandatory**: Hindley-Milner inference runs before evaluation
 in both the REPL and file/CLI modes, and shapes the expected output of many
 integration tests.
 
-## Module map (`src/`)
+## Module map (`crates/parlang/src/`)
 
 | File | Role |
 |------|------|
@@ -61,8 +65,9 @@ integration tests.
 | `dot.rs` | AST → Graphviz DOT |
 | `main.rs` | `clap` CLI + `rustyline` REPL |
 
-Note: `exhaustiveness.rs` is a real public module (re-exported in `lib.rs`) but
-is omitted from the README's architecture section.
+`crates/parlang-core/src/` holds the Core IR (`base_type.rs`, `term.rs`,
+`builder.rs`, `eval.rs`, `prelude.rs`, `display.rs`, `dot.rs`, `error.rs`, and
+`lib.rs`); `crates/parlang-driver/src/` contains the runner binary.
 
 ## Testing conventions
 

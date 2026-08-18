@@ -561,7 +561,7 @@ Internally, the type checker represents polymorphic types as type schemes:
 
 Type checking and evaluation are separate phases:
 
-1. **Type Checking (optional)**: Verifies that the program is well-typed
+1. **Type Checking**: Verifies that the program is well-typed
 2. **Evaluation**: Executes the program
 
 Type checking always happens before evaluation. If type checking fails, evaluation is skipped.

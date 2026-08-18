@@ -528,7 +528,7 @@ Type inference steps:
 
 ## Implementation Notes
 
-The ParLang type checker is implemented in `src/typechecker.rs` with:
+The ParLang type checker is implemented in `crates/parlang/src/typechecker.rs` with:
 - ~700 lines of well-tested code
 - 369+ unit tests covering various scenarios
 - Clear separation of concerns (unify, infer, generalize, instantiate)

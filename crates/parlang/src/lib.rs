@@ -6,7 +6,7 @@
 /// - AST definitions for the language
 /// - Parser using the combine parser combinator library
 /// - Evaluator/interpreter for executing programs
-/// - Optional Hindley-Milner type inference system
+/// - Mandatory Hindley-Milner (Algorithm W) type inference, run before evaluation
 ///
 /// # Example
 ///
