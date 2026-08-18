@@ -51,6 +51,12 @@ let m = insert 1 25 (insert 2 30 empty) in
 lookup 1 m
 ```
 
+> **Known debt (Slice 2b):** `Map` is declared with the `data` keyword as of
+> Slice 2b. The parser's keyword boundary between `data`/`type` and the
+> following identifier is handled by zero-width `spaces()` (no
+> `not_followed_by` guard) — this is recorded as known debt intentionally
+> left in place. `type` is no longer accepted for parameterised declarations.
+
 ### 2. TreeMap (Binary Search Tree)
 
 **File**: `examples/stdlib/treemap.par`

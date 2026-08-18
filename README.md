@@ -314,6 +314,10 @@ Type aliases are transparent - they don't affect runtime behavior, just provide 
 
 ### Sum Types (Algebraic Data Types)
 
+> **Known debt (Slice 2b):** Sum types now use the `data` keyword (Slice 2b);
+> `type` remains only for simple aliases. See the parser-boundary known debt
+> noted in `docs/MAP_LIBRARY.md`.
+
 Sum types allow you to define types with multiple variants, enabling type-safe representation of data that can be one of several forms.
 
 **Defining sum types:**
