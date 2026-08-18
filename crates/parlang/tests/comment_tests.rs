@@ -30,6 +30,15 @@ fn leading_block_comment() {
 }
 
 #[test]
+fn block_comment_opener_requires_both_characters() {
+    assert_eq!(parse("{- c -}\n42"), Ok(Expr::Int(42)));
+    assert_eq!(
+        parse("{ value: 42 }"),
+        Ok(Expr::Record(vec![("value".to_string(), Expr::Int(42))]))
+    );
+}
+
+#[test]
 fn trailing_block_comment() {
     assert_eq!(parse("42 {- comment -}"), Ok(Expr::Int(42)));
 }
