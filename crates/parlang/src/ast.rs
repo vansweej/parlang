@@ -264,7 +264,7 @@ fn fmt_type_def(
     constructors: &[(String, Vec<TypeAnnotation>)],
     body: &Expr,
 ) -> fmt::Result {
-    write!(f, "(type {name}")?;
+    write!(f, "(data {name}")?;
     for param in type_params {
         write!(f, " {param}")?;
     }
