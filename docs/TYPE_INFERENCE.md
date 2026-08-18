@@ -263,7 +263,7 @@ Generic types like `Option a`, `List a`, `Either a b` are handled through:
 
 Example:
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 let x = Some 42 in x
 
 # Step 1: Register constructors
@@ -299,7 +299,7 @@ The type checker can produce several types of errors:
 
 4. **Constructor Arity Mismatch**: Wrong number of arguments
    ```parlang
-   type Option a = Some a | None in
+   data Option a = Some a | None in
    Some 1 2  # Error: Constructor Some expects 1 argument, got 2
    ```
 
@@ -475,7 +475,7 @@ Type inference steps:
 ### Example 3: Generic Data Types
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 let map_option = fun f -> fun opt ->
     match opt with
     | Some x -> Some (f x)

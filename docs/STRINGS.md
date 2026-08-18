@@ -230,7 +230,7 @@ match "hello" with
 You can construct strings character by character:
 
 ```parlang
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 
 Cons 'h' (Cons 'i' Nil)
 # Equivalent to: "hi"
@@ -270,8 +270,8 @@ match "hello" with
 ### Word Counter
 
 ```parlang
-type List a = Nil | Cons a (List a) in
-type Option a = Some a | None in
+data List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
 load "examples/string.par" in
 
 let is_space = fun c -> c == ' ' in

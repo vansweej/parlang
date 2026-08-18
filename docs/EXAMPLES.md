@@ -249,7 +249,7 @@ strcmp "zzz" "aaa"
 Since strings are lists of characters, you can pattern match on them:
 
 ```parlang
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 
 match "hello" with
 | Nil -> "empty string"
@@ -269,7 +269,7 @@ in is_empty ""
 ### Building Strings Programmatically
 
 ```parlang
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 
 # Build a string from characters
 Cons 'h' (Cons 'i' Nil)
@@ -2233,8 +2233,8 @@ in swap (5, 10)
 
 ```parlang
 # Tuple containing a function
-let data = (42, fun x -> x * 2)
-in data.1 21
+let datum = (42, fun x -> x * 2)
+in datum.1 21
 ```
 **Output:** `42`
 
@@ -2325,9 +2325,9 @@ The simplest map implementation using a list of tuples. Best for small maps (< 2
 **Creating and using a simple map:**
 
 ```parlang
-type List a = Nil | Cons a (List a) in
-type Option a = Some a | None in
-type Tuple k v = Tuple k v in
+data List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
+data Tuple k v = Tuple k v in
 let empty = Nil in
 let insert = fun key -> fun value -> fun map ->
   Cons (Tuple key value) map
@@ -2353,8 +2353,8 @@ A more efficient map using a binary search tree. Keys are automatically sorted a
 **Creating and using a tree map:**
 
 ```parlang
-type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
-type Option a = Some a | None in
+data TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+data Option a = Some a | None in
 let empty = Empty in
 let insert = rec insert -> fun key -> fun value -> fun map ->
   match map with
@@ -2382,9 +2382,9 @@ lookup 5 m
 **Counting frequencies:**
 
 ```parlang
-type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
-type List a = Nil | Cons a (List a) in
-type Option a = Some a | None in
+data TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+data List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
 let empty = Empty in
 let insert = rec insert -> fun key -> fun value -> fun map ->
   match map with
@@ -2420,7 +2420,7 @@ lookup 1 frequencies
 **Map operations (transforming values):**
 
 ```parlang
-type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+data TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
 let empty = Empty in
 let insert = rec insert -> fun key -> fun value -> fun map ->
   match map with

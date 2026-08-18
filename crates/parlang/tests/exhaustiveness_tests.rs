@@ -5,7 +5,7 @@ use parlang::{eval, parse, Environment};
 #[test]
 fn test_option_exhaustive() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | None -> 0
@@ -23,7 +23,7 @@ fn test_option_exhaustive() {
 #[test]
 fn test_option_non_exhaustive_missing_none() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some n -> n
     ";
@@ -39,7 +39,7 @@ fn test_option_non_exhaustive_missing_none() {
 #[test]
 fn test_option_non_exhaustive_missing_some() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match None with
         | None -> 0
     ";
@@ -55,7 +55,7 @@ fn test_option_non_exhaustive_missing_some() {
 #[test]
 fn test_either_exhaustive() {
     let input = r"
-        type Either a b = Left a | Right b in
+        data Either a b = Left a | Right b in
         match Left 10 with
         | Left n -> n
         | Right m -> m
@@ -70,7 +70,7 @@ fn test_either_exhaustive() {
 #[test]
 fn test_either_non_exhaustive() {
     let input = r"
-        type Either a b = Left a | Right b in
+        data Either a b = Left a | Right b in
         match Left 10 with
         | Left n -> n
     ";
@@ -115,7 +115,7 @@ fn test_bool_non_exhaustive() {
 #[test]
 fn test_wildcard_makes_exhaustive() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | _ -> 0
@@ -130,7 +130,7 @@ fn test_wildcard_makes_exhaustive() {
 #[test]
 fn test_variable_makes_exhaustive() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | x -> 0
@@ -145,7 +145,7 @@ fn test_variable_makes_exhaustive() {
 #[test]
 fn test_list_exhaustive() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         match Nil with
         | Nil -> 0
         | Cons head tail -> head
@@ -160,7 +160,7 @@ fn test_list_exhaustive() {
 #[test]
 fn test_list_non_exhaustive() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         match Cons 1 Nil with
         | Cons head tail -> head
     ";
@@ -176,7 +176,7 @@ fn test_list_non_exhaustive() {
 #[test]
 fn test_nested_pattern_exhaustive() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some (Some 42) with
         | Some (Some n) -> n
         | Some None -> 0
@@ -251,7 +251,7 @@ fn test_record_pattern_with_wildcard() {
 #[test]
 fn test_result_type_exhaustive() {
     let input = r"
-        type Result a b = Ok a | Err b in
+        data Result a b = Ok a | Err b in
         match Ok 42 with
         | Ok value -> value
         | Err _ -> 0
@@ -266,7 +266,7 @@ fn test_result_type_exhaustive() {
 #[test]
 fn test_tree_type_exhaustive() {
     let input = r"
-        type Tree a = Leaf | Node a (Tree a) (Tree a) in
+        data Tree a = Leaf | Node a (Tree a) (Tree a) in
         match Leaf with
         | Leaf -> 0
         | Node value left right -> value
@@ -281,7 +281,7 @@ fn test_tree_type_exhaustive() {
 #[test]
 fn test_exhaustiveness_in_recursive_function() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         (rec sum -> fun list ->
             match list with
             | Nil -> 0

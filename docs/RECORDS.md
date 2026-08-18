@@ -41,7 +41,7 @@ let address = { street: 123, city: 456 }
 let person = { name: 789, address: address }
 
 # Deeply nested structures
-let data = { a: { b: { c: 42 } } }
+let datum = { a: { b: { c: 42 } } }
 ```
 
 ### Records from Expressions
@@ -131,8 +131,8 @@ in match person with
 Patterns can match nested record structures:
 
 ```parlang
-let data = { outer: { inner: 42 } }
-in match data with
+let datum = { outer: { inner: 42 } }
+in match datum with
 | { outer: { inner: n } } -> n  # Returns 42
 ```
 
@@ -187,8 +187,8 @@ the point of access:
 
 ```parlang
 let inc = fun x -> x + 1
-in let data = { value: 41 }
-in let mapped = { value: inc data.value }
+in let datum = { value: 41 }
+in let mapped = { value: inc datum.value }
 in mapped.value  # Returns 42
 ```
 
@@ -287,8 +287,8 @@ Use if-expressions to create conditional records:
 ```parlang
 let makeRecord = fun flag ->
   if flag 
-  then { type: 1, data: 100 }
-  else { type: 0, data: 0 }
+  then { type: 1, datum: 100 }
+  else { type: 0, datum: 0 }
 ```
 
 ### Record Transformation Pipelines
@@ -412,14 +412,14 @@ in (selectConfig true).port  # Returns 3000
 ### Example 3: Data Pipeline
 
 ```parlang
-let data = { value: 10, count: 5 }
+let datum = { value: 10, count: 5 }
 
 let process = fun r ->
   let doubled = { value: r.value * 2, count: r.count } in
   let incremented = { value: doubled.value, count: doubled.count + 1 } in
   incremented
 
-in (process data).value  # Returns 20
+in (process datum).value  # Returns 20
 ```
 
 ### Example 4: Pattern-Based Dispatch
@@ -428,7 +428,7 @@ in (process data).value  # Returns 20
 let handleRequest = fun request ->
   match request with
   | { method: 0, path: p } -> p        # GET
-  | { method: 1, data: d } -> d        # POST
+  | { method: 1, datum: d } -> d       # POST
   | _ -> 0                              # Other
 
 let getRequest = { method: 0, path: 100 }

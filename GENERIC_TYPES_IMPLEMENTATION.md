@@ -130,17 +130,17 @@ Generic types unify when:
 ## Examples of Generated Types
 
 ```parlang
-type Option a = Some a | None in Some 42
+data Option a = Some a | None in Some 42
 → Type: Option Int
 
-type List a = Nil | Cons a (List a) in Cons 1 (Cons 2 Nil)
+data List a = Nil | Cons a (List a) in Cons 1 (Cons 2 Nil)
 → Type: List Int
 
-type Either a b = Left a | Right b in Left true
+data Either a b = Left a | Right b in Left true
 → Type: Either Bool t0
 
-type Option a = Some a | None in 
-type List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
+data List a = Nil | Cons a (List a) in
 Some (Cons 1 (Cons 2 Nil))
 → Type: Option (List Int)
 ```

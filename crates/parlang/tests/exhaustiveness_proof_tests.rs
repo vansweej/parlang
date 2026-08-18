@@ -7,7 +7,7 @@ use parlang::{check_exhaustiveness, parse, Environment};
 #[test]
 fn prove_exhaustive_option_match() {
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | None -> 0
@@ -534,7 +534,7 @@ fn prove_multiple_constructors_some_missing() {
 #[test]
 fn prove_full_program_exhaustive() {
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | None -> 0
@@ -552,7 +552,7 @@ fn prove_full_program_exhaustive() {
 #[test]
 fn prove_full_program_with_recursion() {
     let code = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         (rec sum -> fun list ->
             match list with
             | Nil -> 0

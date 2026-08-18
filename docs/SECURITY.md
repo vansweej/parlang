@@ -129,7 +129,7 @@ rec loop -> fun x -> loop x
 
 ```parlang
 # Creating a large list
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 let rec range -> fun n ->
     if n == 0 then Nil else Cons n (range (n - 1))
 in range 10000000  # May exhaust memory

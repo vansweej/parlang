@@ -17,11 +17,11 @@ Generic types enable you to write type-safe code that works with multiple types 
 You can define generic types using the `type` keyword with type parameters:
 
 ```parlang
-type Option a = Some a | None
+data Option a = Some a | None
 
-type Either a b = Left a | Right b
+data Either a b = Left a | Right b
 
-type List a = Nil | Cons a (List a)
+data List a = Nil | Cons a (List a)
 ```
 
 ### Type Parameters
@@ -39,11 +39,11 @@ Type parameters (like `a`, `b`) are placeholders for actual types. They make you
 When you use a constructor with a value, the type checker infers the concrete type:
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 Some 42
 # Type: Option Int
 
-type Option a = Some a | None in
+data Option a = Some a | None in
 Some true
 # Type: Option Bool
 ```
@@ -53,7 +53,7 @@ Some true
 Constructors without arguments remain polymorphic:
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 None
 # Type: Option t0  (where t0 is a type variable)
 ```
@@ -63,7 +63,7 @@ None
 The type checker automatically infers the type parameters:
 
 ```parlang
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 Cons 1 (Cons 2 (Cons 3 Nil))
 # Type: List Int
 ```
@@ -73,8 +73,8 @@ Cons 1 (Cons 2 (Cons 3 Nil))
 You can nest generic types:
 
 ```parlang
-type Option a = Some a | None in
-type List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
+data List a = Nil | Cons a (List a) in
 Some (Cons 1 (Cons 2 Nil))
 # Type: Option (List Int)
 ```
@@ -86,7 +86,7 @@ Some (Cons 1 (Cons 2 Nil))
 The `Option` type represents a value that may or may not be present:
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 
 let x = Some 42 in
 match x with
@@ -101,7 +101,7 @@ match x with
 The `Either` type represents a value that can be one of two types:
 
 ```parlang
-type Either a b = Left a | Right b in
+data Either a b = Left a | Right b in
 
 let result = Left 42 in
 match result with
@@ -116,7 +116,7 @@ match result with
 The `List` type represents a sequence of values:
 
 ```parlang
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 
 let rec sum -> fun l ->
   match l with
@@ -135,7 +135,7 @@ sum myList
 A common pattern for error handling:
 
 ```parlang
-type Result a b = Ok a | Err b in
+data Result a b = Ok a | Err b in
 
 let divide = fun x -> fun y ->
   if y == 0
@@ -156,7 +156,7 @@ match result with
 A binary tree with values at leaves:
 
 ```parlang
-type Tree a = Leaf a | Node (Tree a) (Tree a) in
+data Tree a = Leaf a | Node (Tree a) (Tree a) in
 
 let myTree = Node (Leaf 1) (Node (Leaf 2) (Leaf 3)) in
 
@@ -182,15 +182,15 @@ $ cargo run
 ```
 
 ```parlang
-> type Option a = Some a | None in Some 42
+> data Option a = Some a | None in Some 42
 Type: Option Int
 Some(42)
 
-> type List a = Nil | Cons a (List a) in Cons 1 Nil
+> data List a = Nil | Cons a (List a) in Cons 1 Nil
 Type: List Int
 Cons(1, Nil)
 
-> type Either a b = Left a | Right b in Left true
+> data Either a b = Left a | Right b in Left true
 Type: Either Bool t0
 Left(true)
 ```
@@ -209,7 +209,7 @@ Generic types are displayed with their type arguments:
 The type checker properly unifies generic types:
 
 ```parlang
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 let x = Cons 1 Nil in
 let y = Cons 2 x in
 y

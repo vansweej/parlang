@@ -229,7 +229,7 @@ strcmp "zzz" "aaa"               # Result: 1 (greater than)
 Since strings are lists, you can pattern match on them:
 
 ```parlang
-> type List a = Nil | Cons a (List a) in
+> data List a = Nil | Cons a (List a) in
   match "hello" with
   | Nil -> "empty"
   | Cons 'h' rest -> "starts with h"
@@ -244,7 +244,7 @@ Since strings are lists, all list operations work:
 
 ```parlang
 # Using with existing List type
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 
 # First character
 match "hello" with

@@ -4,7 +4,7 @@ use parlang::{eval, parse, Environment};
 /// Test parsing a simple Option type definition
 #[test]
 fn test_parse_option_type() {
-    let input = "type Option a = Some a | None in 42";
+    let input = "data Option a = Some a | None in 42";
     let result = parse(input);
     assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 }
@@ -12,7 +12,7 @@ fn test_parse_option_type() {
 /// Test parsing an Either type definition
 #[test]
 fn test_parse_either_type() {
-    let input = "type Either a b = Left a | Right b in 0";
+    let input = "data Either a b = Left a | Right b in 0";
     let result = parse(input);
     assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 }
@@ -20,7 +20,7 @@ fn test_parse_either_type() {
 /// Test parsing a List type definition
 #[test]
 fn test_parse_list_type() {
-    let input = "type List a = Nil | Cons a (List a) in 0";
+    let input = "data List a = Nil | Cons a (List a) in 0";
     let result = parse(input);
     assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
 }
@@ -53,7 +53,7 @@ fn test_parse_constructor_multiple_args() {
 #[test]
 fn test_parse_constructor_pattern() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match None with
         | Some x -> x
         | None -> 0
@@ -66,7 +66,7 @@ fn test_parse_constructor_pattern() {
 #[test]
 fn test_option_some() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some 42 in
         match x with
         | Some n -> n
@@ -82,7 +82,7 @@ fn test_option_some() {
 #[test]
 fn test_option_none() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = None in
         match x with
         | Some n -> n
@@ -98,7 +98,7 @@ fn test_option_none() {
 #[test]
 fn test_either_left() {
     let input = r"
-        type Either a b = Left a | Right b in
+        data Either a b = Left a | Right b in
         let x = Left 10
         in match x with
         | Left n -> n
@@ -114,7 +114,7 @@ fn test_either_left() {
 #[test]
 fn test_either_right() {
     let input = r"
-        type Either a b = Left a | Right b in
+        data Either a b = Left a | Right b in
         let x = Right 20
         in match x with
         | Left n -> n
@@ -130,7 +130,7 @@ fn test_either_right() {
 #[test]
 fn test_list_nil() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         let list = Nil
         in match list with
         | Nil -> 0
@@ -146,7 +146,7 @@ fn test_list_nil() {
 #[test]
 fn test_list_cons() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         let list = Cons 1 (Cons 2 (Cons 3 Nil))
         in match list with
         | Nil -> 0
@@ -162,7 +162,7 @@ fn test_list_cons() {
 #[test]
 fn test_nested_pattern_matching() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some (Some 42)
         in match x with
         | Some (Some n) -> n
@@ -179,7 +179,7 @@ fn test_nested_pattern_matching() {
 #[test]
 fn test_recursive_list_sum() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         let sum = rec sum -> fun list ->
             match list with
             | Nil -> 0
@@ -197,7 +197,7 @@ fn test_recursive_list_sum() {
 #[test]
 fn test_recursive_list_length() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         let length = rec length -> fun list ->
             match list with
             | Nil -> 0
@@ -215,7 +215,7 @@ fn test_recursive_list_length() {
 #[test]
 fn test_constructor_wildcard_pattern() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some 99
         in match x with
         | Some _ -> 1
@@ -231,7 +231,7 @@ fn test_constructor_wildcard_pattern() {
 #[test]
 fn test_constructor_arity_error() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         Some 1 2
     ";
     let expr = parse(input).expect("Parse failed");
@@ -252,7 +252,7 @@ fn test_unknown_constructor_error() {
 #[test]
 fn test_pattern_match_wrong_constructor() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = None
         in match x with
         | Some n -> n
@@ -266,7 +266,7 @@ fn test_pattern_match_wrong_constructor() {
 #[test]
 fn test_variant_display() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         Some 42
     ";
     let expr = parse(input).expect("Parse failed");
@@ -279,7 +279,7 @@ fn test_variant_display() {
 #[test]
 fn test_variant_display_no_args() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         None
     ";
     let expr = parse(input).expect("Parse failed");
@@ -292,7 +292,7 @@ fn test_variant_display_no_args() {
 #[test]
 fn test_variant_display_nested() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         Cons 1 (Cons 2 Nil)
     ";
     let expr = parse(input).expect("Parse failed");
@@ -305,8 +305,8 @@ fn test_variant_display_nested() {
 #[test]
 fn test_multiple_type_definitions() {
     let input = r"
-        type Option a = Some a | None in
-        type Either a b = Left a | Right b in
+        data Option a = Some a | None in
+        data Either a b = Left a | Right b in
         let x = Some 10
         in let y = Left 20
         in match x with
@@ -325,7 +325,7 @@ fn test_multiple_type_definitions() {
 #[test]
 fn test_constructor_equality() {
     let input = r"
-        type Bool2 = True2 | False2 in
+        data Bool2 = True2 | False2 in
         let x = True2
         in match x with
         | True2 -> 1
@@ -341,7 +341,7 @@ fn test_constructor_equality() {
 #[test]
 fn test_tree_type() {
     let input = r"
-        type Tree a = Leaf | Node a (Tree a) (Tree a) in
+        data Tree a = Leaf | Node a (Tree a) (Tree a) in
         let tree = Node 5 (Node 3 Leaf Leaf) (Node 7 Leaf Leaf)
         in match tree with
         | Leaf -> 0
@@ -357,7 +357,7 @@ fn test_tree_type() {
 #[test]
 fn test_result_type() {
     let input = r"
-        type Result a b = Ok a | Err b in
+        data Result a b = Ok a | Err b in
         let r = Ok 100
         in match r with
         | Ok value -> value

@@ -1,4 +1,4 @@
-type Result a b = Ok a | Err b in
+data Result a b = Ok a | Err b in
 let divide = fun x -> fun y ->
     if y == 0
     then Err false

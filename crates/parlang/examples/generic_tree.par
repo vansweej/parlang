@@ -1,4 +1,4 @@
-type Tree a = Leaf a | Node (Tree a) (Tree a) in
+data Tree a = Leaf a | Node (Tree a) (Tree a) in
 let myTree = Node (Leaf 10) (Node (Leaf 20) (Leaf 30)) in
 let sumTree = rec sumTree -> fun tree ->
     match tree with

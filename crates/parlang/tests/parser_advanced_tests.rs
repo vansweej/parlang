@@ -341,7 +341,7 @@ fn test_type_annotation_missing_type() {
 #[test]
 fn test_sum_type_simple() {
     // Test simple sum type definition
-    let code = "type Option a = Some a | None in Some 42";
+    let code = "data Option a = Some a | None in Some 42";
     let result = parse(code);
     assert!(result.is_ok());
 }
@@ -349,7 +349,7 @@ fn test_sum_type_simple() {
 #[test]
 fn test_sum_type_multiple_params() {
     // Test sum type with multiple type parameters
-    let code = "type Either a b = Left a | Right b in Left 10";
+    let code = "data Either a b = Left a | Right b in Left 10";
     let result = parse(code);
     assert!(result.is_ok());
 }
@@ -357,7 +357,7 @@ fn test_sum_type_multiple_params() {
 #[test]
 fn test_sum_type_recursive() {
     // Test recursive sum type definition
-    let code = "type List a = Nil | Cons a (List a) in Cons 1 Nil";
+    let code = "data List a = Nil | Cons a (List a) in Cons 1 Nil";
     let result = parse(code);
     assert!(result.is_ok());
 }
@@ -365,7 +365,7 @@ fn test_sum_type_recursive() {
 #[test]
 fn test_constructor_application_multiple_args() {
     // Test constructor with multiple arguments
-    let code = "type Pair a b = MkPair a b in MkPair 1 2";
+    let code = "data Pair a b = MkPair a b in MkPair 1 2";
     let result = parse(code);
     assert!(result.is_ok());
 }
@@ -407,7 +407,7 @@ fn test_pattern_record() {
 #[test]
 fn test_pattern_constructor() {
     // Test constructor pattern
-    let code = "type Option a = Some a | None in match Some 42 with | Some n -> n | None -> 0";
+    let code = "data Option a = Some a | None in match Some 42 with | Some n -> n | None -> 0";
     let result = parse(code);
     assert!(result.is_ok());
 }

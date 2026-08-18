@@ -1,4 +1,4 @@
-type Option a = Some a | None in
+data Option a = Some a | None in
 
 let maybeValue = Some 42 in
 let result = match maybeValue with

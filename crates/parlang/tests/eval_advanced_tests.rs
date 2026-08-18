@@ -347,7 +347,7 @@ fn test_deeply_nested_function_applications() {
 fn test_complex_nested_pattern_matching() {
     // Test complex nested pattern matching
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some (Some (Some 42)) in
         match x with
         | Some (Some (Some n)) -> n
@@ -461,7 +461,7 @@ fn test_large_record() {
 fn test_long_constructor_chain() {
     // Test chain of constructor applications
     let code = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         let list = Cons 1 (Cons 2 (Cons 3 (Cons 4 (Cons 5 Nil)))) in
         match list with
         | Nil -> 0

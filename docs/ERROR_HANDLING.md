@@ -259,7 +259,7 @@ cargo run examples/factorial.par
 Using constructors with wrong number of arguments:
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 Some 1 2  # Error: Some expects 1 argument, got 2
 ```
 
@@ -311,7 +311,7 @@ Runtime error: Unbound variable: x
 When no pattern matches:
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 let x = None in
 match x with
 | Some n -> n
@@ -553,7 +553,7 @@ in factorial 1
 
 ```parlang
 # Problem: Missing patterns
-type Option a = Some a | None in
+data Option a = Some a | None in
 match opt with
 | Some x -> x
 # Missing None case

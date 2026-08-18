@@ -1,7 +1,7 @@
-type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
-type Option a = Some a | None in
-type List a = Nil | Cons a (List a) in
-type Tuple k v = Tuple k v in
+data TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+data Option a = Some a | None in
+data List a = Nil | Cons a (List a) in
+data Tuple k v = Tuple k v in
 let empty = Empty in
 let insert = rec insert -> fun key -> fun value -> fun map ->
   match map with

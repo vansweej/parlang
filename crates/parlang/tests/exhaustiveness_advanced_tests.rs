@@ -8,7 +8,7 @@ use parlang::{parse, typecheck};
 fn test_nested_constructor_exhaustive() {
     // Test exhaustiveness with nested Option constructors
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some (Some 42) in
         match x with
         | Some (Some n) -> n
@@ -26,7 +26,7 @@ fn test_nested_constructor_non_exhaustive() {
     // Test that missing nested patterns are detected
     // Note: Current implementation may not warn on nested patterns
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some (Some 42) in
         match x with
         | Some (Some n) -> n
@@ -42,7 +42,7 @@ fn test_nested_constructor_non_exhaustive() {
 fn test_deeply_nested_constructors() {
     // Test with three levels of nesting
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some (Some (Some 42)) in
         match x with
         | Some (Some (Some n)) -> n
@@ -59,7 +59,7 @@ fn test_deeply_nested_constructors() {
 fn test_nested_either_constructors() {
     // Test nested Either constructors
     let code = r"
-        type Either a b = Left a | Right b in
+        data Either a b = Left a | Right b in
         let x = Left (Right 42) in
         match x with
         | Left (Left n) -> n
@@ -75,7 +75,7 @@ fn test_nested_either_constructors() {
 fn test_nested_list_patterns() {
     // Test exhaustiveness with nested list patterns
     let code = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         let list = Cons 1 (Cons 2 Nil) in
         match list with
         | Nil -> 0
@@ -199,7 +199,7 @@ fn test_nested_tuple_patterns() {
 fn test_tuple_with_constructor_pattern() {
     // Test tuples containing constructors in patterns
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let pair = (Some 42, None) in
         match pair with
         | (Some x, Some y) -> x + y
@@ -231,7 +231,7 @@ fn test_tuple_with_record_pattern() {
 fn test_constructor_with_record_payload() {
     // Test constructors with record payloads
     let code = r"
-        type Result a = Ok a | Err a in
+        data Result a = Ok a | Err a in
         let result = Ok 42 in
         match result with
         | Ok n -> n
@@ -246,7 +246,7 @@ fn test_constructor_with_record_payload() {
 fn test_complex_mixed_patterns() {
     // Test complex pattern with constructors and tuples
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let datum = Some (10, 20) in
         match datum with
         | Some (x, y) -> x + y
@@ -263,7 +263,7 @@ fn test_complex_mixed_patterns() {
 fn test_wildcard_makes_exhaustive() {
     // Test that wildcard pattern makes match exhaustive
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | _ -> 0
@@ -277,7 +277,7 @@ fn test_wildcard_makes_exhaustive() {
 fn test_variable_pattern_catches_all() {
     // Test that variable pattern makes match exhaustive
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | other -> 0
@@ -291,7 +291,7 @@ fn test_variable_pattern_catches_all() {
 fn test_mixed_wildcard_and_specific() {
     // Test mixing wildcard with specific patterns
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some 0 -> 0
         | Some _ -> 1
@@ -367,7 +367,7 @@ fn test_integer_patterns_multiple_literals() {
 fn test_recursive_list_pattern_exhaustive() {
     // Test exhaustive pattern matching on recursive lists
     let code = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         let list = Cons 1 (Cons 2 Nil) in
         match list with
         | Nil -> 0
@@ -382,7 +382,7 @@ fn test_recursive_list_pattern_exhaustive() {
 fn test_recursive_tree_pattern() {
     // Test pattern matching on tree structures
     let code = r"
-        type Tree a = Leaf a | Node (Tree a) (Tree a) in
+        data Tree a = Leaf a | Node (Tree a) (Tree a) in
         let tree = Node (Leaf 1) (Leaf 2) in
         match tree with
         | Leaf n -> n
@@ -399,7 +399,7 @@ fn test_recursive_tree_pattern() {
 fn test_empty_match_arms() {
     // Test that empty pattern list is properly rejected
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | None -> 0
@@ -413,7 +413,7 @@ fn test_empty_match_arms() {
 fn test_pattern_ordering() {
     // Test that pattern order doesn't affect exhaustiveness
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | None -> 0
         | Some n -> n
@@ -427,7 +427,7 @@ fn test_pattern_ordering() {
 fn test_overlapping_patterns() {
     // Test overlapping patterns (later patterns unreachable)
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         match Some 42 with
         | Some n -> n
         | Some 0 -> 0

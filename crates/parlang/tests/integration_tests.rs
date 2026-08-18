@@ -1401,7 +1401,7 @@ fn test_char_comparison_chain() {
 #[test]
 fn test_string_literal_eval() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         "hello"
     "#;
     let result = parse_and_eval(code);
@@ -1412,7 +1412,7 @@ fn test_string_literal_eval() {
 #[test]
 fn test_empty_string_eval() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         ""
     "#;
     let result = parse_and_eval(code);
@@ -1426,8 +1426,8 @@ fn test_empty_string_eval() {
 #[test]
 fn test_string_length() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strlen "hello"
     "#;
@@ -1437,8 +1437,8 @@ fn test_string_length() {
 #[test]
 fn test_string_length_empty() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strlen ""
     "#;
@@ -1448,8 +1448,8 @@ fn test_string_length_empty() {
 #[test]
 fn test_string_concatenation() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strlen (strcat "hello" " world")
     "#;
@@ -1459,8 +1459,8 @@ fn test_string_concatenation() {
 #[test]
 fn test_string_equality_true() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         streq "hello" "hello"
     "#;
@@ -1470,8 +1470,8 @@ fn test_string_equality_true() {
 #[test]
 fn test_string_equality_false() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         streq "hello" "world"
     "#;
@@ -1481,8 +1481,8 @@ fn test_string_equality_false() {
 #[test]
 fn test_string_contains_true() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         contains "hello" 'e'
     "#;
@@ -1492,8 +1492,8 @@ fn test_string_contains_true() {
 #[test]
 fn test_string_contains_false() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         contains "hello" 'z'
     "#;
@@ -1503,8 +1503,8 @@ fn test_string_contains_false() {
 #[test]
 fn test_string_take() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strlen (take 3 "hello")
     "#;
@@ -1514,8 +1514,8 @@ fn test_string_take() {
 #[test]
 fn test_string_drop() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strlen (drop 2 "hello")
     "#;
@@ -1525,8 +1525,8 @@ fn test_string_drop() {
 #[test]
 fn test_string_char_at_found() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         char_at 1 "hello"
     "#;
@@ -1545,8 +1545,8 @@ fn test_string_char_at_found() {
 #[test]
 fn test_string_char_at_not_found() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         char_at 10 "hello"
     "#;
@@ -1562,8 +1562,8 @@ fn test_string_char_at_not_found() {
 #[test]
 fn test_string_strcmp_less() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strcmp "abc" "abd"
     "#;
@@ -1573,8 +1573,8 @@ fn test_string_strcmp_less() {
 #[test]
 fn test_string_strcmp_equal() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strcmp "abc" "abc"
     "#;
@@ -1584,8 +1584,8 @@ fn test_string_strcmp_equal() {
 #[test]
 fn test_string_strcmp_greater() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strcmp "abd" "abc"
     "#;
@@ -1595,8 +1595,8 @@ fn test_string_strcmp_greater() {
 #[test]
 fn test_string_escape_newline() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strlen "hello\nworld"
     "#;
@@ -1606,8 +1606,8 @@ fn test_string_escape_newline() {
 #[test]
 fn test_string_escape_tab() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strlen "a\tb"
     "#;
@@ -1617,8 +1617,8 @@ fn test_string_escape_tab() {
 #[test]
 fn test_string_unicode() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
-        type Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
         load "examples/string.par" in
         strlen "hello 世界"
     "#;
@@ -1628,7 +1628,7 @@ fn test_string_unicode() {
 #[test]
 fn test_string_pattern_match() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         match "hi" with
         | Nil -> 0
         | Cons c rest -> 1
@@ -1639,7 +1639,7 @@ fn test_string_pattern_match() {
 #[test]
 fn test_string_pattern_match_empty() {
     let code = r#"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         match "" with
         | Nil -> 0
         | Cons c rest -> 1

@@ -1,5 +1,5 @@
-type List a = Nil | Cons a (List a) in
-type Option a = Some a | None in
+data List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
 
 load "examples/string.par" in
 

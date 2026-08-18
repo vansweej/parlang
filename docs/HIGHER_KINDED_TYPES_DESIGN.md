@@ -28,7 +28,7 @@ ParLang currently supports generic types but requires fully applied type constru
 
 ```parlang
 # ✅ Works - fully applied
-type Option a = Some a | None in Some 42
+data Option a = Some a | None in Some 42
 # Type: Option Int
 
 # ❌ Doesn't work - unapplied constructor
@@ -1347,10 +1347,10 @@ Output: Dictionaries [d₁, ..., dₙ] or Error
 
 ```parlang
 # Before (still works)
-type Option a = Some a | None
+data Option a = Some a | None
 
 # After (with explicit kinds)
-type Option (a :: *) = Some a | None
+data Option (a :: *) = Some a | None
 # Kind: * -> *
 ```
 

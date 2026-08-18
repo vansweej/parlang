@@ -5,7 +5,7 @@ use parlang::{parse, typecheck, Type};
 #[test]
 fn test_option_int_type() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         Some 42
     ";
     let expr = parse(input).expect("Parse failed");
@@ -28,7 +28,7 @@ fn test_option_int_type() {
 #[test]
 fn test_option_bool_type() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         Some true
     ";
     let expr = parse(input).expect("Parse failed");
@@ -50,7 +50,7 @@ fn test_option_bool_type() {
 #[test]
 fn test_option_none_type() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         None
     ";
     let expr = parse(input).expect("Parse failed");
@@ -72,7 +72,7 @@ fn test_option_none_type() {
 #[test]
 fn test_either_left_type() {
     let input = r"
-        type Either a b = Left a | Right b in
+        data Either a b = Left a | Right b in
         Left 42
     ";
     let expr = parse(input).expect("Parse failed");
@@ -95,7 +95,7 @@ fn test_either_left_type() {
 #[test]
 fn test_either_right_type() {
     let input = r"
-        type Either a b = Left a | Right b in
+        data Either a b = Left a | Right b in
         Right true
     ";
     let expr = parse(input).expect("Parse failed");
@@ -118,7 +118,7 @@ fn test_either_right_type() {
 #[test]
 fn test_list_nil_type() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         Nil
     ";
     let expr = parse(input).expect("Parse failed");
@@ -140,7 +140,7 @@ fn test_list_nil_type() {
 #[test]
 fn test_list_cons_int() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         Cons 42 Nil
     ";
     let expr = parse(input).expect("Parse failed");
@@ -162,8 +162,8 @@ fn test_list_cons_int() {
 #[test]
 fn test_nested_generic_types() {
     let input = r"
-        type Option a = Some a | None in
-        type List a = Nil | Cons a (List a) in
+        data Option a = Some a | None in
+        data List a = Nil | Cons a (List a) in
         Some (Cons 1 Nil)
     ";
     let expr = parse(input).expect("Parse failed");
@@ -193,7 +193,7 @@ fn test_nested_generic_types() {
 #[test]
 fn test_generic_type_let_binding() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some 42 in
         x
     ";
@@ -216,7 +216,7 @@ fn test_generic_type_let_binding() {
 #[test]
 fn test_generic_type_function_arg() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let f = fun x -> Some x in
         f 42
     ";
@@ -239,7 +239,7 @@ fn test_generic_type_function_arg() {
 #[test]
 fn test_display_option_int() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         Some 42
     ";
     let expr = parse(input).expect("Parse failed");
@@ -254,7 +254,7 @@ fn test_display_option_int() {
 #[test]
 fn test_display_either() {
     let input = r"
-        type Either a b = Left a | Right b in
+        data Either a b = Left a | Right b in
         Left 42
     ";
     let expr = parse(input).expect("Parse failed");
@@ -270,7 +270,7 @@ fn test_display_either() {
 #[test]
 fn test_display_list_int() {
     let input = r"
-        type List a = Nil | Cons a (List a) in
+        data List a = Nil | Cons a (List a) in
         Cons 42 Nil
     ";
     let expr = parse(input).expect("Parse failed");
@@ -285,7 +285,7 @@ fn test_display_list_int() {
 #[test]
 fn test_multiple_generic_uses() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some 42 in
         let y = Some true in
         x
@@ -308,7 +308,7 @@ fn test_multiple_generic_uses() {
 #[test]
 fn test_result_type() {
     let input = r"
-        type Result a b = Ok a | Err b in
+        data Result a b = Ok a | Err b in
         Ok 42
     ";
     let expr = parse(input).expect("Parse failed");
@@ -330,7 +330,7 @@ fn test_result_type() {
 #[test]
 fn test_tree_type() {
     let input = r"
-        type Tree a = Leaf a | Node (Tree a) (Tree a) in
+        data Tree a = Leaf a | Node (Tree a) (Tree a) in
         Leaf 42
     ";
     let expr = parse(input).expect("Parse failed");
@@ -352,7 +352,7 @@ fn test_tree_type() {
 #[test]
 fn test_constructor_arity_mismatch_too_few() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         Some
     ";
     let expr = parse(input).expect("Parse failed");
@@ -365,7 +365,7 @@ fn test_constructor_arity_mismatch_too_few() {
 #[test]
 fn test_constructor_arity_mismatch_too_many() {
     let input = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         None 42
     ";
     let expr = parse(input).expect("Parse failed");
@@ -378,7 +378,7 @@ fn test_constructor_arity_mismatch_too_many() {
 #[test]
 fn test_multi_arg_constructor_correct() {
     let input = r"
-        type Tree a = Leaf a | Node (Tree a) (Tree a) in
+        data Tree a = Leaf a | Node (Tree a) (Tree a) in
         Node (Leaf 1) (Leaf 2)
     ";
     let expr = parse(input).expect("Parse failed");

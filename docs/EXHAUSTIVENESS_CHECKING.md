@@ -28,7 +28,7 @@ Exhaustiveness checking analyzes your pattern matching expressions to determine 
 The exhaustiveness checker runs automatically before evaluating any `match` expression. It analyzes the patterns to ensure they cover all possible values of the scrutinee (the value being matched).
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 match myOption with
 | Some n -> n
 | None -> 0
@@ -36,7 +36,7 @@ match myOption with
 ```
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 match myOption with
 | Some n -> n
 # ⚠ Warning: pattern match is non-exhaustive
@@ -105,7 +105,7 @@ match x with
 For sum types, **all constructors** must be covered:
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 
 # Exhaustive
 match x with
@@ -114,7 +114,7 @@ match x with
 ```
 
 ```parlang
-type Either a b = Left a | Right b in
+data Either a b = Left a | Right b in
 
 # Non-exhaustive
 match x with
@@ -123,7 +123,7 @@ match x with
 ```
 
 ```parlang
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 
 # Exhaustive
 match list with
@@ -173,7 +173,7 @@ match person with
 The checker analyzes nested constructors properly:
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 
 # Exhaustive
 match x with
@@ -195,7 +195,7 @@ match x with
 ### Option Type
 
 ```parlang
-type Option a = Some a | None in
+data Option a = Some a | None in
 
 # Good: Exhaustive match
 let safeDivide = fun x -> fun y ->
@@ -210,7 +210,7 @@ match safeDivide 10 2 with
 ### Either Type (Error Handling)
 
 ```parlang
-type Either a b = Left a | Right b in
+data Either a b = Left a | Right b in
 
 # Good: Exhaustive match
 let parseNumber = fun x ->
@@ -225,7 +225,7 @@ match parseNumber 5 with
 ### List Type (Recursive Data)
 
 ```parlang
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 
 # Good: Exhaustive match
 let rec sum -> fun list ->
@@ -240,7 +240,7 @@ sum (Cons 1 (Cons 2 (Cons 3 Nil)))
 ### Result Type
 
 ```parlang
-type Result a b = Ok a | Err b in
+data Result a b = Ok a | Err b in
 
 # Good: Exhaustive match
 let divide = fun x -> fun y ->
@@ -255,7 +255,7 @@ match divide 10 5 with
 ### Tree Type
 
 ```parlang
-type Tree a = Leaf | Node a (Tree a) (Tree a) in
+data Tree a = Leaf | Node a (Tree a) (Tree a) in
 
 # Good: Exhaustive match
 let tree = Node 5 (Node 3 Leaf Leaf) (Node 7 Leaf Leaf) in
@@ -295,7 +295,7 @@ For sum types, explicitly handle all constructors:
 
 ```parlang
 # Good
-type Option a = Some a | None in
+data Option a = Some a | None in
 match x with
 | Some n -> n
 | None -> 0
@@ -307,7 +307,7 @@ When you don't care about specific values, use wildcards:
 
 ```parlang
 # Good: Clear intent that we only care about Some
-type Option a = Some a | None in
+data Option a = Some a | None in
 match x with
 | Some n -> n
 | _ -> 0
@@ -340,7 +340,7 @@ match n with
 If you intentionally omit cases (and use a wildcard), add a comment:
 
 ```parlang
-type Status = Active | Inactive | Pending | Archived in
+data Status = Active | Inactive | Pending | Archived in
 match status with
 | Active -> handleActive()
 | Inactive -> handleInactive()

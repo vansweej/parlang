@@ -49,7 +49,7 @@ fn test_pattern_match_no_arms_empty() {
 fn test_pattern_match_non_exhaustive_constructor() {
     // Pattern matching on sum type without covering all constructors
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some 42 in
         match x with
         | Some n -> n
@@ -64,7 +64,7 @@ fn test_pattern_match_non_exhaustive_constructor() {
 fn test_pattern_match_non_exhaustive_runtime_failure() {
     // Pattern matching fails at runtime when no pattern matches
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = None in
         match x with
         | Some n -> n
@@ -95,7 +95,7 @@ fn test_pattern_match_undefined_constructor() {
 fn test_pattern_match_constructor_arity_mismatch_too_many_args() {
     // Using constructor with wrong number of arguments in pattern
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some 42 in
         match x with
         | Some x y -> x + y
@@ -110,7 +110,7 @@ fn test_pattern_match_constructor_arity_mismatch_too_many_args() {
 fn test_pattern_match_nested_constructor_mismatch() {
     // Nested pattern with wrong constructor
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         let x = Some (Some 42) in
         match x with
         | Some None -> 0
@@ -332,7 +332,7 @@ fn test_constructor_undefined_at_runtime() {
 fn test_constructor_arity_mismatch_too_many() {
     // Constructor called with too many arguments
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         Some 1 2
     ";
     let result = parse_and_eval(code);
@@ -344,7 +344,7 @@ fn test_constructor_arity_mismatch_too_many() {
 fn test_constructor_arity_mismatch_none_with_arg() {
     // None constructor doesn't take arguments
     let code = r"
-        type Option a = Some a | None in
+        data Option a = Some a | None in
         None 42
     ";
     let result = parse_and_eval(code);

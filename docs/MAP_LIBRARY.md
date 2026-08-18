@@ -39,10 +39,10 @@ ParLang provides Map (key-value dictionary) implementations as **library code**,
 
 **Example**:
 ```parlang
-type List a = Nil | Cons a (List a) in
-type Option a = Some a | None in
-type Tuple k v = Tuple k v in
-type Map k v = List (Tuple k v) in
+data List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
+data Tuple k v = Tuple k v in
+data Map k v = List (Tuple k v) in
 let empty = Nil in
 let insert = fun key -> fun value -> fun map ->
   Cons (Tuple key value) map
@@ -84,7 +84,7 @@ lookup 1 m
 
 **Example**:
 ```parlang
-type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+data TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
 let empty = Empty in
 let insert = rec insert -> fun key -> fun value -> fun map ->
   match map with
@@ -127,10 +127,10 @@ All map implementations provide the same interface:
 
 ```parlang
 # For AssocMap
-type Map k v = List (Tuple k v)
+data Map k v = List (Tuple k v)
 
 # For TreeMap
-type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v)
+data TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v)
 ```
 
 ### Core Operations
@@ -295,10 +295,10 @@ Benchmark results for 1000 entries:
 ### Example 1: Counting Values
 
 ```parlang
-type List a = Nil | Cons a (List a) in
-type Option a = Some a | None in
-type Tuple k v = Tuple k v in
-type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+data List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
+data Tuple k v = Tuple k v in
+data TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
 let empty = Empty in
 let insert = rec insert -> fun key -> fun value -> fun map ->
   match map with
@@ -333,10 +333,10 @@ lookup 1 frequencies  # Some 3
 ### Example 2: Configuration Store
 
 ```parlang
-type List a = Nil | Cons a (List a) in
-type Option a = Some a | None in
-type Tuple k v = Tuple k v in
-type Map k v = List (Tuple k v) in
+data List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
+data Tuple k v = Tuple k v in
+data Map k v = List (Tuple k v) in
 let empty = Nil in
 let insert = fun key -> fun value -> fun map ->
   Cons (Tuple key value) map
@@ -367,10 +367,10 @@ port  # 8080
 ### Example 3: Grouping Data
 
 ```parlang
-type List a = Nil | Cons a (List a) in
-type Option a = Some a | None in
-type Tuple k v = Tuple k v in
-type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+data List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
+data Tuple k v = Tuple k v in
+data TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
 let empty = Empty in
 let insert = rec insert -> fun key -> fun value -> fun map ->
   match map with

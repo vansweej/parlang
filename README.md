@@ -167,7 +167,7 @@ Pattern matching evaluates patterns from top to bottom and executes the first ma
 The exhaustiveness checker warns you when a `match` expression doesn't cover all possible cases:
 
 ```
-type Option a = Some a | None in
+data Option a = Some a | None in
 match x with
 | Some n -> n
 # Warning: pattern match is non-exhaustive
@@ -176,7 +176,7 @@ match x with
 
 **Exhaustive match (no warning):**
 ```
-type Option a = Some a | None in
+data Option a = Some a | None in
 match x with
 | Some n -> n
 | None -> 0
@@ -319,7 +319,7 @@ Sum types allow you to define types with multiple variants, enabling type-safe r
 **Defining sum types:**
 ```
 # Option type for nullable values
-type Option a = Some a | None in
+data Option a = Some a | None in
 let x = Some 42 in
 match x with
 | Some n -> n + 1
@@ -327,7 +327,7 @@ match x with
 # Result: 43
 
 # Either type for values that can be one of two types
-type Either a b = Left a | Right b in
+data Either a b = Left a | Right b in
 let result = Left 10 in
 match result with
 | Left n -> n
@@ -338,7 +338,7 @@ match result with
 **Recursive sum types:**
 ```
 # List type
-type List a = Nil | Cons a (List a) in
+data List a = Nil | Cons a (List a) in
 let list = Cons 1 (Cons 2 (Cons 3 Nil)) in
 let rec sum -> fun l ->
   match l with
@@ -350,7 +350,7 @@ in sum list
 
 **Nested pattern matching:**
 ```
-type Option a = Some a | None in
+data Option a = Some a | None in
 let x = Some (Some 42) in
 match x with
 | Some (Some n) -> n
@@ -376,15 +376,15 @@ ParLang now has **full support for generic types** with proper type inference an
 ```
 # Types are inferred and checked automatically
 
-> type Option a = Some a | None in Some 42
+> data Option a = Some a | None in Some 42
 Type: Option Int
 Some(42)
 
-> type List a = Nil | Cons a (List a) in Cons 1 (Cons 2 Nil)
+> data List a = Nil | Cons a (List a) in Cons 1 (Cons 2 Nil)
 Type: List Int
 Cons(1, Cons(2, Nil))
 
-> type Either a b = Left a | Right b in Left true
+> data Either a b = Left a | Right b in Left true
 Type: Either Bool t0
 Left(true)
 ```
@@ -397,7 +397,7 @@ Left(true)
 
 **Example with type checking:**
 ```parlang
-type Result a b = Ok a | Err b in
+data Result a b = Ok a | Err b in
 
 let divide = fun x -> fun y ->
   if y == 0
@@ -421,10 +421,10 @@ ParLang provides Map data structures as **library implementations**, not languag
 
 **Association List Map** (simple, for small maps):
 ```parlang
-type List a = Nil | Cons a (List a) in
-type Option a = Some a | None in
-type Tuple k v = Tuple k v in
-type Map k v = List (Tuple k v) in
+data List a = Nil | Cons a (List a) in
+data Option a = Some a | None in
+data Tuple k v = Tuple k v in
+data Map k v = List (Tuple k v) in
 let empty = Nil in
 let insert = fun key -> fun value -> fun map ->
   Cons (Tuple key value) map
@@ -435,7 +435,7 @@ lookup 1 m  # Some 42
 
 **Binary Search Tree Map** (efficient, for medium maps):
 ```parlang
-type TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
+data TreeMap k v = Empty | Node k v (TreeMap k v) (TreeMap k v) in
 let empty = Empty in
 let insert = rec insert -> fun key -> fun value -> fun map ->
   match map with
