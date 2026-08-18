@@ -58,7 +58,7 @@ parser! {
             combine::skip_many(choice((
                 attempt(block_comment()),
                 combine::parser::combinator::not_followed_by(string("-}"))
-                    .with(combine::satisfy(|_: char| true).map(|_| ())),
+                    .with(combine::any().map(|_| ())),
             ))),
             string("-}"),
         )
@@ -75,7 +75,7 @@ where
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     combine::skip_many(choice((
-        attempt(combine::satisfy(|c: char| c.is_whitespace()).map(|_| ())),
+        combine::satisfy(|c: char| c.is_whitespace()).map(|_| ()),
         attempt(line_comment()),
         attempt(block_comment()),
     )))
