@@ -186,7 +186,7 @@ pub enum Expr {
     /// Accesses a named field from a record
     FieldAccess(Box<Expr>, String),
 
-    /// Type definition: type Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
+    /// Data type definition: data Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
     /// Introduces a new algebraic data type with constructors
     TypeDef {
         /// Type name (e.g., "Option", "Either", "List")

@@ -50,6 +50,12 @@ parser! {
     ///
     /// An unterminated block comment results in a parse failure rather than
     /// consuming the remainder of the input silently.
+    ///
+    /// Termination invariant: every iteration of the inner scan consumes at least
+    /// one token - the `not_followed_by` guard is combined with `any()`, so the
+    /// parser always makes forward progress and cannot loop without advancing.
+    /// The closing `-}` is mandatory, so an unterminated `{-` produces a parse
+    /// error rather than hanging or silently consuming to end of input.
     fn block_comment[Input]()(Input) -> ()
     where [Input: Stream<Token = char>]
     {
@@ -568,7 +574,7 @@ parser! {
     }
 }
 
-// Parse type definitions: type Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
+// Parse data type definitions: data Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
 parser! {
     fn type_def_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]

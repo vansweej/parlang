@@ -14,13 +14,13 @@
 //!
 //! ```ignore
 //! // Exhaustive - all Option constructors covered
-//! type Option a = Some a | None in
+//! data Option a = Some a | None in
 //! match x with
 //! | Some n -> n
 //! | None -> 0
 //!
 //! // Non-exhaustive - missing None case
-//! type Option a = Some a | None in
+//! data Option a = Some a | None in
 //! match x with
 //! | Some n -> n
 //! ```

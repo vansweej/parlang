@@ -631,7 +631,7 @@ fn eval_tuple_proj(tuple_expr: &Expr, index: usize, env: &Environment) -> Result
     }
 }
 
-/// Evaluate a `type Name = ... in body` declaration, registering its
+/// Evaluate a `data Name = ... in body` declaration, registering its
 /// constructors (extracted from `eval` to keep its line count down).
 fn eval_type_def(
     name: &str,
