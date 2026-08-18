@@ -365,7 +365,7 @@ fn test_complex_nested_pattern_matching() {
 fn test_nested_records_and_tuples() {
     // Test nested records and tuples
     let code = r"
-        let datum = { 
+        let datum = {
             point: (10, 20), 
             info: { value: 30, active: true } 
         } in
