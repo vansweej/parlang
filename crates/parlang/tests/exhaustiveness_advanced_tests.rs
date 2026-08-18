@@ -146,8 +146,8 @@ fn test_nested_record_patterns() {
 fn test_record_with_tuple_pattern() {
     // Test records containing tuples in patterns
     let code = r"
-        let data = { pair: (10, 20), value: 30 } in
-        match data with
+        let datum = { pair: (10, 20), value: 30 } in
+        match datum with
         | { pair: (x, y), value: v } -> x + y + v
     ";
     let expr = parse(code).unwrap();
@@ -247,8 +247,8 @@ fn test_complex_mixed_patterns() {
     // Test complex pattern with constructors and tuples
     let code = r"
         type Option a = Some a | None in
-        let data = Some (10, 20) in
-        match data with
+        let datum = Some (10, 20) in
+        match datum with
         | Some (x, y) -> x + y
         | None -> 0
     ";
