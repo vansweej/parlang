@@ -359,116 +359,6 @@ Future versions may add syntactic sugar like:
 { person with age: 31 }
 ```
 
-### Type Inference with Row Polymorphism
-
-ParLang implements **row polymorphism** for record types, allowing functions to work with records that have **at least** certain fields, without requiring knowledge of all fields.
-
-#### What is Row Polymorphism?
-
-Row polymorphism enables flexible, reusable functions that work with any record containing specific fields:
-
-```parlang
-# This function works with ANY record that has an 'age' field
-fun person -> person.age
-# Type: { age: t0 | r1 } -> t0
-```
-
-The type `{ age: t0 | r1 }` means:
-- The record must have an `age` field of type `t0`
-- The `| r1` part (row variable) represents "any other fields"
-- The function returns the type `t0` (the type of the age field)
-
-#### Benefits of Row Polymorphism
-
-**1. Flexible Functions**
-```parlang
-let getAge = fun r -> r.age
-in let person = { name: 42, age: 30, city: 100 }
-in let employee = { age: 25, department: 5 }
-in getAge person + getAge employee
-# Works! Returns 55
-```
-
-The same `getAge` function works with both `person` and `employee`, even though they have different fields.
-
-**2. Type Safety**
-```parlang
-let getAge = fun r -> r.age
-in let config = { port: 8080, active: true }
-in getAge config
-# Type error! 'age' field not found
-```
-
-Even though `getAge` is polymorphic, the type system still catches field access errors at compile time.
-
-**3. Composable Functions**
-```parlang
-let getName = fun r -> r.name
-let getAge = fun r -> r.age
-# describe only works with records that have both 'name' and 'age'
-let describe = fun r -> getName r + getAge r
-```
-
-#### Row Variable Display
-
-When type checking is enabled, you'll see row variables in function types:
-
-```parlang
-> fun p -> p.age
-Type: { age: t0 | r0 } -> t0
-```
-
-- `t0` is a type variable (represents any type)
-- `r0` is a row variable (represents "rest of the fields")
-- The entire type means: "takes a record with at least an `age` field, returns that field's type"
-
-#### Advanced Row Polymorphism Examples
-
-**Multiple field access:**
-```parlang
-let addCoordinates = fun r -> r.x + r.y
-in let point2D = { x: 10, y: 20 }
-in let point3D = { x: 5, y: 15, z: 25 }
-in addCoordinates point2D + addCoordinates point3D
-# Returns 50
-```
-
-**Row polymorphism with currying:**
-```parlang
-let compareAges = fun r1 -> fun r2 -> r1.age == r2.age
-in let person = { name: 42, age: 30 }
-in let employee = { id: 123, age: 30, dept: 5 }
-in compareAges person employee
-# Returns true
-```
-
-**Row polymorphism with higher-order functions:**
-```parlang
-let mapAge = fun f -> fun r -> f r.age
-in let double = fun x -> x + x
-in let person = { name: 42, age: 21, active: true }
-in mapAge double person
-# Returns 42
-```
-
-#### Limitations
-
-**Known Limitations of Current Implementation:**
-
-1. **Multiple accesses on same row variable:** When accessing multiple fields on a function parameter in a single expression without a concrete record, the type system may not track all accesses properly:
-   ```parlang
-   # This works when applied to a concrete record:
-   let addXY = fun r -> r.x + r.y
-   in addXY { x: 10, y: 20 }  # OK!
-   
-   # But type inference for just the function may be limited
-   fun r -> r.x + r.y  # Type checking may have issues
-   ```
-
-2. **Row unification complexity:** Complex row variable constraints (like ensuring two records share specific fields) may not be fully supported in all cases.
-
-Despite these limitations, row polymorphism greatly enhances the flexibility and reusability of record-handling code while maintaining type safety.
-
 ## Examples
 
 ### Example 1: Point Operations
@@ -531,7 +421,7 @@ in handleRequest getRequest  # Returns 100
 
 1. **No record update syntax** - must manually copy all fields
 2. **No field punning** - can't write `{ name, age }` instead of `{ name: name, age: age }`
-3. **Simple row polymorphism** - doesn't track all possible field presence
+3. **Closed records only** - field access requires an exact record type; a bare parameter cannot be refined into a record
 4. **No record extension** - can't inherit or extend record types
 
 ### Planned Enhancements
@@ -541,7 +431,6 @@ Future versions may include:
 - **Record update syntax**: `{ record with field: newValue }`
 - **Field punning**: `{ name, age }` for `{ name: name, age: age }`
 - **Type aliases for records**: `type Person = { name: Int, age: Int }`
-- **Advanced row polymorphism**: More precise type tracking
 - **Record concatenation**: Merge records together
 
 ## Summary

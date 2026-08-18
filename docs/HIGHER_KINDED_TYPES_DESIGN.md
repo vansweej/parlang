@@ -181,8 +181,6 @@ pub enum Type {
     
     /// Record types (existing)
     Record(HashMap<String, Type>),
-    RecordRow(HashMap<String, Type>, RowVar),
-    Row(RowVar),
     
     /// Legacy: SumType becomes sugar for Constructor + Apps
     /// Will be deprecated after migration

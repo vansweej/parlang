@@ -54,7 +54,7 @@ integration tests.
 |------|------|
 | `ast.rs` | Expression AST (`Expr`, `BinOp`) |
 | `parser.rs` | `combine`-based parser; entrypoint `parse()` |
-| `types.rs` | Type representations (`Type`, `TypeScheme`, `TypeVar`, `RowVar`) |
+| `types.rs` | Type representations (`Type`, `TypeScheme`, `TypeVar`) |
 | `typechecker.rs` | Algorithm W inference; entrypoint `typecheck()` |
 | `exhaustiveness.rs` | Pattern-match exhaustiveness checker (`check_exhaustiveness`) |
 | `eval.rs` | Tree-walking interpreter; `eval()`, `Value`, `Environment` |
@@ -68,7 +68,7 @@ is omitted from the README's architecture section.
 
 - Unit tests live in-file under `#[cfg(test)] mod tests`.
 - Integration tests are per-feature files in `tests/` (e.g. `sum_type_tests.rs`,
-  `row_polymorphism_tests.rs`). Run a single file with `cargo test --test <stem>`.
+  `record_tests.rs`). Run a single file with `cargo test --test <stem>`.
 - `.par` files in `tests/` (e.g. `map_assoc_test.par`) are fixtures loaded by
   tests, not standalone test runners.
 - Doc examples in `src/lib.rs` are compiled and run by `cargo test` — keep them

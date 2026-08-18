@@ -22,8 +22,6 @@ pub enum Type {
     Fun(Box<Type>, Box<Type>),  // Function type: T1 -> T2
     Var(TypeVar),               // Type variable for polymorphism
     Record(HashMap<String, Type>), // Record type
-    RecordRow(HashMap<String, Type>, RowVar), // Record with row polymorphism
-    Row(RowVar),                // Row variable
     SumType(String, Vec<Type>), // Generic sum type
 }
 ```
@@ -37,8 +35,6 @@ pub enum Type {
 - `Fun(arg, ret)`: Represents function types where `arg` is the argument type and `ret` is the return type
 - `Var(TypeVar)`: Represents a type variable used during type inference
 - `Record(fields)`: Represents record types with named fields
-- `RecordRow(fields, row_var)`: Represents records with row polymorphism
-- `Row(RowVar)`: Represents a row variable
 - `SumType(name, args)`: Represents generic algebraic data types
 
 **Examples:**
@@ -166,7 +162,6 @@ let var_type = Type::Var(TypeVar(0));
 // Polymorphic type scheme
 let id_scheme = TypeScheme {
     vars: vec![TypeVar(0)],
-    row_vars: vec![],
     ty: Type::Fun(
         Box::new(Type::Var(TypeVar(0))),
         Box::new(Type::Var(TypeVar(0))),
@@ -202,8 +197,7 @@ The type representations support:
 3. **Type Variables**: For representing unknown or polymorphic types
 4. **Type Schemes**: For expressing polymorphic types with universal quantification
 5. **Record Types**: Structured data with named fields
-6. **Row Polymorphism**: Flexible record types
-7. **Sum Types**: Algebraic data types with constructors
+6. **Sum Types**: Algebraic data types with constructors
 
 ## Testing
 

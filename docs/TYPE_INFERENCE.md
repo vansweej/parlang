@@ -362,16 +362,17 @@ Pattern matching is partially supported:
 - Detection of unreachable patterns
 - Better type refinement in pattern contexts
 
-### 3. Row Polymorphism
+### 3. Closed Record Types
 
-Records are handled structurally but without row polymorphism:
+Records are handled structurally, but record types are closed and exact:
 ```parlang
 fun p -> p.age
-# Type: {age: Int, ...rest} -> Int  (not currently supported)
-# Currently: {age: Int} -> Int (exact match only)
-```
+# Rejected: `p` is an unconstrained type variable, so inference reports
+# RecordExpected rather than inferring a record type from the field access.
 
-**Future**: Implement row types with row variables.
+let p = { age: 30 } in p.age
+# Accepted: `p` has the exact record type { age: Int }.
+```
 
 ### 4. Type Annotations
 
