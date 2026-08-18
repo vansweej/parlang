@@ -336,22 +336,6 @@ fn dot_constructor(
     }
 }
 
-/// Emit DOT for a `Range` node (extracted from `expr_to_dot` to keep its
-/// line count down).
-fn dot_range(
-    node_id: &str,
-    start: &Expr,
-    end: &Expr,
-    output: &mut String,
-    gen: &mut NodeIdGenerator,
-) {
-    let _ = writeln!(output, "  {node_id} [label=\"Range\"];");
-    let start_id = expr_to_dot(start, output, gen);
-    let end_id = expr_to_dot(end, output, gen);
-    let _ = writeln!(output, "  {node_id} -> {start_id} [label=\"start\"];");
-    let _ = writeln!(output, "  {node_id} -> {end_id} [label=\"end\"];");
-}
-
 /// Emit DOT for a char literal (extracted from `expr_to_dot` to keep its
 /// line count down).
 fn dot_char_literal(node_id: &str, c: char, output: &mut String) {
@@ -458,7 +442,6 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
             body,
         } => dot_type_def(&node_id, name, type_params, constructors, body, output, gen),
         Expr::Constructor(name, args) => dot_constructor(&node_id, name, args, output, gen),
-        Expr::Range(start, end) => dot_range(&node_id, start, end, output, gen),
     }
 
     node_id

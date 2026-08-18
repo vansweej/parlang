@@ -981,35 +981,6 @@ parser! {
     }
 }
 
-// Parse range expressions.
-//
-// This parser implements range creation with the `..` operator:
-// - `a..b` creates an inclusive range from a to b
-//
-// # Precedence
-// Lower precedence than addition/subtraction, higher than comparisons.
-//
-// # Examples
-// - `1..10` -> `Range(1, 10)`
-// - `0..100` -> `Range(0, 100)`
-parser! {
-    fn range_expr[Input]()(Input) -> Expr
-    where [Input: Stream<Token = char>]
-    {
-        (
-            add_expr().skip(spaces()),
-            optional(attempt(string("..")).skip(spaces()).with(add_expr().skip(spaces())))
-        )
-            .map(|(left, rest)| {
-                if let Some(right) = rest {
-                    Expr::Range(Box::new(left), Box::new(right))
-                } else {
-                    left
-                }
-            })
-    }
-}
-
 // Parse comparison expressions.
 //
 // This parser implements comparison operations:
@@ -1044,7 +1015,7 @@ parser! {
             attempt(token('>')).map(|_| BinOp::Gt),
         ));
 
-        (range_expr().skip(spaces()), optional(op.skip(spaces()).and(range_expr())))
+        (add_expr().skip(spaces()), optional(op.skip(spaces()).and(add_expr())))
             .map(|(left, rest)| {
                 if let Some((op, right)) = rest {
                     Expr::BinOp(op, Box::new(left), Box::new(right))
