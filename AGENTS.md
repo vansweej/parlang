@@ -15,6 +15,15 @@ pins the Rust toolchain and provides tarpaulin/clippy/etc:
 nix develop . --command <cmd>
 ```
 
+Run build and test commands in a memory-contained user scope. `MemoryMax=70%`
+leaves headroom for the login session while `CARGO_TARGET_DIR` keeps contained
+build artefacts separate:
+
+```bash
+systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
+  env CARGO_TARGET_DIR=/tmp/parlang-cargo nix develop . --command cargo test
+```
+
 | Task | Command |
 |------|---------|
 | Build | `cargo build` |
@@ -26,6 +35,7 @@ nix develop . --command <cmd>
 | Coverage | `cargo tarpaulin` |
 
 **Pre-PR order:** `cargo clippy` → `cargo fmt` → `cargo test`.
+Run each command through the contained invocation above.
 
 ## Toolchain quirks
 
@@ -72,8 +82,10 @@ integration tests.
 ## Testing conventions
 
 - Unit tests live in-file under `#[cfg(test)] mod tests`.
-- Integration tests are per-feature files in `tests/` (e.g. `sum_type_tests.rs`,
-  `record_tests.rs`). Run a single file with `cargo test --test <stem>`.
+- Each integration-test file in `tests/` is a separate crate that links the full
+  `combine` parser stack. Prefer extending an existing feature test file over
+  adding a new crate, since each additional file multiplies compile-time memory.
+  Run a single file with `cargo test --test <stem>` through the contained wrapper.
 - `.par` files in `tests/` (e.g. `map_assoc_test.par`) are fixtures loaded by
   tests, not standalone test runners.
 - Doc examples in `src/lib.rs` are compiled and run by `cargo test` — keep them

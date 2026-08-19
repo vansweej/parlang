@@ -19,7 +19,9 @@
           };
           manifest = (pkgs.lib.importTOML ./crates/parlang/Cargo.toml).package;
 
-          rustVersion = "latest";
+          # A Rust bump requires updating the overlay and re-running the memory
+          # measurement protocol because compiler memory behavior can change.
+          rustVersion = "1.93.1";
           rustToolchain = pkgs.rust-bin.stable.${rustVersion}.default;
 
           rustPlatform = pkgs.makeRustPlatform {

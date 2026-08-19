@@ -179,7 +179,8 @@ fn repl() {
                     // Type check before evaluating (mandatory)
                     let mut next_type_env = type_env.clone();
                     match typecheck_program_with_env(&program, &mut next_type_env) {
-                        Ok(ty) => println!("Type: {ty}"),
+                        Ok(ty) if program.body.is_some() => println!("Type: {ty}"),
+                        Ok(_) => {}
                         Err(e) => {
                             eprintln!("Type error: {e}");
                             continue;
@@ -188,7 +189,12 @@ fn repl() {
 
                     match eval_program_with_env(&program, &env) {
                         Ok((value, new_env)) => {
-                            println!("{value}");
+                            if program.body.is_some() {
+                                println!("{value}");
+                            } else {
+                                // Declaration-only input persists bindings without a synthetic value.
+                                println!("Declarations added.");
+                            }
                             // Persist declarations evaluated as part of this REPL input.
                             env = new_env;
                             type_env = next_type_env;

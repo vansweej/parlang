@@ -241,6 +241,20 @@ mod tests {
 ### Integration Tests
 
 Place integration tests in the `tests/` directory. These test the system as a whole.
+Each file is a separate crate that links the full parser dependency stack, so prefer
+extending an existing feature test file rather than adding a new crate when practical.
+
+### Running the Test Suite Safely
+
+Run the suite in a memory-contained user scope so a compile-time memory spike cannot
+kill the login session. The project guidance in `AGENTS.md` has the full rationale:
+
+```bash
+systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
+  env CARGO_TARGET_DIR=/tmp/parlang-cargo nix develop . --command cargo test
+```
+
+Use the same wrapper for clippy, formatting checks, and coverage commands.
 
 ### Test Coverage Goals
 

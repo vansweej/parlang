@@ -817,7 +817,8 @@ For detailed architecture information, see [docs/ARCHITECTURE.md](docs/ARCHITECT
 ## Running Tests
 
 ```bash
-cargo test
+systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
+  env CARGO_TARGET_DIR=/tmp/parlang-cargo nix develop . --command cargo test
 ```
 
 ### Code Coverage
@@ -825,18 +826,21 @@ cargo test
 To generate code coverage reports, use [cargo-tarpaulin](https://github.com/xd009642/tarpaulin):
 
 ```bash
-# Install tarpaulin (if not already installed)
-cargo install cargo-tarpaulin
-
 # Run tests with coverage
-cargo tarpaulin
+systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
+  env CARGO_TARGET_DIR=/tmp/parlang-tarpaulin nix develop . --command cargo tarpaulin
 
 # Generate HTML report
-cargo tarpaulin --out Html
+systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
+  env CARGO_TARGET_DIR=/tmp/parlang-tarpaulin nix develop . --command cargo tarpaulin --out Html
 
 # Generate detailed coverage with line-by-line details
-cargo tarpaulin --out Html --output-dir coverage
+systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
+  env CARGO_TARGET_DIR=/tmp/parlang-tarpaulin nix develop . --command cargo tarpaulin --out Html --output-dir coverage
 ```
+
+Tarpaulin recompiles the suite with instrumentation and can re-trigger the
+integration-test fan-out memory spike, so always run it through the contained wrapper.
 
 The project currently achieves over 84% code coverage across all modules.
 

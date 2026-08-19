@@ -107,6 +107,46 @@ pub fn program_to_dot(program: &Program) -> String {
                 );
                 let _ = writeln!(output, "  {decl_id} -> {value_id} [label=\"value\"];");
             }
+            Decl::Data {
+                name,
+                type_params,
+                constructors,
+                ..
+            } => {
+                let decl_id = gen.next();
+                let params = type_params.join(" ");
+                let label = format!("Data\\n{}\\n{}", escape_label(name), escape_label(&params));
+                let _ = writeln!(output, "  {decl_id} [label=\"{label}\"];");
+                for (ctor_name, _ctor_types) in constructors {
+                    let ctor_id = gen.next();
+                    let _ = writeln!(
+                        output,
+                        "  {} [label=\"Constructor\\n{}\"];",
+                        ctor_id,
+                        escape_label(ctor_name)
+                    );
+                    let _ = writeln!(output, "  {decl_id} -> {ctor_id} [label=\"ctor\"];");
+                }
+                let _ = writeln!(
+                    output,
+                    "  {program_id} -> {decl_id} [label=\"decl {index}\"];"
+                );
+            }
+            Decl::TypeAlias { name, ty_expr, .. } => {
+                let decl_id = gen.next();
+                let _ = writeln!(
+                    output,
+                    "  {} [label=\"TypeAlias\\n{}\"];",
+                    decl_id,
+                    escape_label(name)
+                );
+                let type_id = type_expr_to_dot(ty_expr, &mut output, &mut gen);
+                let _ = writeln!(
+                    output,
+                    "  {program_id} -> {decl_id} [label=\"decl {index}\"];"
+                );
+                let _ = writeln!(output, "  {decl_id} -> {type_id} [label=\"type\"];");
+            }
         }
     }
     if let Some(body) = &program.body {
