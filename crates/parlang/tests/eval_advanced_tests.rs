@@ -1,6 +1,6 @@
 /// Advanced evaluation tests
 /// Tests for tail call optimization, deep recursion, and error handling edge cases
-use parlang::{eval, parse, Environment, EvalError, Value};
+use parlang::{eval, parse_expr as parse, Environment, EvalError, Value};
 
 // Tail Call Optimization (TCO) Stress Tests
 

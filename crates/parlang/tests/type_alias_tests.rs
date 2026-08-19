@@ -1,5 +1,5 @@
 /// Tests for type alias functionality
-use parlang::{eval, parse, typecheck, Environment};
+use parlang::{eval, parse_expr as parse, typecheck, Environment};
 
 /// Test parsing a simple type alias
 #[test]

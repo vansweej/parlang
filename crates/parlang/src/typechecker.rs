@@ -1,5 +1,5 @@
 /// Hindley-Milner type inference implementation
-use crate::ast::{BinOp, Expr};
+use crate::ast::{BinOp, Decl, Expr, Program};
 use crate::types::{Type, TypeScheme, TypeVar};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -952,11 +952,6 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             Ok((env.fresh_var(), HashMap::new()))
         }
 
-        Expr::Seq(_, _) => {
-            // For now, return a type variable for sequential expressions
-            Ok((env.fresh_var(), HashMap::new()))
-        }
-
         Expr::TypeAlias(name, ty_expr, body) => {
             // Resolve the type expression to a Type
             let ty = resolve_type_expr(ty_expr, env)?;
@@ -1032,10 +1027,49 @@ pub fn typecheck(expr: &Expr) -> Result<Type, TypeError> {
     Ok(apply_subst(&subst, &ty))
 }
 
+/// Type check a top-level program, threading generalized declarations left to right.
+///
+/// # Errors
+///
+/// Returns a `TypeError` if a declaration or the trailing body fails to type-check.
+pub fn typecheck_program(program: &Program) -> Result<Type, TypeError> {
+    let mut env = TypeEnv::new();
+
+    for decl in &program.decls {
+        match decl {
+            Decl::Let {
+                name,
+                ty_ann,
+                value,
+                ..
+            } => {
+                let (value_ty, mut subst) = infer(value, &mut env)?;
+                if let Some(ty_ann) = ty_ann {
+                    let annotated_ty = resolve_type_annotation(ty_ann, &mut env)?;
+                    let annotation_subst = unify(&value_ty, &annotated_ty)?;
+                    subst = compose_subst(&annotation_subst, &subst);
+                }
+                apply_subst_env(&subst, &mut env);
+                let value_ty = apply_subst(&subst, &value_ty);
+                let scheme = env.generalize(&value_ty);
+                env.bind(name.clone(), scheme);
+            }
+        }
+    }
+
+    match &program.body {
+        Some(body) => {
+            let (ty, subst) = infer(body, &mut env)?;
+            Ok(apply_subst(&subst, &ty))
+        }
+        None => Ok(Type::Unit),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::parse;
+    use crate::parser::parse_expr as parse;
 
     fn check(source: &str) -> Result<Type, TypeError> {
         let expr = parse(source).unwrap();

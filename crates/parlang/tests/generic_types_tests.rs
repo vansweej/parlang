@@ -1,5 +1,5 @@
 /// Tests for generic type support in the type checker
-use parlang::{parse, typecheck, Type};
+use parlang::{parse_expr as parse, typecheck, Type};
 
 /// Test Option type with Int argument
 #[test]

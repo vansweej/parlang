@@ -1,5 +1,5 @@
 /// Unit tests for additional coverage
-use parlang::{dot, eval, parse, Environment, EvalError, Value};
+use parlang::{dot, eval, parse_expr as parse, Environment, EvalError, Value};
 use std::fs;
 
 #[test]

@@ -1,6 +1,6 @@
 /// Parser for the `ParLang` language using the combine parser combinator library
 /// This implements a parser for ML-alike functional language syntax
-use crate::ast::{BinOp, Expr, Literal, Pattern, TypeAnnotation};
+use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program, TypeAnnotation};
 use combine::error::StreamError;
 use combine::parser::char::{alpha_num, letter, string};
 use combine::stream::StreamErrorFor;
@@ -18,9 +18,6 @@ type AdditionalCtor = (char, String, Vec<TypeAnnotation>);
 /// `(kind_tag, tuple_index, field_name, unused)`. The fourth field is
 /// always `None` (array indexing has been removed).
 type ProjectionStep = (u8, usize, String, Option<Expr>);
-/// A single top-level `let name [: Ty] = value;` binding in a `program`.
-type ProgramBinding = (String, Option<TypeAnnotation>, Expr);
-
 /// Helper function to check if a string starts with an uppercase ASCII character.
 /// Used to distinguish concrete types (Int, Bool) from type variables (a, b).
 fn starts_with_uppercase(s: &str) -> bool {
@@ -1112,7 +1109,7 @@ parser! {
 }
 
 parser! {
-    pub fn program[Input]()(Input) -> Expr
+    pub fn program[Input]()(Input) -> Program
     where [Input: Stream<Token = char>]
     {
         (
@@ -1135,25 +1132,29 @@ parser! {
             }),
             optional(expr()).skip(spaces())
         )
-            .map(|((), bindings, body): ((), Vec<ProgramBinding>, Option<Expr>)| {
-                let body_expr = body.unwrap_or(Expr::Int(0));
-                if bindings.is_empty() {
-                    body_expr
-                } else {
-                    Expr::Seq(bindings, Box::new(body_expr))
-                }
+            .map(|((), bindings, body)| Program {
+                decls: bindings
+                    .into_iter()
+                    .map(|(name, ty_ann, value)| Decl::Let {
+                        name,
+                        ty_ann,
+                        value,
+                        doc: None,
+                    })
+                    .collect(),
+                body,
             })
     }
 }
 
-/// Parse a string into an expression
+/// Parse a string into a program.
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - The input contains invalid syntax
 /// - There is unexpected input after a valid expression
-pub fn parse(input: &str) -> Result<Expr, String> {
+pub fn parse_program(input: &str) -> Result<Program, String> {
     match program().easy_parse(input) {
         Ok((expr, rest)) => {
             if rest.is_empty() {
@@ -1166,9 +1167,35 @@ pub fn parse(input: &str) -> Result<Expr, String> {
     }
 }
 
+/// Parse a string into an expression.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The input contains invalid syntax
+/// - There is unexpected input after a valid expression
+pub fn parse_expr(input: &str) -> Result<Expr, String> {
+    let program = parse_program(input)?;
+    if !program.decls.is_empty() {
+        return Err("Expected a single expression, found declarations".to_string());
+    }
+    program
+        .body
+        .ok_or_else(|| "Expected an expression, found none".to_string())
+}
+
 #[cfg(test)]
 mod tests {
+    use super::parse_expr as parse;
     use super::*;
+
+    #[test]
+    fn test_parse_expr_requires_an_expression() {
+        assert!(parse("").is_err());
+        assert!(parse("   ").is_err());
+        assert!(parse("-- just a comment").is_err());
+        assert_eq!(parse("0"), Ok(Expr::Int(0)));
+    }
 
     #[test]
     fn test_unterminated_block_comment_is_error() {
@@ -1532,43 +1559,47 @@ mod tests {
     // Test sequential let bindings
     #[test]
     fn test_parse_seq_single() {
-        let result = parse("let x = 42; x");
+        let result = parse_program("let x = 42; x");
         assert!(result.is_ok());
-        if let Ok(Expr::Seq(bindings, body)) = result {
-            assert_eq!(bindings.len(), 1);
-            assert_eq!(bindings[0].0, "x");
-            assert_eq!(bindings[0].2, Expr::Int(42));
-            assert_eq!(*body, Expr::Var("x".to_string()));
+        if let Ok(Program { decls, body }) = result {
+            assert_eq!(decls.len(), 1);
+            assert!(matches!(
+                &decls[0],
+                Decl::Let { name, value: Expr::Int(42), .. } if name == "x"
+            ));
+            assert_eq!(body, Some(Expr::Var("x".to_string())));
         } else {
-            panic!("Expected Seq expression");
+            panic!("Expected Program");
         }
     }
 
     #[test]
     fn test_parse_seq_multiple() {
-        let result = parse("let x = 42; let y = 10; x + y");
+        let result = parse_program("let x = 42; let y = 10; x + y");
         assert!(result.is_ok());
-        if let Ok(Expr::Seq(bindings, body)) = result {
-            assert_eq!(bindings.len(), 2);
-            assert_eq!(bindings[0].0, "x");
-            assert_eq!(bindings[1].0, "y");
-            assert!(matches!(*body, Expr::BinOp(_, _, _)));
+        if let Ok(Program { decls, body }) = result {
+            assert_eq!(decls.len(), 2);
+            assert!(matches!(&decls[0], Decl::Let { name, .. } if name == "x"));
+            assert!(matches!(&decls[1], Decl::Let { name, .. } if name == "y"));
+            assert!(matches!(body, Some(Expr::BinOp(_, _, _))));
         } else {
-            panic!("Expected Seq expression");
+            panic!("Expected Program");
         }
     }
 
     #[test]
     fn test_parse_seq_with_functions() {
-        let result = parse("let double = fun x -> x * 2; double 21");
+        let result = parse_program("let double = fun x -> x * 2; double 21");
         assert!(result.is_ok());
-        if let Ok(Expr::Seq(bindings, body)) = result {
-            assert_eq!(bindings.len(), 1);
-            assert_eq!(bindings[0].0, "double");
-            assert!(matches!(bindings[0].2, Expr::Fun(_, _, _)));
-            assert!(matches!(*body, Expr::App(_, _)));
+        if let Ok(Program { decls, body }) = result {
+            assert_eq!(decls.len(), 1);
+            assert!(matches!(
+                &decls[0],
+                Decl::Let { name, value: Expr::Fun(_, _, _), .. } if name == "double"
+            ));
+            assert!(matches!(body, Some(Expr::App(_, _))));
         } else {
-            panic!("Expected Seq expression");
+            panic!("Expected Program");
         }
     }
 

@@ -1,5 +1,5 @@
 /// Tests for sum type (algebraic data type) functionality
-use parlang::{eval, parse, Environment};
+use parlang::{eval, parse_expr as parse, Environment};
 
 /// Test parsing a simple Option type definition
 #[test]

@@ -5,7 +5,10 @@
 /// - File execution mode for running .par files
 /// - AST dumping to stdout as text IR (--dump) or Graphviz DOT (--dump-dot)
 use clap::{Parser, Subcommand};
-use parlang::{dot, eval, extract_bindings, parse, typecheck, Environment};
+use parlang::{
+    eval_program, extend_env_with_program, parse_program, program_to_dot, typecheck_program,
+    Environment,
+};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::fs;
@@ -57,27 +60,27 @@ fn main() {
         match fs::read_to_string(filename) {
             Ok(contents) => {
                 // Parse the file
-                match parse(&contents) {
-                    Ok(expr) => {
+                match parse_program(&contents) {
+                    Ok(program) => {
                         // Terminal dump modes: print AST then skip evaluation.
                         if cli.dump {
-                            println!("{expr}");
+                            println!("{program}");
                             return;
                         }
                         if cli.dump_dot {
-                            println!("{}", dot::ast_to_dot(&expr));
+                            println!("{}", program_to_dot(&program));
                             return;
                         }
 
                         // Type check before evaluating
-                        if let Err(e) = typecheck(&expr) {
+                        if let Err(e) = typecheck_program(&program) {
                             eprintln!("type error: {e}");
                             process::exit(1);
                         }
 
                         // Execute the program
                         let env = Environment::new();
-                        match eval(&expr, &env).map_err(|e| e.to_string()) {
+                        match eval_program(&program, &env).map_err(|e| e.to_string()) {
                             Ok(value) => println!("{value}"),
                             Err(e) => {
                                 eprintln!("Error: {e}");
@@ -143,7 +146,7 @@ fn repl() {
                     let accumulated = lines.concat();
                     let accumulated_trimmed = accumulated.trim();
 
-                    if parse(accumulated_trimmed).is_ok() {
+                    if parse_program(accumulated_trimmed).is_ok() {
                         // Input is complete and parseable, submit it
                         break;
                     }
@@ -170,10 +173,10 @@ fn repl() {
             let input = lines.concat(); // Preserves newlines
             let input = input.trim();
 
-            match parse(input) {
-                Ok(expr) => {
+            match parse_program(input) {
+                Ok(program) => {
                     // Type check before evaluating (mandatory)
-                    match typecheck(&expr) {
+                    match typecheck_program(&program) {
                         Ok(ty) => println!("Type: {ty}"),
                         Err(e) => {
                             eprintln!("Type error: {e}");
@@ -181,11 +184,11 @@ fn repl() {
                         }
                     }
 
-                    match eval(&expr, &env) {
+                    match eval_program(&program, &env) {
                         Ok(value) => {
                             println!("{value}");
-                            // Extract bindings from the expression and merge into environment
-                            match extract_bindings(&expr, &env) {
+                            // Persist top-level declarations for future REPL evaluations.
+                            match extend_env_with_program(&program, &env) {
                                 Ok(new_env) => {
                                     env = new_env;
                                 }

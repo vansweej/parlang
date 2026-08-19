@@ -1,9 +1,11 @@
 /// Integration tests combining parser and evaluator
 /// These tests verify the full pipeline from source code to evaluation
-use parlang::{eval, extract_bindings, parse, Environment, Value};
+use parlang::{
+    eval, eval_program, extend_env_with_program, parse_expr, parse_program, Environment, Value,
+};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
-    let expr = parse(input)?;
+    let expr = parse_expr(input)?;
     eval(&expr, &Environment::new()).map_err(|e| e.to_string())
 }
 
@@ -11,11 +13,10 @@ fn parse_and_eval(input: &str) -> Result<Value, String> {
 /// This helper function parses and evaluates an expression while
 /// extracting bindings to persist in the environment
 fn parse_eval_and_extract(input: &str, env: &Environment) -> Result<(Value, Environment), String> {
-    let expr = parse(input)?;
-    let value = eval(&expr, env).map_err(|e| e.to_string())?;
+    let program = parse_program(input)?;
+    let value = eval_program(&program, env).map_err(|e| e.to_string())?;
 
-    // Extract bindings from the expression to persist them
-    let new_env = extract_bindings(&expr, env).map_err(|e| e.to_string())?;
+    let new_env = extend_env_with_program(&program, env).map_err(|e| e.to_string())?;
 
     Ok((value, new_env))
 }
@@ -536,58 +537,58 @@ fn test_optional_body_load_with_in() {
 #[test]
 fn test_auto_submit_simple_literal() {
     // Simple literals should parse and auto-submit
-    assert!(parse("42").is_ok());
-    assert!(parse("true").is_ok());
+    assert!(parse_program("42").is_ok());
+    assert!(parse_program("true").is_ok());
 }
 
 #[test]
 fn test_auto_submit_arithmetic() {
     // Arithmetic expressions should parse and auto-submit
-    assert!(parse("1 + 2").is_ok());
-    assert!(parse("10 - 3 * 2").is_ok());
+    assert!(parse_program("1 + 2").is_ok());
+    assert!(parse_program("10 - 3 * 2").is_ok());
 }
 
 #[test]
 fn test_auto_submit_function_call() {
     // Function calls should parse and auto-submit (main issue being fixed)
-    assert!(parse("(fun x -> x + 1) 41").is_ok());
-    assert!(parse("(fun x -> fun y -> x + y) 1 2").is_ok());
+    assert!(parse_program("(fun x -> x + 1) 41").is_ok());
+    assert!(parse_program("(fun x -> fun y -> x + y) 1 2").is_ok());
 }
 
 #[test]
 fn test_auto_submit_let_in() {
     // Complete let-in expressions should parse and auto-submit
-    assert!(parse("let x = 10 in x + 5").is_ok());
-    assert!(parse("let double = fun x -> x + x in double 21").is_ok());
+    assert!(parse_program("let x = 10 in x + 5").is_ok());
+    assert!(parse_program("let double = fun x -> x + x in double 21").is_ok());
 }
 
 #[test]
 fn test_auto_submit_let_semicolon() {
     // Let with semicolon should parse and auto-submit
-    assert!(parse("let x = 42;").is_ok());
-    assert!(parse("let double = fun x -> x + x;").is_ok());
-    assert!(parse("let x = 1; let y = 2;").is_ok());
+    assert!(parse_program("let x = 42;").is_ok());
+    assert!(parse_program("let double = fun x -> x + x;").is_ok());
+    assert!(parse_program("let x = 1; let y = 2;").is_ok());
 }
 
 #[test]
 fn test_auto_submit_load() {
     // Load statements should parse and auto-submit
-    assert!(parse("load \"examples/stdlib.par\"").is_ok());
-    assert!(parse("load \"examples/stdlib.par\" in 0").is_ok());
+    assert!(parse_program("load \"examples/stdlib.par\"").is_ok());
+    assert!(parse_program("load \"examples/stdlib.par\" in 0").is_ok());
 }
 
 #[test]
 fn test_incomplete_expression_let_in() {
     // Incomplete let-in expressions should NOT parse (will wait for continuation)
-    assert!(parse("let x = 10 in").is_err());
-    assert!(parse("let x =").is_err());
+    assert!(parse_program("let x = 10 in").is_err());
+    assert!(parse_program("let x =").is_err());
 }
 
 #[test]
 fn test_incomplete_expression_function() {
     // Incomplete function definitions should NOT parse (will wait for continuation)
-    assert!(parse("fun x ->").is_err());
-    assert!(parse("let f = fun x ->").is_err());
+    assert!(parse_program("fun x ->").is_err());
+    assert!(parse_program("let f = fun x ->").is_err());
 }
 
 // ============================================================================
@@ -815,7 +816,11 @@ fn test_rec_seq_binding() {
             else n * f (n - 1);
         factorial 5
     ";
-    assert_eq!(parse_and_eval(code), Ok(Value::Int(120)));
+    let program = parse_program(code).expect("program must parse");
+    assert_eq!(
+        eval_program(&program, &Environment::new()),
+        Ok(Value::Int(120))
+    );
 }
 
 #[test]
@@ -1268,7 +1273,7 @@ fn test_tuple_with_match_and_rec() {
 fn test_rec_closure_display() {
     // Test that recursive closures display correctly
     let code = r"rec factorial -> fun n -> if n == 0 then 1 else n * factorial (n - 1)";
-    let expr = parse(code).unwrap();
+    let expr = parse_expr(code).unwrap();
     let env = Environment::new();
     let result = eval(&expr, &env).unwrap();
     let display_str = format!("{result}");

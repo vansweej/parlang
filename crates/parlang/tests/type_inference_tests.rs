@@ -1,6 +1,6 @@
 /// Integration tests for type inference system
 /// These tests verify the complete type inference pipeline
-use parlang::{parse, typecheck, Type};
+use parlang::{parse_expr as parse, parse_program, typecheck, typecheck_program, Type};
 
 #[test]
 fn test_complete_program_int() {
@@ -320,8 +320,8 @@ fn test_load_type_inference() {
 #[test]
 fn test_seq_type_inference() {
     // Sequential expressions currently return type variables
-    let expr = parse("let x = 1; 2").unwrap();
-    let result = typecheck(&expr);
+    let program = parse_program("let x = 1; 2").unwrap();
+    let result = typecheck_program(&program);
     assert!(result.is_ok());
 }
 

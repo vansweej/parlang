@@ -1,5 +1,5 @@
 /// Integration tests for pattern matching exhaustiveness checking
-use parlang::{eval, parse, Environment};
+use parlang::{eval, parse_expr as parse, Environment};
 
 /// Test exhaustive Option type match
 #[test]
