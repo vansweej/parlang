@@ -325,6 +325,34 @@ fn test_seq_type_inference() {
     assert!(result.is_ok());
 }
 
+#[test]
+fn test_toplevel_illtyped_rejected() {
+    let program = parse_program("let x = 1; let y = x + true; 0").unwrap();
+    let result = typecheck_program(&program);
+
+    assert!(matches!(
+        result,
+        Err(parlang::TypeError::UnificationError(_, _))
+    ));
+}
+
+#[test]
+fn test_toplevel_welltyped_accepted() {
+    let program = parse_program("let x = 1; let y = x + 2; y").unwrap();
+    let ty = typecheck_program(&program).unwrap();
+
+    assert_eq!(ty, Type::Int);
+}
+
+#[test]
+fn test_toplevel_generalization() {
+    let program =
+        parse_program("let id = fun x -> x; let number = id 1; let flag = id true; flag").unwrap();
+    let result = typecheck_program(&program);
+
+    assert!(result.is_ok());
+}
+
 // ===== Recursive Function Type Inference Tests =====
 
 #[test]
