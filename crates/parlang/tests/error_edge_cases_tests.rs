@@ -1,6 +1,6 @@
 /// Tests for error handling edge cases and boundary conditions
 /// These tests verify proper error handling in various edge cases
-use parlang::{eval, parse_expr as parse, parse_program, Environment, Expr, Value};
+use parlang::{eval, parse_expr as parse, parse_program, Environment, Value};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
     let expr = parse(input)?;

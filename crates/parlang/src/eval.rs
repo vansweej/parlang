@@ -365,10 +365,6 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
             // Extract bindings from the loaded library
             // Pass current environment so type constructors are available
             let lib_env = extend_env_with_program(&lib_program, env)?;
-            let lib_env = match &lib_program.body {
-                Some(lib_body) => extract_bindings(lib_body, &lib_env)?,
-                None => lib_env,
-            };
             // Merge with current environment
             let new_env = env.merge(&lib_env);
             // Continue extracting from the body
@@ -557,10 +553,6 @@ fn eval_load(filepath: &str, body: &Expr, env: &Environment) -> Result<Value, Ev
     // Extract bindings from the library file
     // Pass current environment so type constructors are available
     let lib_env = extend_env_with_program(&lib_program, env)?;
-    let lib_env = match &lib_program.body {
-        Some(lib_body) => extract_bindings(lib_body, &lib_env)?,
-        None => lib_env,
-    };
 
     // Merge library bindings into current environment
     let extended_env = env.merge(&lib_env);
