@@ -869,6 +869,10 @@ pub fn extend_env_with_program(
                 let value = eval(value, &current_env)?;
                 current_env = current_env.extend(name.clone(), value);
             }
+            Decl::Data { .. } | Decl::TypeAlias { .. } => {
+                // Top-level data and type-alias declarations carry no runtime
+                // bindings this slice; `doc` is always `None`.
+            }
         }
     }
     match &program.body {

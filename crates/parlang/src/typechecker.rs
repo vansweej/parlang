@@ -1104,6 +1104,10 @@ pub fn typecheck_program_with_env(program: &Program, env: &mut TypeEnv) -> Resul
                 let scheme = program_env.generalize(&value_ty);
                 program_env.bind(name.clone(), scheme);
             }
+            Decl::Data { .. } | Decl::TypeAlias { .. } => {
+                // Top-level data and type-alias declarations are not yet
+                // processed by the type checker this slice.
+            }
         }
     }
 

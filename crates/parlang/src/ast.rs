@@ -117,8 +117,9 @@ pub enum TypeAnnotation {
     App(String, Vec<TypeAnnotation>),
 }
 
-/// A top-level declaration. Open by construction: further variants (top-level
-/// `data`/`type` forms) arrive with deferred slice work.
+/// A top-level declaration. The enum carries `Let`, `Data`, and `TypeAlias`
+/// variants; `doc` is a reserved landing pad for Haddock-style attachment and
+/// is always `None` this slice.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Decl {
     /// A top-level `let name [: ty] = value;` binding.
@@ -126,6 +127,25 @@ pub enum Decl {
         name: String,
         ty_ann: Option<TypeAnnotation>,
         value: Expr,
+        /// Reserved landing pad for attached doc text. Always `None` this
+        /// slice; populated when Haddock-style attachment lands.
+        doc: Option<String>,
+    },
+
+    /// A top-level `data Name params = Ctor ... | ...;` declaration.
+    Data {
+        name: String,
+        type_params: Vec<String>,
+        constructors: Vec<(String, Vec<TypeAnnotation>)>,
+        /// Reserved landing pad for attached doc text. Always `None` this
+        /// slice; populated when Haddock-style attachment lands.
+        doc: Option<String>,
+    },
+
+    /// A top-level `type Name = TypeExpr;` alias declaration.
+    TypeAlias {
+        name: String,
+        ty_expr: TypeExpr,
         /// Reserved landing pad for attached doc text. Always `None` this
         /// slice; populated when Haddock-style attachment lands.
         doc: Option<String>,
@@ -389,6 +409,30 @@ impl fmt::Display for Program {
                     } else {
                         write!(f, "let {name} = {value}")?;
                     }
+                }
+                Decl::Data {
+                    name,
+                    type_params,
+                    constructors,
+                    ..
+                } => {
+                    write!(f, "data {name}")?;
+                    for param in type_params {
+                        write!(f, " {param}")?;
+                    }
+                    write!(f, " =")?;
+                    for (i, (ctor, types)) in constructors.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, " |")?;
+                        }
+                        write!(f, " {ctor}")?;
+                        for ty in types {
+                            write!(f, " {ty}")?;
+                        }
+                    }
+                }
+                Decl::TypeAlias { name, ty_expr, .. } => {
+                    write!(f, "type {name} = {ty_expr}")?;
                 }
             }
         }
