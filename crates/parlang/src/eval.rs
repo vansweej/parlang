@@ -2,11 +2,31 @@
 /// This module implements the runtime evaluation of `ParLang` expressions
 use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
 use crate::exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
+#[cfg(test)]
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::path::Path;
 use std::rc::Rc;
+
+/// The guard mechanism is implemented but NOT YET CALIBRATED and currently inert.
+///
+/// Probes at 2048, 1024, 512, 256, and 128 all aborted on a 2 MiB stack. The
+/// smallest stack where the 128-level probe returned `EvalError::RecursionLimit`
+/// was 4 MiB, measuring 32 KiB per evaluation level. A usable limit requires the
+/// frame-size-reduction slice first; see Cerebrum memory `6ea26961`.
+const DEFAULT_MAX_EVAL_DEPTH: usize = 1_000_000;
+
+#[cfg(test)]
+thread_local! {
+    static MAX_EVAL_DEPTH: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn take_max_eval_depth() -> usize {
+    MAX_EVAL_DEPTH.with(|max_depth| max_depth.replace(0))
+}
 
 /// Runtime values in the language
 #[derive(Debug, Clone, PartialEq)]
@@ -249,6 +269,8 @@ pub enum EvalError {
     ConstructorArityMismatch(String, usize, usize),
     /// Pattern match is non-exhaustive
     PatternMatchNonExhaustive,
+    /// Evaluation exceeded the native-stack-safe recursion depth.
+    RecursionLimit,
 }
 
 impl fmt::Display for EvalError {
@@ -280,6 +302,7 @@ impl fmt::Display for EvalError {
             EvalError::PatternMatchNonExhaustive => {
                 write!(f, "Pattern match is non-exhaustive")
             }
+            EvalError::RecursionLimit => write!(f, "recursion limit exceeded"),
         }
     }
 }
@@ -316,6 +339,7 @@ fn eval_with_tco(
     rec_name: &str,
     param_name: &str,
     closure_env: &Environment,
+    depth: usize,
 ) -> Result<Value, EvalError> {
     let mut current_expr = body.clone();
     let mut current_env = initial_env.clone();
@@ -328,7 +352,7 @@ fn eval_with_tco(
                 // Check if this is a call to the recursive function (possibly nested in applications)
                 if is_tail_call_to(func, rec_name) {
                     // This is a tail call - evaluate arg and loop instead of recursing
-                    let arg_val = eval(arg, &current_env)?;
+                    let arg_val = eval_inner(arg, &current_env, depth)?;
 
                     // Reset environment for next iteration
                     let rec_val = Value::RecClosure(
@@ -343,11 +367,11 @@ fn eval_with_tco(
                     continue;
                 }
                 // Not a tail call to self - evaluate normally and return
-                break eval(&current_expr, &current_env);
+                break eval_inner(&current_expr, &current_env, depth);
             }
             // Handle if expressions - evaluate condition and continue with the appropriate branch
             Expr::If(cond, then_branch, else_branch) => {
-                let cond_val = eval(cond, &current_env)?;
+                let cond_val = eval_inner(cond, &current_env, depth)?;
                 match cond_val {
                     Value::Bool(true) => {
                         current_expr = (**then_branch).clone();
@@ -363,7 +387,7 @@ fn eval_with_tco(
                 }
             }
             // For other expressions, evaluate normally and return
-            _ => break eval(&current_expr, &current_env),
+            _ => break eval_inner(&current_expr, &current_env, depth),
         }
     }
 }
@@ -571,14 +595,14 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
 
 /// Evaluate a function application `func arg` (extracted from `eval` to keep
 /// its line count down).
-fn eval_app(func: &Expr, arg: &Expr, env: &Environment) -> Result<Value, EvalError> {
-    let func_val = eval(func, env)?;
-    let arg_val = eval(arg, env)?;
+fn eval_app(func: &Expr, arg: &Expr, env: &Environment, depth: usize) -> Result<Value, EvalError> {
+    let func_val = eval_inner(func, env, depth + 1)?;
+    let arg_val = eval_inner(arg, env, depth + 1)?;
 
     match func_val {
         Value::Closure(param, body, closure_env) => {
             let new_env = closure_env.extend(param, arg_val);
-            eval(&body, &new_env)
+            eval_inner(&body, &new_env, depth + 1)
         }
         Value::RecClosure(rec_name, param, body, closure_env) => {
             // Create an environment with the recursive function bound to itself
@@ -593,7 +617,7 @@ fn eval_app(func: &Expr, arg: &Expr, env: &Environment) -> Result<Value, EvalErr
 
             // Evaluate the body - TCO happens naturally via iteration below
             // when the body is a tail call
-            eval_with_tco(&body, &new_env, &rec_name, &param, &closure_env)
+            eval_with_tco(&body, &new_env, &rec_name, &param, &closure_env, depth)
         }
         _ => Err(EvalError::TypeError(
             "Application requires a function".to_string(),
@@ -603,7 +627,12 @@ fn eval_app(func: &Expr, arg: &Expr, env: &Environment) -> Result<Value, EvalErr
 
 /// Evaluate `load "path" in body` (extracted from `eval` to keep its line
 /// count down).
-fn eval_load(filepath: &str, body: &Expr, env: &Environment) -> Result<Value, EvalError> {
+fn eval_load(
+    filepath: &str,
+    body: &Expr,
+    env: &Environment,
+    depth: usize,
+) -> Result<Value, EvalError> {
     // Read the file contents
     let content = fs::read_to_string(Path::new(filepath))
         .map_err(|e| EvalError::LoadError(format!("Failed to read file '{filepath}': {e}")))?;
@@ -621,7 +650,7 @@ fn eval_load(filepath: &str, body: &Expr, env: &Environment) -> Result<Value, Ev
     let extended_env = env.merge(&lib_env);
 
     // Evaluate the body in the extended environment
-    eval(body, &extended_env)
+    eval_inner(body, &extended_env, depth + 1)
 }
 
 /// Evaluate a `match scrutinee with arms` expression (extracted from `eval`
@@ -630,6 +659,7 @@ fn eval_match(
     scrutinee: &Expr,
     arms: &[(Pattern, Expr)],
     env: &Environment,
+    depth: usize,
 ) -> Result<Value, EvalError> {
     // Check exhaustiveness of patterns
     let patterns: Vec<Pattern> = arms.iter().map(|(p, _)| p.clone()).collect();
@@ -644,13 +674,13 @@ fn eval_match(
     }
 
     // Evaluate the scrutinee expression
-    let val = eval(scrutinee, env)?;
+    let val = eval_inner(scrutinee, env, depth + 1)?;
 
     // Try to match against each pattern arm in order
     for (pattern, result_expr) in arms {
         if let Some(new_env) = match_pattern(pattern, &val, env) {
             // Pattern matched, evaluate the result expression with the extended environment
-            return eval(result_expr, &new_env);
+            return eval_inner(result_expr, &new_env, depth + 1);
         }
     }
 
@@ -660,9 +690,14 @@ fn eval_match(
 
 /// Evaluate `tuple_expr.index` (extracted from `eval` to keep its line count
 /// down).
-fn eval_tuple_proj(tuple_expr: &Expr, index: usize, env: &Environment) -> Result<Value, EvalError> {
+fn eval_tuple_proj(
+    tuple_expr: &Expr,
+    index: usize,
+    env: &Environment,
+    depth: usize,
+) -> Result<Value, EvalError> {
     // Evaluate the tuple expression
-    let tuple_val = eval(tuple_expr, env)?;
+    let tuple_val = eval_inner(tuple_expr, env, depth + 1)?;
 
     // Check that the value is a tuple
     match tuple_val {
@@ -691,6 +726,7 @@ fn eval_type_def(
     constructors: &[(String, Vec<crate::ast::TypeAnnotation>)],
     body: &Expr,
     env: &Environment,
+    depth: usize,
 ) -> Result<Value, EvalError> {
     // Register all constructors in the environment
     let mut new_env = env.clone();
@@ -704,12 +740,17 @@ fn eval_type_def(
     }
 
     // Evaluate body in extended environment
-    eval(body, &new_env)
+    eval_inner(body, &new_env, depth + 1)
 }
 
 /// Evaluate a sum-type constructor application (extracted from `eval` to
 /// keep its line count down).
-fn eval_constructor(ctor_name: &str, args: &[Expr], env: &Environment) -> Result<Value, EvalError> {
+fn eval_constructor(
+    ctor_name: &str,
+    args: &[Expr],
+    env: &Environment,
+    depth: usize,
+) -> Result<Value, EvalError> {
     // Look up constructor info
     let ctor_info = env
         .lookup_constructor(ctor_name)
@@ -727,7 +768,7 @@ fn eval_constructor(ctor_name: &str, args: &[Expr], env: &Environment) -> Result
     // Evaluate all arguments
     let mut values = Vec::new();
     for arg in args {
-        values.push(eval(arg, env)?);
+        values.push(eval_inner(arg, env, depth + 1)?);
     }
 
     Ok(Value::Variant(ctor_name.to_string(), values))
@@ -756,12 +797,16 @@ fn eval_rec(name: &str, body: &Expr, env: &Environment) -> Result<Value, EvalErr
 
 /// Evaluate a record literal `{ field: expr, ... }` (extracted from `eval`
 /// to keep its line count down).
-fn eval_record(fields: &[(String, Expr)], env: &Environment) -> Result<Value, EvalError> {
+fn eval_record(
+    fields: &[(String, Expr)],
+    env: &Environment,
+    depth: usize,
+) -> Result<Value, EvalError> {
     // Evaluate all field expressions and build the record
     let mut record = HashMap::new();
 
     for (name, expr) in fields {
-        let value = eval(expr, env)?;
+        let value = eval_inner(expr, env, depth + 1)?;
         record.insert(name.clone(), value);
     }
 
@@ -774,9 +819,10 @@ fn eval_field_access(
     record_expr: &Expr,
     field_name: &str,
     env: &Environment,
+    depth: usize,
 ) -> Result<Value, EvalError> {
     // Evaluate the record expression
-    let record_value = eval(record_expr, env)?;
+    let record_value = eval_inner(record_expr, env, depth + 1)?;
 
     // Check that the value is a record and access the field
     match record_value {
@@ -796,11 +842,12 @@ fn eval_if(
     then_branch: &Expr,
     else_branch: &Expr,
     env: &Environment,
+    depth: usize,
 ) -> Result<Value, EvalError> {
-    let cond_val = eval(cond, env)?;
+    let cond_val = eval_inner(cond, env, depth + 1)?;
     match cond_val {
-        Value::Bool(true) => eval(then_branch, env),
-        Value::Bool(false) => eval(else_branch, env),
+        Value::Bool(true) => eval_inner(then_branch, env, depth + 1),
+        Value::Bool(false) => eval_inner(else_branch, env, depth + 1),
         _ => Err(EvalError::TypeError(
             "If condition must be a boolean".to_string(),
         )),
@@ -819,6 +866,18 @@ fn eval_if(
 /// - Loading a library file fails
 /// - A tuple projection index is out of bounds
 pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
+    eval_inner(expr, env, 0)
+}
+
+// `extract_bindings`, `extend_env_with_program`, and load evaluation re-enter through
+// public `eval` at depth zero; deeply nested top-level lets or loads remain out of scope.
+fn eval_inner(expr: &Expr, env: &Environment, depth: usize) -> Result<Value, EvalError> {
+    if depth >= DEFAULT_MAX_EVAL_DEPTH {
+        return Err(EvalError::RecursionLimit);
+    }
+    #[cfg(test)]
+    MAX_EVAL_DEPTH.with(|max_depth| max_depth.set(max_depth.get().max(depth)));
+
     match expr {
         Expr::Int(n) => Ok(Value::Int(*n)),
         Expr::Bool(b) => Ok(Value::Bool(*b)),
@@ -831,52 +890,54 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             .ok_or_else(|| EvalError::UnboundVariable(name.clone())),
 
         Expr::BinOp(op, left, right) => {
-            let left_val = eval(left, env)?;
-            let right_val = eval(right, env)?;
+            let left_val = eval_inner(left, env, depth + 1)?;
+            let right_val = eval_inner(right, env, depth + 1)?;
             eval_binop(*op, left_val, right_val)
         }
 
-        Expr::If(cond, then_branch, else_branch) => eval_if(cond, then_branch, else_branch, env),
+        Expr::If(cond, then_branch, else_branch) => {
+            eval_if(cond, then_branch, else_branch, env, depth)
+        }
 
         Expr::Let(name, _ty_ann, value, body) => {
-            let val = eval(value, env)?;
+            let val = eval_inner(value, env, depth + 1)?;
             let new_env = env.extend(name.clone(), val);
-            eval(body, &new_env)
+            eval_inner(body, &new_env, depth + 1)
         }
 
         Expr::Fun(param, _ty_ann, body) => {
             Ok(Value::Closure(param.clone(), (**body).clone(), env.clone()))
         }
 
-        Expr::App(func, arg) => eval_app(func, arg, env),
+        Expr::App(func, arg) => eval_app(func, arg, env, depth),
 
-        Expr::Load(filepath, body) => eval_load(filepath, body, env),
+        Expr::Load(filepath, body) => eval_load(filepath, body, env, depth),
 
         Expr::Rec(name, body) => eval_rec(name, body, env),
 
-        Expr::Match(scrutinee, arms) => eval_match(scrutinee, arms, env),
+        Expr::Match(scrutinee, arms) => eval_match(scrutinee, arms, env, depth),
 
         Expr::Tuple(elements) => {
             // Evaluate all elements of the tuple
             let mut values = Vec::new();
             for elem in elements {
-                values.push(eval(elem, env)?);
+                values.push(eval_inner(elem, env, depth + 1)?);
             }
             Ok(Value::Tuple(values))
         }
 
-        Expr::TupleProj(tuple_expr, index) => eval_tuple_proj(tuple_expr, *index, env),
+        Expr::TupleProj(tuple_expr, index) => eval_tuple_proj(tuple_expr, *index, env, depth),
 
         Expr::TypeAlias(_name, _ty_expr, body) => {
             // Type aliases are transparent at runtime - they're only used during type checking
             // We simply evaluate the body in the current environment
-            eval(body, env)
+            eval_inner(body, env, depth + 1)
         }
 
-        Expr::Record(fields) => eval_record(fields, env),
+        Expr::Record(fields) => eval_record(fields, env, depth),
 
         Expr::FieldAccess(record_expr, field_name) => {
-            eval_field_access(record_expr, field_name, env)
+            eval_field_access(record_expr, field_name, env, depth)
         }
 
         Expr::TypeDef {
@@ -884,9 +945,9 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
             type_params: _,
             constructors,
             body,
-        } => eval_type_def(name, constructors, body, env),
+        } => eval_type_def(name, constructors, body, env, depth),
 
-        Expr::Constructor(ctor_name, args) => eval_constructor(ctor_name, args, env),
+        Expr::Constructor(ctor_name, args) => eval_constructor(ctor_name, args, env, depth),
     }
 }
 
@@ -1584,6 +1645,34 @@ mod tests {
     fn test_eval_error_display_division_by_zero() {
         let err = EvalError::DivisionByZero;
         assert_eq!(format!("{err}"), "Division by zero");
+    }
+
+    #[test]
+    #[ignore = "cannot pass until the guard is calibrated; the frame-size-reduction slice is the unblocker"]
+    fn test_non_tail_recursion_returns_recursion_limit_on_four_mib_stack() {
+        const STACK_SIZE_BYTES: usize = 4 * 1024 * 1024;
+        let thread = std::thread::Builder::new()
+            // The smallest stack where the preliminary 128-level probe tripped the guard.
+            .stack_size(STACK_SIZE_BYTES)
+            .spawn(|| {
+                let _ = take_max_eval_depth();
+                let expr = crate::parser::parse_expr("(rec f -> fun n -> 1 + f n) 0")
+                    .expect("the non-tail recursion trip expression must parse");
+                crate::typechecker::typecheck(&expr)
+                    .expect("the non-tail recursion trip expression must typecheck");
+                matches!(
+                    eval(&expr, &Environment::new()),
+                    Err(EvalError::RecursionLimit)
+                )
+            })
+            .expect("the calibration thread must spawn");
+
+        assert!(
+            thread
+                .join()
+                .expect("the calibration thread must not panic"),
+            "the evaluation guard must return RecursionLimit before the native stack overflows"
+        );
     }
 
     // Test Value Clone and PartialEq
