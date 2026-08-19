@@ -301,6 +301,12 @@ pub enum TypeError {
     RecordFieldMismatch,
     /// Constructor applied with wrong number of arguments: constructor name, expected, actual
     ConstructorArityMismatch(String, usize, usize),
+    /// A cycle was found while resolving top-level type aliases.
+    TypeAliasCycle(Vec<String>),
+    /// A top-level data type or type alias was declared more than once.
+    DuplicateTypeName(String),
+    /// A top-level constructor name was declared more than once.
+    DuplicateConstructor(String),
 }
 
 impl fmt::Display for TypeError {
@@ -335,6 +341,15 @@ impl fmt::Display for TypeError {
                     f,
                     "Constructor '{name}' expects {expected} arguments, but got {actual}"
                 )
+            }
+            TypeError::TypeAliasCycle(names) => {
+                write!(f, "Type alias cycle detected: {}", names.join(" -> "))
+            }
+            TypeError::DuplicateTypeName(name) => {
+                write!(f, "Duplicate type name: {name}")
+            }
+            TypeError::DuplicateConstructor(name) => {
+                write!(f, "Duplicate constructor: {name}")
             }
         }
     }
@@ -468,6 +483,47 @@ fn resolve_type_expr(ty_expr: &crate::ast::TypeExpr, env: &TypeEnv) -> Result<Ty
         crate::ast::TypeExpr::Alias(name) => env
             .resolve_type_alias(name)
             .ok_or_else(|| TypeError::UnboundVariable(name.clone())),
+    }
+}
+
+fn resolve_program_type_alias(
+    name: &str,
+    aliases: &HashMap<String, crate::ast::TypeExpr>,
+    env: &TypeEnv,
+    chain: &mut Vec<String>,
+) -> Result<Type, TypeError> {
+    if let Some(cycle_start) = chain.iter().position(|current| current == name) {
+        let mut cycle = chain[cycle_start..].to_vec();
+        cycle.push(name.to_string());
+        return Err(TypeError::TypeAliasCycle(cycle));
+    }
+
+    let Some(ty_expr) = aliases.get(name) else {
+        return env
+            .resolve_type_alias(name)
+            .ok_or_else(|| TypeError::UnboundVariable(name.to_string()));
+    };
+
+    chain.push(name.to_string());
+    let result = resolve_program_type_expr(ty_expr, aliases, env, chain);
+    chain.pop();
+    result
+}
+
+fn resolve_program_type_expr(
+    ty_expr: &crate::ast::TypeExpr,
+    aliases: &HashMap<String, crate::ast::TypeExpr>,
+    env: &TypeEnv,
+    chain: &mut Vec<String>,
+) -> Result<Type, TypeError> {
+    match ty_expr {
+        crate::ast::TypeExpr::Int => Ok(Type::Int),
+        crate::ast::TypeExpr::Bool => Ok(Type::Bool),
+        crate::ast::TypeExpr::Fun(arg, ret) => Ok(Type::Fun(
+            Box::new(resolve_program_type_expr(arg, aliases, env, chain)?),
+            Box::new(resolve_program_type_expr(ret, aliases, env, chain)?),
+        )),
+        crate::ast::TypeExpr::Alias(name) => resolve_program_type_alias(name, aliases, env, chain),
     }
 }
 
@@ -1084,6 +1140,61 @@ pub fn typecheck_program(program: &Program) -> Result<Type, TypeError> {
 pub fn typecheck_program_with_env(program: &Program, env: &mut TypeEnv) -> Result<Type, TypeError> {
     let mut program_env = env.clone();
 
+    let mut type_names = HashSet::new();
+    let mut constructor_names = HashSet::new();
+    let mut aliases = HashMap::new();
+
+    for decl in &program.decls {
+        match decl {
+            Decl::Data {
+                name, constructors, ..
+            } => {
+                if !type_names.insert(name.clone()) {
+                    return Err(TypeError::DuplicateTypeName(name.clone()));
+                }
+                program_env.define_type_alias(name.clone(), Type::SumType(name.clone(), vec![]));
+                for (constructor_name, _) in constructors {
+                    if !constructor_names.insert(constructor_name.clone()) {
+                        return Err(TypeError::DuplicateConstructor(constructor_name.clone()));
+                    }
+                }
+            }
+            Decl::TypeAlias { name, ty_expr, .. } => {
+                if !type_names.insert(name.clone()) {
+                    return Err(TypeError::DuplicateTypeName(name.clone()));
+                }
+                aliases.insert(name.clone(), ty_expr.clone());
+            }
+            Decl::Let { .. } => {}
+        }
+    }
+
+    for name in aliases.keys() {
+        let ty = resolve_program_type_alias(name, &aliases, &program_env, &mut Vec::new())?;
+        program_env.define_type_alias(name.clone(), ty);
+    }
+
+    for decl in &program.decls {
+        if let Decl::Data {
+            name,
+            type_params,
+            constructors,
+            ..
+        } = decl
+        {
+            for (constructor_name, payload_types) in constructors {
+                program_env.register_constructor(
+                    constructor_name.clone(),
+                    ConstructorInfo {
+                        type_params: type_params.clone(),
+                        payload_types: payload_types.clone(),
+                        sum_type_name: name.clone(),
+                    },
+                );
+            }
+        }
+    }
+
     for decl in &program.decls {
         match decl {
             Decl::Let {
@@ -1104,10 +1215,7 @@ pub fn typecheck_program_with_env(program: &Program, env: &mut TypeEnv) -> Resul
                 let scheme = program_env.generalize(&value_ty);
                 program_env.bind(name.clone(), scheme);
             }
-            Decl::Data { .. } | Decl::TypeAlias { .. } => {
-                // Top-level data and type-alias declarations are not yet
-                // processed by the type checker this slice.
-            }
+            Decl::Data { .. } | Decl::TypeAlias { .. } => {}
         }
     }
 

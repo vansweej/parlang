@@ -138,6 +138,9 @@ impl Environment {
         for (name, value) in &other.bindings {
             new_env.bind(name.clone(), value.clone());
         }
+        for (name, info) in &other.constructors {
+            new_env.register_constructor(name.clone(), info.clone());
+        }
         new_env
     }
 
@@ -863,16 +866,34 @@ pub fn extend_env_with_program(
     env: &Environment,
 ) -> Result<Environment, EvalError> {
     let mut current_env = env.clone();
+
+    // Main programs and REPL entries are typechecked first, which rejects duplicate
+    // declarations. Loaded libraries bypass typechecking, so duplicates there retain
+    // the existing last-writer-wins runtime behaviour.
+    for decl in &program.decls {
+        if let Decl::Data {
+            name, constructors, ..
+        } = decl
+        {
+            for (constructor_name, payload_types) in constructors {
+                current_env.register_constructor(
+                    constructor_name.clone(),
+                    ConstructorInfo {
+                        type_name: name.clone(),
+                        arity: payload_types.len(),
+                    },
+                );
+            }
+        }
+    }
+
     for decl in &program.decls {
         match decl {
             Decl::Let { name, value, .. } => {
                 let value = eval(value, &current_env)?;
                 current_env = current_env.extend(name.clone(), value);
             }
-            Decl::Data { .. } | Decl::TypeAlias { .. } => {
-                // Top-level data and type-alias declarations carry no runtime
-                // bindings this slice; `doc` is always `None`.
-            }
+            Decl::Data { .. } | Decl::TypeAlias { .. } => {}
         }
     }
     match &program.body {

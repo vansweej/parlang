@@ -489,7 +489,7 @@ parser! {
 }
 
 parser! {
-    fn type_alias_expr[Input]()(Input) -> Expr
+    fn type_header[Input]()(Input) -> (String, crate::ast::TypeExpr)
     where [Input: Stream<Token = char>]
     {
         (
@@ -497,12 +497,21 @@ parser! {
             identifier().skip(spaces()),
             token('=').skip(spaces()),
             type_expr().skip(spaces()),
+        )
+            .map(|(_, name, _, ty_expr)| (name, ty_expr))
+    }
+}
+
+parser! {
+    fn type_alias_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        (
+            type_header(),
             string("in").skip(spaces()),
             expr(),
         )
-            .map(|(_, name, _, ty_expr, _, body)| {
-                Expr::TypeAlias(name, ty_expr, Box::new(body))
-            })
+            .map(|((name, ty_expr), _, body)| Expr::TypeAlias(name, ty_expr, Box::new(body)))
     }
 }
 
@@ -538,8 +547,10 @@ parser! {
             // But reject "in" keyword
             attempt((
                 raw_identifier().then(|name| {
-                    if name == "in" {
-                        combine::unexpected("keyword").map(|()| String::new()).right()
+                    if name == "in" || !starts_with_uppercase(&name) {
+                        combine::unexpected("type constructor")
+                            .map(|()| String::new())
+                            .right()
                     } else {
                         combine::value(name).left()
                     }
@@ -554,8 +565,8 @@ parser! {
             )),
             // Simple identifier: Int, Bool, a, b
             raw_identifier().then(|name| {
-                // Reject "in" keyword which could be confused with type annotation
-                if name == "in" {
+                // Reject declaration keywords that delimit a containing parser.
+                if matches!(name.as_str(), "in" | "data" | "type") {
                     combine::unexpected("keyword").map(|()| TypeAnnotation::Var(String::new())).right()
                 } else {
                     // Check if first character is uppercase to distinguish concrete types from type variables
@@ -573,7 +584,7 @@ parser! {
 
 // Parse data type definitions: data Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
 parser! {
-    fn type_def_expr[Input]()(Input) -> Expr
+    fn data_header[Input]()(Input) -> (String, Vec<String>, Vec<CtorSignature>)
     where [Input: Stream<Token = char>]
     {
         (
@@ -610,23 +621,34 @@ parser! {
                  .skip(spaces()),
                 many(attempt(type_annotation_atom().skip(spaces())))
             ))),
-            string("in").skip(spaces()),
-            expr()
         )
-            .map(|tuple: (_, String, Vec<String>, _, CtorSignature, Vec<AdditionalCtor>, _, Expr)| {
-                let (_, name, type_params, _, first_ctor, additional_ctors, _, body) = tuple;
+            .map(|tuple: (_, String, Vec<String>, _, CtorSignature, Vec<AdditionalCtor>)| {
+                let (_, name, type_params, _, first_ctor, additional_ctors) = tuple;
                 // Combine first constructor with additional constructors
                 let mut constructors = vec![first_ctor];
                 for (_, ctor_name, ctor_types) in additional_ctors {
                     constructors.push((ctor_name, ctor_types));
                 }
 
-                Expr::TypeDef {
-                    name,
-                    type_params,
-                    constructors,
-                    body: Box::new(body),
-                }
+                (name, type_params, constructors)
+            })
+    }
+}
+
+parser! {
+    fn type_def_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        (
+            data_header(),
+            string("in").skip(spaces()),
+            expr(),
+        )
+            .map(|((name, type_params, constructors), _, body)| Expr::TypeDef {
+                name,
+                type_params,
+                constructors,
+                body: Box::new(body),
             })
     }
 }
@@ -1114,34 +1136,42 @@ parser! {
     {
         (
             spaces(),
-            many(attempt((
-                string("let").skip(spaces()),
-                identifier().skip(spaces()),
-                optional(
-                    token(':').skip(spaces())
-                        .with(type_annotation().skip(spaces()))
-                ),
-                token('=').skip(spaces()),
-                expr().skip(spaces()),
-                token(';').skip(spaces()),
-            ))).map(|bindings: Vec<(_, String, Option<TypeAnnotation>, _, Expr, _)>| {
-                bindings
-                    .into_iter()
-                    .map(|(_, name, ty_ann, _, value, _)| (name, ty_ann, value))
-                    .collect::<Vec<(String, Option<TypeAnnotation>, Expr)>>()
-            }),
-            optional(expr()).skip(spaces())
-        )
-            .map(|((), bindings, body)| Program {
-                decls: bindings
-                    .into_iter()
-                    .map(|(name, ty_ann, value)| Decl::Let {
+            many(attempt(choice((
+                (
+                    string("let").skip(spaces()),
+                    identifier().skip(spaces()),
+                    optional(
+                        token(':').skip(spaces())
+                            .with(type_annotation().skip(spaces()))
+                    ),
+                    token('=').skip(spaces()),
+                    expr().skip(spaces()),
+                    token(';').skip(spaces()),
+                )
+                    .map(|(_, name, ty_ann, _, value, _)| Decl::Let {
                         name,
                         ty_ann,
                         value,
                         doc: None,
-                    })
-                    .collect(),
+                    }),
+                data_header().skip(token(';').skip(spaces())).map(|(name, type_params, constructors)| {
+                    Decl::Data {
+                        name,
+                        type_params,
+                        constructors,
+                        doc: None,
+                    }
+                }),
+                type_header().skip(token(';').skip(spaces())).map(|(name, ty_expr)| Decl::TypeAlias {
+                    name,
+                    ty_expr,
+                    doc: None,
+                }),
+            )))),
+            optional(expr()).skip(spaces())
+        )
+            .map(|((), decls, body)| Program {
+                decls,
                 body,
             })
     }

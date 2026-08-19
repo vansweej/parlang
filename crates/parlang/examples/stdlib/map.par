@@ -1,7 +1,7 @@
-data List a = Nil | Cons a (List a) in
-data Option a = Some a | None in
-data Tuple k v = Tuple k v in
-data Map k v = List (Tuple k v) in
+data List a = Nil | Cons a (List a) ;
+data Option a = Some a | None ;
+data Tuple k v = Tuple k v ;
+data Map k v = List (Tuple k v) ;
 let empty = Nil in
 let insert = fun key -> fun value -> fun map ->
   let delete_key = rec delete_key -> fun k -> fun m ->
