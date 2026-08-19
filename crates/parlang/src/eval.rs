@@ -2,10 +2,11 @@
 /// This module implements the runtime evaluation of `ParLang` expressions
 use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
 use crate::exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::path::Path;
+use std::rc::Rc;
 
 /// Runtime values in the language
 #[derive(Debug, Clone, PartialEq)]
@@ -101,11 +102,24 @@ pub struct ConstructorInfo {
     pub arity: usize,
 }
 
-/// Environment for variable bindings
+/// Environment for variable bindings.
+///
+/// Parent environments are immutable and shared via `Rc`; every mutation
+/// creates a new nearest frame and leaves ancestors frozen. A merged
+/// environment additionally retains a fallback parent so both source chains
+/// remain shared. The recursion knot rebinds itself at call time, so frames
+/// only point to ancestors and cannot form an `Rc` cycle. Consequently,
+/// environments with identical reachable bindings but different frame shapes
+/// compare unequal. This also affects closure equality through `Value`; it has
+/// no current observable effect because value equality and literal pattern
+/// matching only compare scalar values. A future equality-on-values builtin
+/// must account for it explicitly.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
     bindings: HashMap<String, Value>,
     constructors: HashMap<String, ConstructorInfo>,
+    parent: Option<Rc<Environment>>,
+    fallback: Option<Rc<Environment>>,
 }
 
 impl Environment {
@@ -114,6 +128,8 @@ impl Environment {
         Environment {
             bindings: HashMap::new(),
             constructors: HashMap::new(),
+            parent: None,
+            fallback: None,
         }
     }
 
@@ -122,26 +138,38 @@ impl Environment {
     }
 
     pub fn lookup(&self, name: &str) -> Option<&Value> {
-        self.bindings.get(name)
+        self.bindings.get(name).or_else(|| {
+            self.parent
+                .as_deref()
+                .and_then(|parent| parent.lookup(name))
+                .or_else(|| {
+                    self.fallback
+                        .as_deref()
+                        .and_then(|fallback| fallback.lookup(name))
+                })
+        })
     }
 
     #[must_use]
     pub fn extend(&self, name: String, value: Value) -> Self {
-        let mut new_env = self.clone();
-        new_env.bind(name, value);
-        new_env
+        let mut bindings = HashMap::new();
+        bindings.insert(name, value);
+        Self {
+            bindings,
+            constructors: HashMap::new(),
+            parent: Some(Rc::new(self.clone())),
+            fallback: None,
+        }
     }
 
     #[must_use]
     pub fn merge(&self, other: &Environment) -> Self {
-        let mut new_env = self.clone();
-        for (name, value) in &other.bindings {
-            new_env.bind(name.clone(), value.clone());
+        Self {
+            bindings: HashMap::new(),
+            constructors: HashMap::new(),
+            parent: Some(Rc::new(other.clone())),
+            fallback: Some(Rc::new(self.clone())),
         }
-        for (name, info) in &other.constructors {
-            new_env.register_constructor(name.clone(), info.clone());
-        }
-        new_env
     }
 
     pub fn register_constructor(&mut self, name: String, info: ConstructorInfo) {
@@ -149,21 +177,51 @@ impl Environment {
     }
 
     pub fn lookup_constructor(&self, name: &str) -> Option<&ConstructorInfo> {
-        self.constructors.get(name)
+        self.constructors.get(name).or_else(|| {
+            self.parent
+                .as_deref()
+                .and_then(|parent| parent.lookup_constructor(name))
+                .or_else(|| {
+                    self.fallback
+                        .as_deref()
+                        .and_then(|fallback| fallback.lookup_constructor(name))
+                })
+        })
     }
 
     /// Get constructor information by name (used by exhaustiveness checker)
     pub fn get_constructor(&self, name: &str) -> Option<&ConstructorInfo> {
-        self.constructors.get(name)
+        self.lookup_constructor(name)
     }
 
     /// Get all constructors for a given type name (used by exhaustiveness checker)
     pub fn get_constructors_for_type(&self, type_name: &str) -> Vec<String> {
-        self.constructors
-            .iter()
-            .filter(|(_, info)| info.type_name == type_name)
-            .map(|(name, _)| name.clone())
-            .collect()
+        let mut constructors = Vec::new();
+        let mut seen = HashSet::new();
+        self.collect_constructors_for_type(type_name, &mut seen, &mut constructors);
+        constructors
+    }
+
+    fn collect_constructors_for_type(
+        &self,
+        type_name: &str,
+        seen: &mut HashSet<String>,
+        constructors: &mut Vec<String>,
+    ) {
+        for (name, info) in &self.constructors {
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+            if info.type_name == type_name {
+                constructors.push(name.clone());
+            }
+        }
+        if let Some(parent) = &self.parent {
+            parent.collect_constructors_for_type(type_name, seen, constructors);
+        }
+        if let Some(fallback) = &self.fallback {
+            fallback.collect_constructors_for_type(type_name, seen, constructors);
+        }
     }
 }
 
@@ -368,7 +426,8 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
             // Extract bindings from the loaded library
             // Pass current environment so type constructors are available
             let lib_env = extend_env_with_program(&lib_program, env)?;
-            // Merge with current environment
+            // Preserve the existing last-writer-wins behavior: loaded bindings
+            // are nearest and shadow the current environment.
             let new_env = env.merge(&lib_env);
             // Continue extracting from the body
             extract_bindings(body, &new_env)
@@ -557,7 +616,8 @@ fn eval_load(filepath: &str, body: &Expr, env: &Environment) -> Result<Value, Ev
     // Pass current environment so type constructors are available
     let lib_env = extend_env_with_program(&lib_program, env)?;
 
-    // Merge library bindings into current environment
+    // Preserve the existing last-writer-wins behavior: loaded bindings are
+    // nearest and shadow the current environment.
     let extended_env = env.merge(&lib_env);
 
     // Evaluate the body in the extended environment
@@ -867,6 +927,8 @@ pub fn extend_env_with_program(
 ) -> Result<Environment, EvalError> {
     let mut current_env = env.clone();
 
+    // Constructors must all be registered before evaluating any declarations:
+    // every subsequent `extend` creates a child frame that shares this frame.
     // Main programs and REPL entries are typechecked first, which rejects duplicate
     // declarations. Loaded libraries bypass typechecking, so duplicates there retain
     // the existing last-writer-wins runtime behaviour.
