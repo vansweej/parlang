@@ -18,9 +18,10 @@ let x : Int = 42 in x + 1
 
 This declares that `x` should have type `Int`. The type checker will verify that the value `42` is indeed an `Int`.
 
-### Sequential Let Bindings
+### Top-Level Let Declarations
 
-Type annotations work in sequential bindings (used in files and REPL):
+Type annotations work in semicolon-terminated top-level declarations (used in
+files and the REPL):
 
 ```parlang
 let x : Int = 42;
@@ -205,12 +206,29 @@ pub enum Expr {
     // ...
     Let(String, Option<TypeAnnotation>, Box<Expr>, Box<Expr>),
     Fun(String, Option<TypeAnnotation>, Box<Expr>),
-    Seq(Vec<(String, Option<TypeAnnotation>, Expr)>, Box<Expr>),
     // ...
 }
 ```
 
 The `Option<TypeAnnotation>` field is `None` when no annotation is provided, and `Some(ty)` when an annotation is specified.
+
+Top-level annotations are stored on `Decl::Let` within a `Program`:
+
+```rust
+pub enum Decl {
+    Let {
+        name: String,
+        ty_ann: Option<TypeAnnotation>,
+        value: Expr,
+        doc: Option<String>,
+    },
+}
+
+pub struct Program {
+    pub decls: Vec<Decl>,
+    pub body: Option<Expr>,
+}
+```
 
 ### Type Checking Algorithm
 

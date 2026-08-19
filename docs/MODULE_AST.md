@@ -34,7 +34,6 @@ pub enum Expr {
     Fun(String, Box<Expr>),                    // Function definition
     App(Box<Expr>, Box<Expr>),                 // Function application
     Load(String, Box<Expr>),                   // Load library
-    Seq(Vec<(String, Expr)>, Box<Expr>),       // Sequential bindings
     Rec(String, Box<Expr>),                    // Recursive function
 }
 ```
@@ -290,36 +289,37 @@ Expr::Load(
 - Bindings from the library extend the current environment
 - Libraries can load other libraries (nested loads)
 
-##### 10. `Seq(Vec<(String, Expr)>, Box<Expr>)` - Sequential Let Bindings
+##### 10. `Program { decls: Vec<Decl>, body: Option<Expr> }` - Top-Level Declarations
 
-Represents sequential let bindings separated by semicolons.
+Represents a complete program: zero or more semicolon-terminated top-level
+declarations followed by an optional trailing expression.
 
-**Syntax**: `let x = e1; let y = e2; body`
+**Syntax**: `let x = e1; let y = e2; x + y`
 
 **Example AST**:
 ```rust
 // let x = 42; let y = 10; x + y
-Expr::Seq(
-    vec![
-        ("x".to_string(), Expr::Int(42)),
-        ("y".to_string(), Expr::Int(10))
+Program {
+    decls: vec![
+        Decl::Let { name: "x".to_string(), ty_ann: None, value: Expr::Int(42), doc: None },
+        Decl::Let { name: "y".to_string(), ty_ann: None, value: Expr::Int(10), doc: None },
     ],
-    Box::new(Expr::BinOp(
+    body: Some(Expr::BinOp(
         BinOp::Add,
         Box::new(Expr::Var("x".to_string())),
         Box::new(Expr::Var("y".to_string()))
-    ))
-)
+    )),
+}
 ```
 
 **Structure**:
-- **First**: Vector of (name, expression) pairs
-- **Second**: Body expression
+- **`decls`**: `Decl::Let` bindings, each with a name, optional type annotation, value, and reserved documentation field
+- **`body`**: Optional trailing expression
 
 **Notes**:
-- Each binding can reference previous bindings in the sequence
-- Syntactic sugar for nested let-in expressions
-- Commonly used at the top level of programs and in the REPL
+- Declarations are checked and evaluated left to right, so each can reference earlier declarations
+- Top-level declarations are direct `Program` structure, not syntactic sugar for nested `let ... in` expressions
+- A program with no trailing expression evaluates to `0`
 
 ##### 11. `Rec(String, Box<Expr>)` - Recursive Function
 

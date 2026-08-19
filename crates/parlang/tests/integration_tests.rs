@@ -1,7 +1,8 @@
 /// Integration tests combining parser and evaluator
 /// These tests verify the full pipeline from source code to evaluation
 use parlang::{
-    eval, eval_program, extend_env_with_program, parse_expr, parse_program, Environment, Value,
+    eval, eval_program, eval_program_with_env, parse_expr, parse_program,
+    typecheck_program_with_env, Environment, TypeEnv, Value,
 };
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
@@ -14,9 +15,7 @@ fn parse_and_eval(input: &str) -> Result<Value, String> {
 /// extracting bindings to persist in the environment
 fn parse_eval_and_extract(input: &str, env: &Environment) -> Result<(Value, Environment), String> {
     let program = parse_program(input)?;
-    let value = eval_program(&program, env).map_err(|e| e.to_string())?;
-
-    let new_env = extend_env_with_program(&program, env).map_err(|e| e.to_string())?;
+    let (value, new_env) = eval_program_with_env(&program, env).map_err(|e| e.to_string())?;
 
     Ok((value, new_env))
 }
@@ -342,6 +341,35 @@ fn test_repl_persistence_simple_binding() {
     // Use the variable in the next evaluation
     let (value2, _) = parse_eval_and_extract("x", &env).unwrap();
     assert_eq!(value2, Value::Int(42));
+}
+
+#[test]
+fn test_repl_typecheck_persistence() {
+    let mut type_env = TypeEnv::new();
+    let declaration = parse_program("let id = fun x -> x;").unwrap();
+    let use_site = parse_program("id true").unwrap();
+
+    assert_eq!(
+        typecheck_program_with_env(&declaration, &mut type_env).unwrap(),
+        parlang::Type::Int
+    );
+    assert_eq!(
+        typecheck_program_with_env(&use_site, &mut type_env).unwrap(),
+        parlang::Type::Bool
+    );
+}
+
+#[test]
+fn test_repl_typecheck_environment_stays_unchanged_after_eval_error() {
+    let mut type_env = TypeEnv::new();
+    let failing_program = parse_program("let value = 42; 1 / 0").unwrap();
+    let use_site = parse_program("value").unwrap();
+
+    let mut next_type_env = type_env.clone();
+    assert!(typecheck_program_with_env(&failing_program, &mut next_type_env).is_ok());
+    assert!(eval_program_with_env(&failing_program, &Environment::new()).is_err());
+
+    assert!(typecheck_program_with_env(&use_site, &mut type_env).is_err());
 }
 
 #[test]

@@ -318,8 +318,8 @@ fn test_load_type_inference() {
 }
 
 #[test]
-fn test_seq_type_inference() {
-    // Sequential expressions currently return type variables
+fn test_toplevel_declaration_type_inference() {
+    // Top-level declarations are inferred left-to-right before the body.
     let program = parse_program("let x = 1; 2").unwrap();
     let result = typecheck_program(&program);
     assert!(result.is_ok());
@@ -348,9 +348,9 @@ fn test_toplevel_welltyped_accepted() {
 fn test_toplevel_generalization() {
     let program =
         parse_program("let id = fun x -> x; let number = id 1; let flag = id true; flag").unwrap();
-    let result = typecheck_program(&program);
+    let ty = typecheck_program(&program).unwrap();
 
-    assert!(result.is_ok());
+    assert_eq!(ty, Type::Bool);
 }
 
 // ===== Recursive Function Type Inference Tests =====
@@ -397,18 +397,40 @@ fn test_rec_with_let_binding() {
 
 #[test]
 fn test_rec_curried_function() {
-    // Test curried recursive function: rec f -> fun x -> fun y -> if y == 0 then x else f (x + 1) (y - 1)
-    // Note: This creates an infinite type due to the recursive structure, so it should fail the occurs check
     let expr = parse("rec f -> fun x -> fun y -> if y == 0 then x else f (x + 1) (y - 1)").unwrap();
-    let result = typecheck(&expr);
-    // This actually fails with occurs check because f's type would be infinite
-    assert!(
-        result.is_err(),
-        "Curried recursive function creates infinite type"
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(
+        ty,
+        Type::Fun(
+            Box::new(Type::Int),
+            Box::new(Type::Fun(Box::new(Type::Int), Box::new(Type::Int)))
+        )
     );
-    if let Err(e) = result {
-        assert!(matches!(e, parlang::TypeError::OccursCheckFailed(_, _)));
-    }
+}
+
+#[test]
+fn test_rec_curried_sum_helper_type() {
+    let expr = parse(
+        "rec sum_helper -> fun acc -> fun n -> if n == 0 then acc else sum_helper (acc + n) (n - 1)",
+    )
+    .unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(
+        ty,
+        Type::Fun(
+            Box::new(Type::Int),
+            Box::new(Type::Fun(Box::new(Type::Int), Box::new(Type::Int)))
+        )
+    );
+}
+
+#[test]
+fn test_rec_occurs_check_still_fires() {
+    let expr = parse("rec f -> f f").unwrap();
+    assert!(matches!(
+        typecheck(&expr),
+        Err(parlang::TypeError::OccursCheckFailed(_, _))
+    ));
 }
 
 #[test]

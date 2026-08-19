@@ -568,7 +568,7 @@ Type checking always happens before evaluation. If type checking fails, evaluati
 
 ## Tracked Type-Inference Debt
 
-Type checking is now mandatory, but five Algorithm W inference arms are currently
+Type checking is now mandatory, but four Algorithm W inference arms are currently
 vacuous stubs: they return a fresh, unconstrained type variable instead of doing
 real inference, so programs relying solely on these constructs are accepted without
 genuine verification. Implementing them is deferred to later Arc B/F work. The guard
@@ -576,7 +576,6 @@ test in `crates/parlang/tests/mandatory_typecheck_guard.rs` covers the well-type
 programs that reach the binary run paths today.
 
 - `Match` — pattern-match inference and exhaustiveness interaction
-- `Seq` — sequential bindings
 - `Tuple` — tuple construction inference (non-empty case)
 - `TupleProj` — tuple projection inference
 - `Load` — `load "file.par"` module inference

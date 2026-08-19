@@ -42,9 +42,12 @@ pub mod types;
 pub use ast::{BinOp, Decl, Expr, Program};
 pub use dot::program_to_dot;
 pub use eval::{
-    eval, eval_program, extend_env_with_program, extract_bindings, Environment, EvalError, Value,
+    eval, eval_program, eval_program_with_env, extend_env_with_program, extract_bindings,
+    Environment, EvalError, Value,
 };
 pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
 pub use parser::{parse_expr, parse_program};
-pub use typechecker::{typecheck, typecheck_program, TypeEnv, TypeError};
+pub use typechecker::{
+    typecheck, typecheck_program, typecheck_program_with_env, TypeEnv, TypeError,
+};
 pub use types::{Type, TypeScheme, TypeVar};

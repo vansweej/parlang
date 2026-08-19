@@ -833,11 +833,24 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
 ///
 /// Returns an `EvalError` if a declaration or the trailing body cannot be evaluated.
 pub fn eval_program(program: &Program, env: &Environment) -> Result<Value, EvalError> {
+    eval_program_with_env(program, env).map(|(value, _)| value)
+}
+
+/// Evaluate a top-level program and return its persistent environment.
+///
+/// # Errors
+///
+/// Returns an `EvalError` if a declaration or the trailing body cannot be evaluated.
+pub fn eval_program_with_env(
+    program: &Program,
+    env: &Environment,
+) -> Result<(Value, Environment), EvalError> {
     let current_env = extend_env_with_program(program, env)?;
-    match &program.body {
+    let value = match &program.body {
         Some(body) => eval(body, &current_env),
         None => Ok(Value::Int(0)),
-    }
+    }?;
+    Ok((value, current_env))
 }
 
 /// Extend an environment with the evaluated declarations of a top-level program.
@@ -1984,6 +1997,33 @@ mod tests {
         let result_env = extend_env_with_program(&program, &env).unwrap();
         assert_eq!(result_env.lookup("x"), Some(&Value::Int(1)));
         assert_eq!(result_env.lookup("y"), Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn test_load_many_function_bindings() {
+        use std::fs;
+
+        let bindings = (0..8)
+            .map(|index| format!("let f{index} = fun x -> x in"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let lib_content = format!("{bindings} 0");
+        let temp_file = std::env::temp_dir().join(format!(
+            "test_load_many_function_bindings_{}.par",
+            std::process::id()
+        ));
+        fs::write(&temp_file, lib_content).unwrap();
+
+        let expr = Expr::Load(
+            temp_file.to_string_lossy().into_owned(),
+            Box::new(Expr::App(
+                Box::new(Expr::Var("f7".to_string())),
+                Box::new(Expr::Int(42)),
+            )),
+        );
+
+        assert_eq!(eval(&expr, &Environment::new()), Ok(Value::Int(42)));
+        fs::remove_file(&temp_file).ok();
     }
 
     // Test Tuple evaluation

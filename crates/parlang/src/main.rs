@@ -6,8 +6,8 @@
 /// - AST dumping to stdout as text IR (--dump) or Graphviz DOT (--dump-dot)
 use clap::{Parser, Subcommand};
 use parlang::{
-    eval_program, extend_env_with_program, parse_program, program_to_dot, typecheck_program,
-    Environment,
+    eval_program, eval_program_with_env, parse_program, program_to_dot, typecheck_program,
+    typecheck_program_with_env, Environment, TypeEnv,
 };
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -104,6 +104,7 @@ fn main() {
 
 fn repl() {
     let mut env = Environment::new();
+    let mut type_env = TypeEnv::new();
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
 
     loop {
@@ -176,7 +177,8 @@ fn repl() {
             match parse_program(input) {
                 Ok(program) => {
                     // Type check before evaluating (mandatory)
-                    match typecheck_program(&program) {
+                    let mut next_type_env = type_env.clone();
+                    match typecheck_program_with_env(&program, &mut next_type_env) {
                         Ok(ty) => println!("Type: {ty}"),
                         Err(e) => {
                             eprintln!("Type error: {e}");
@@ -184,19 +186,12 @@ fn repl() {
                         }
                     }
 
-                    match eval_program(&program, &env) {
-                        Ok(value) => {
+                    match eval_program_with_env(&program, &env) {
+                        Ok((value, new_env)) => {
                             println!("{value}");
-                            // Persist top-level declarations for future REPL evaluations.
-                            match extend_env_with_program(&program, &env) {
-                                Ok(new_env) => {
-                                    env = new_env;
-                                }
-                                Err(e) => {
-                                    // If binding extraction fails, report it but continue with the old environment
-                                    eprintln!("Warning: Failed to persist bindings: {e}");
-                                }
-                            }
+                            // Persist declarations evaluated as part of this REPL input.
+                            env = new_env;
+                            type_env = next_type_env;
                         }
                         Err(e) => eprintln!("Evaluation error: {e}"),
                     }
