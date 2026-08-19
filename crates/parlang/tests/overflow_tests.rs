@@ -1,6 +1,6 @@
 /// Tests for integer overflow handling and edge cases
 /// These tests verify that arithmetic operations properly detect and report overflow conditions
-use parlang::{eval, parse, Environment, Value};
+use parlang::{eval, parse_expr as parse, Environment, Value};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
     let expr = parse(input)?;

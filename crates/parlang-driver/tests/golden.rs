@@ -94,15 +94,23 @@ fn dump_dot_arithmetic() {
 
     assert!(stdout.contains("digraph AST"), "stdout was: {stdout}");
     assert!(
-        stdout.contains("node0 [label=\"BinOp\\n+\"]"),
+        stdout.contains("node0 [label=\"Program\"]"),
         "stdout was: {stdout}"
     );
     assert!(
-        stdout.contains("node2 [label=\"BinOp\\n*\"]"),
+        stdout.contains("node1 [label=\"BinOp\\n+\"]"),
         "stdout was: {stdout}"
     );
     assert!(
-        stdout.contains("node0 -> node2 [label=\"right\"]"),
+        stdout.contains("node3 [label=\"BinOp\\n*\"]"),
+        "stdout was: {stdout}"
+    );
+    assert!(
+        stdout.contains("node0 -> node1 [label=\"body\"]"),
+        "stdout was: {stdout}"
+    );
+    assert!(
+        stdout.contains("node1 -> node3 [label=\"right\"]"),
         "stdout was: {stdout}"
     );
 }

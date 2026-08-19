@@ -7,15 +7,15 @@
 /// # Example
 ///
 /// ```
-/// use parlang::{parse, dot::ast_to_dot};
+/// use parlang::{dot::ast_to_dot, parse_expr};
 /// use std::fs;
 ///
 /// let source = "let x = 42 in x + 1";
-/// let expr = parse(source).unwrap();
+/// let expr = parse_expr(source).unwrap();
 /// let dot_output = ast_to_dot(&expr);
 /// fs::write("ast.dot", dot_output).unwrap();
 /// ```
-use crate::ast::{BinOp, Expr, Literal, Pattern};
+use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
 use std::fmt::Write;
 use std::io;
 
@@ -67,6 +67,57 @@ pub fn ast_to_dot(expr: &Expr) -> String {
     output
 }
 
+/// Convert a program to DOT format.
+///
+/// # Arguments
+///
+/// * `program` - The program to convert to DOT format
+///
+/// # Returns
+///
+/// A String containing the DOT representation of the program.
+pub fn program_to_dot(program: &Program) -> String {
+    let mut output = String::new();
+    output.push_str("digraph AST {\n");
+    output.push_str("  node [shape=box, style=rounded];\n");
+    output.push_str("  edge [fontsize=10];\n\n");
+
+    let mut gen = NodeIdGenerator::new();
+    let program_id = gen.next();
+    let _ = writeln!(output, "  {program_id} [label=\"Program\"];");
+    for (index, decl) in program.decls.iter().enumerate() {
+        match decl {
+            Decl::Let {
+                name,
+                ty_ann,
+                value,
+                ..
+            } => {
+                let decl_id = gen.next();
+                let label = if let Some(ty) = ty_ann {
+                    format!("Let\\n{} : {}", escape_label(name), ty)
+                } else {
+                    format!("Let\\n{}", escape_label(name))
+                };
+                let _ = writeln!(output, "  {decl_id} [label=\"{label}\"];");
+                let value_id = expr_to_dot(value, &mut output, &mut gen);
+                let _ = writeln!(
+                    output,
+                    "  {program_id} -> {decl_id} [label=\"decl {index}\"];"
+                );
+                let _ = writeln!(output, "  {decl_id} -> {value_id} [label=\"value\"];");
+            }
+        }
+    }
+    if let Some(body) = &program.body {
+        let body_id = expr_to_dot(body, &mut output, &mut gen);
+        let _ = writeln!(output, "  {program_id} -> {body_id} [label=\"body\"];");
+    }
+
+    output.push_str("}\n");
+    output
+}
+
 /// Write DOT representation of an expression to a file
 ///
 /// # Arguments
@@ -82,35 +133,6 @@ pub fn ast_to_dot(expr: &Expr) -> String {
 pub fn write_ast_to_dot_file(expr: &Expr, path: &str) -> io::Result<()> {
     let dot_content = ast_to_dot(expr);
     std::fs::write(path, dot_content)
-}
-
-/// Emit DOT for a `Seq` (semicolon-separated top-level bindings) node
-/// (extracted from `expr_to_dot` to keep its line count down).
-fn dot_seq(
-    node_id: &str,
-    bindings: &[(String, Option<crate::ast::TypeAnnotation>, Expr)],
-    body: &Expr,
-    output: &mut String,
-    gen: &mut NodeIdGenerator,
-) {
-    let _ = writeln!(output, "  {node_id} [label=\"Seq\"];");
-    for (i, (name, ty_ann, value)) in bindings.iter().enumerate() {
-        let binding_id = gen.next();
-        let label = if let Some(ty) = ty_ann {
-            format!("Binding\\n{} : {}", escape_label(name), ty)
-        } else {
-            format!("Binding\\n{}", escape_label(name))
-        };
-        let _ = writeln!(output, "  {binding_id} [label=\"{label}\"];");
-        let value_id = expr_to_dot(value, output, gen);
-        let _ = writeln!(
-            output,
-            "  {node_id} -> {binding_id} [label=\"binding {i}\"];"
-        );
-        let _ = writeln!(output, "  {binding_id} -> {value_id} [label=\"value\"];");
-    }
-    let body_id = expr_to_dot(body, output, gen);
-    let _ = writeln!(output, "  {node_id} -> {body_id} [label=\"body\"];");
 }
 
 /// Emit DOT for a `Match` node and its arms (extracted from `expr_to_dot`
@@ -421,7 +443,6 @@ fn expr_to_dot(expr: &Expr, output: &mut String, gen: &mut NodeIdGenerator) -> S
         }
         Expr::App(func, arg) => dot_app(&node_id, func, arg, output, gen),
         Expr::Load(filepath, body) => dot_load(&node_id, filepath, body, output, gen),
-        Expr::Seq(bindings, body) => dot_seq(&node_id, bindings, body, output, gen),
         Expr::Rec(name, body) => dot_rec(&node_id, name, body, output, gen),
         Expr::Match(scrutinee, arms) => dot_match(&node_id, scrutinee, arms, output, gen),
         Expr::Tuple(elements) => dot_tuple(&node_id, elements, output, gen),
@@ -702,16 +723,19 @@ mod tests {
     }
 
     #[test]
-    fn test_seq_expr() {
-        let bindings = vec![
-            ("x".to_string(), None, Expr::Int(42)),
-            ("y".to_string(), None, Expr::Int(10)),
-        ];
-        let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
-        let dot = ast_to_dot(&expr);
-        assert!(dot.contains("[label=\"Seq\"]"));
-        assert!(dot.contains("[label=\"Binding\\nx\"]"));
-        assert!(dot.contains("[label=\"Binding\\ny\"]"));
+    fn test_program() {
+        let program = Program {
+            decls: vec![Decl::Let {
+                name: "x".to_string(),
+                ty_ann: None,
+                value: Expr::Int(42),
+                doc: None,
+            }],
+            body: Some(Expr::Var("x".to_string())),
+        };
+        let dot = program_to_dot(&program);
+        assert!(dot.contains("[label=\"Program\"]"));
+        assert!(dot.contains("[label=\"Let\\nx\"]"));
     }
 
     #[test]

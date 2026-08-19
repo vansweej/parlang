@@ -90,14 +90,14 @@ let x = 42 in x + 1                    # Result: 43
 let double = fun x -> x + x in double 5 # Result: 10
 ```
 
-**Sequential let bindings (for programs and REPL):**
+**Top-level let declarations (for programs and REPL):**
 ```
 let x = 42;
 let y = 10;
 x + y                                   # Result: 52
 ```
 
-You can define multiple bindings without nesting `in` keywords by using semicolons.
+Use semicolon-terminated declarations at the top level; an optional trailing expression is evaluated after the declarations.
 
 ### Functions
 ```
@@ -110,9 +110,9 @@ fun x -> x + 1                         # Anonymous function
 ParLang supports **explicit type annotations** for variables to improve code documentation and enable early error detection:
 
 ```
-let x : Int = 42 in x + 1              # Type annotation on variable
-let active : Bool = true;              # Sequential binding with annotation
-let count : Int = 100;                 # Multiple annotated bindings
+let x : Int = 42 in x + 1              -- Type annotation on variable
+let active : Bool = true;              -- Top-level declaration with annotation
+let count : Int = 100;                 -- Multiple annotated bindings
 ```
 
 Type annotations are optional and work alongside automatic type inference. See [Type Annotations Documentation](docs/TYPE_ANNOTATIONS.md) for details.
@@ -522,7 +522,7 @@ in let result = square 5
 in result                                   # Result: 25
 ```
 
-Library files can define multiple functions using semicolon-separated let bindings:
+Library files can define multiple functions as semicolon-terminated top-level declarations; their optional trailing expression is evaluated after the declarations:
 ```parlang
 let double = fun x -> x * 2;
 let triple = fun x -> x * 3;
@@ -652,11 +652,11 @@ Type expressions to evaluate them. Press Ctrl+C to exit.
 
 **Note:** The REPL intelligently detects when your expression is complete and parseable, automatically submitting it after you press Enter. For incomplete multiline expressions (like `let...in` syntax split across lines), simply continue typing on new lines - the REPL waits until your expression is complete.
 
-In the REPL and file mode, you can use semicolon-separated let bindings to define multiple functions without nesting `in` keywords. The trailing expression is optional - if omitted, it defaults to `0`.
+In the REPL and file mode, semicolon-terminated top-level declarations define multiple functions without nesting `in` keywords. The trailing expression is optional; if omitted, the program evaluates to `0`.
 
 #### Persistent Environment
 
-**New in this version:** The REPL now maintains a persistent environment across evaluations. When you define functions or load libraries using semicolon syntax, they remain available for subsequent evaluations:
+**New in this version:** The REPL now maintains a persistent environment across evaluations. Top-level declarations and bindings loaded from libraries remain available for subsequent evaluations:
 
 ```
 > let double = fun x -> x + x;

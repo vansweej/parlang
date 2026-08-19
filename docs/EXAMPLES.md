@@ -43,11 +43,11 @@ cargo run
 
 The REPL supports both single-line and multiline input:
 - Type expressions and press Enter for single-line input
-- **Auto-Submit**: When a line ends with a semicolon (`;`) after a `let` assignment, it's automatically submitted
+- **Auto-Submit**: A semicolon-terminated top-level `let` declaration is automatically submitted
 - For other multiline expressions, continue typing on new lines (you'll see `... ` prompt)
 - Press Enter on an empty line to evaluate the complete expression
-- **Persistent Environment**: Function definitions and library loads using semicolon syntax persist across evaluations
-- **Optional Trailing Expression**: You can omit the trailing `0` or `in 0` for convenience
+- **Persistent Environment**: Top-level declarations and library bindings persist across evaluations
+- **Optional Trailing Expression**: You can omit the trailing expression; a declarations-only program evaluates to `0`
 
 **Example REPL session:**
 ```
@@ -527,14 +527,14 @@ let x = 42 in x
 2. Evaluate the body expression `x`
 3. Result is `42`
 
-### Sequential Let Bindings (Program Form)
+### Top-Level Let Declarations (Program Form)
 
 ParLang supports two syntaxes for let bindings:
 
 1. **Traditional let-in syntax** - used within expressions
-2. **Sequential let syntax with semicolons** - used for programs and top-level definitions
+2. **Top-level declarations with semicolons** - used for programs and top-level definitions
 
-**Sequential syntax (recommended for multiple definitions):**
+**Top-level declaration syntax (recommended for multiple definitions):**
 
 ```parlang
 let x = 10;
@@ -549,7 +549,7 @@ x + y
 3. Evaluate `x + y`
 4. Result is `42`
 
-**Benefits of sequential syntax:**
+**Benefits of top-level declarations:**
 - No nested `in` keywords required
 - Cleaner, more readable code
 - Better for defining multiple functions in libraries
@@ -579,7 +579,7 @@ let x = 1 in let y = 2 in x + y
 3. Evaluate `x + y` = `1 + 2`
 4. Result is `3`
 
-**Same with sequential syntax:**
+**Same with top-level declarations:**
 
 ```parlang
 let x = 1;
@@ -606,7 +606,7 @@ let x = 10 in let x = x + 1 in x
 
 **Explanation:** The inner `x` is bound to the value of the outer `x` plus 1.
 
-**With sequential syntax:**
+**With top-level declarations:**
 
 ```parlang
 let x = 10;
@@ -622,7 +622,7 @@ let a = 5 in let b = 10 in let c = a + b in c * 2
 ```
 **Output:** `30`
 
-**With sequential syntax:**
+**With top-level declarations:**
 
 ```parlang
 let a = 5;
@@ -1116,7 +1116,7 @@ load "mylib.par" in double 21
 
 ### How Libraries Work
 
-Library files can be structured using semicolon-separated let bindings. The final expression (often `0`) is ignored - only the bindings are extracted.
+Library files can be structured with semicolon-terminated top-level declarations. Their optional trailing expression is evaluated after the declarations; declarations provide the bindings made available by `load`.
 
 **Modern library structure (recommended):**
 ```parlang

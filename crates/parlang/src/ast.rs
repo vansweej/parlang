@@ -24,7 +24,6 @@
 /// - Applications: `App(func, arg)`
 /// - Recursion: `Rec(name, param, body)`
 /// - Let bindings: `Let(name, ty_ann, value, body)`
-/// - Sequential bindings: `Seq(bindings, body)`
 /// - Conditionals: `If(cond, then_expr, else_expr)`
 /// - Binary operations: `BinOp(op, left, right)`
 /// - Pattern matching: `Match(expr, arms)`
@@ -57,8 +56,8 @@
 ///
 /// ```text
 /// Let("x", None,
-///     Lit(Int(42)),
-///     BinOp(Add, Var("x"), Lit(Int(1))))
+///     Expr::Int(42),
+///     BinOp(Add, Var("x"), Expr::Int(1)))
 /// ```
 use std::fmt;
 
@@ -118,6 +117,30 @@ pub enum TypeAnnotation {
     App(String, Vec<TypeAnnotation>),
 }
 
+/// A top-level declaration. Open by construction: further variants (top-level
+/// `data`/`type` forms) arrive with deferred slice work.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Decl {
+    /// A top-level `let name [: ty] = value;` binding.
+    Let {
+        name: String,
+        ty_ann: Option<TypeAnnotation>,
+        value: Expr,
+        /// Reserved landing pad for attached doc text. Always `None` this
+        /// slice; populated when Haddock-style attachment lands.
+        doc: Option<String>,
+    },
+}
+
+/// A whole `ParLang` program: a list of declarations followed by an optional
+/// trailing expression. Consumed directly by typecheck, eval, dot, Display,
+/// and REPL persistence — there is NO lowering to a nested `Expr`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Program {
+    pub decls: Vec<Decl>,
+    pub body: Option<Expr>,
+}
+
 /// Expression types in the language
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -155,10 +178,6 @@ pub enum Expr {
 
     /// Load expression: load "filepath" in e
     Load(String, Box<Expr>),
-
-    /// Sequential let bindings: let x = e1; let y = e2; expr
-    /// Vector of (name, optional type annotation, value) triples, followed by a body expression
-    Seq(Vec<(String, Option<TypeAnnotation>, Expr)>, Box<Expr>),
 
     /// Recursive function definition: rec name -> body
     /// The function can reference itself by name within its body
@@ -234,27 +253,6 @@ fn fmt_char_literal(f: &mut fmt::Formatter, c: char) -> fmt::Result {
     write!(f, "'")
 }
 
-/// Format a `Seq` (semicolon-separated top-level bindings) expression
-/// (extracted from the `Expr` Display impl to keep its line count down).
-fn fmt_seq(
-    f: &mut fmt::Formatter,
-    bindings: &[(String, Option<TypeAnnotation>, Expr)],
-    body: &Expr,
-) -> fmt::Result {
-    write!(f, "(")?;
-    for (i, (name, ty_ann, value)) in bindings.iter().enumerate() {
-        if i > 0 {
-            write!(f, "; ")?;
-        }
-        if let Some(ty) = ty_ann {
-            write!(f, "let {name} : {ty} = {value}")?;
-        } else {
-            write!(f, "let {name} = {value}")?;
-        }
-    }
-    write!(f, "; {body})")
-}
-
 /// Format a `TypeDef` (sum-type declaration) expression (extracted from the
 /// `Expr` Display impl to keep its line count down).
 fn fmt_type_def(
@@ -322,7 +320,6 @@ impl fmt::Display for Expr {
             }
             Expr::App(func, arg) => write!(f, "({func} {arg})"),
             Expr::Load(filepath, body) => write!(f, "(load \"{filepath}\" in {body})"),
-            Expr::Seq(bindings, body) => fmt_seq(f, bindings, body),
             Expr::Rec(name, body) => write!(f, "(rec {name} -> {body})"),
             Expr::Match(scrutinee, arms) => {
                 write!(f, "(match {scrutinee} with")?;
@@ -363,6 +360,42 @@ impl fmt::Display for Expr {
                 Ok(())
             }
         }
+    }
+}
+
+impl fmt::Display for Program {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.decls.is_empty() {
+            return match &self.body {
+                Some(body) => write!(f, "{body}"),
+                None => Ok(()),
+            };
+        }
+
+        write!(f, "(")?;
+        for (index, decl) in self.decls.iter().enumerate() {
+            if index > 0 {
+                write!(f, "; ")?;
+            }
+            match decl {
+                Decl::Let {
+                    name,
+                    ty_ann,
+                    value,
+                    ..
+                } => {
+                    if let Some(ty) = ty_ann {
+                        write!(f, "let {name} : {ty} = {value}")?;
+                    } else {
+                        write!(f, "let {name} = {value}")?;
+                    }
+                }
+            }
+        }
+        if let Some(body) = &self.body {
+            write!(f, "; {body}")?;
+        }
+        write!(f, ")")
     }
 }
 
@@ -580,16 +613,17 @@ mod tests {
     }
 
     #[test]
-    fn test_expr_seq() {
-        let bindings = vec![
-            ("x".to_string(), None, Expr::Int(42)),
-            ("y".to_string(), None, Expr::Int(10)),
-        ];
-        let expr = Expr::Seq(bindings.clone(), Box::new(Expr::Var("x".to_string())));
-        assert_eq!(
-            expr,
-            Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())))
-        );
+    fn test_program() {
+        let program = Program {
+            decls: vec![Decl::Let {
+                name: "x".to_string(),
+                ty_ann: None,
+                value: Expr::Int(42),
+                doc: None,
+            }],
+            body: Some(Expr::Var("x".to_string())),
+        };
+        assert_eq!(program, program.clone());
     }
 
     // Test Clone trait
@@ -689,13 +723,25 @@ mod tests {
     }
 
     #[test]
-    fn test_display_seq() {
-        let bindings = vec![
-            ("x".to_string(), None, Expr::Int(42)),
-            ("y".to_string(), None, Expr::Int(10)),
-        ];
-        let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
-        assert_eq!(format!("{expr}"), "(let x = 42; let y = 10; x)");
+    fn test_display_program() {
+        let program = Program {
+            decls: vec![
+                Decl::Let {
+                    name: "x".to_string(),
+                    ty_ann: None,
+                    value: Expr::Int(42),
+                    doc: None,
+                },
+                Decl::Let {
+                    name: "y".to_string(),
+                    ty_ann: None,
+                    value: Expr::Int(10),
+                    doc: None,
+                },
+            ],
+            body: Some(Expr::Var("x".to_string())),
+        };
+        assert_eq!(format!("{program}"), "(let x = 42; let y = 10; x)");
     }
 
     // Test Display implementation for BinOp

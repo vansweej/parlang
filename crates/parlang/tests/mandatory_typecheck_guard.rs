@@ -1,5 +1,5 @@
 //! Guard: every program that reaches a binary eval path must typecheck.
-use parlang::{parse, typecheck};
+use parlang::{parse_expr as parse, typecheck};
 
 fn assert_well_typed(label: &str, src: &str) {
     let expr = parse(src).expect("must parse");

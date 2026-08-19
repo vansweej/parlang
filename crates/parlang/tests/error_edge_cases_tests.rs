@@ -1,6 +1,6 @@
 /// Tests for error handling edge cases and boundary conditions
 /// These tests verify proper error handling in various edge cases
-use parlang::{eval, parse, Environment, Value};
+use parlang::{eval, parse_expr as parse, parse_program, Environment, Value};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
     let expr = parse(input)?;
@@ -358,20 +358,20 @@ fn test_constructor_arity_mismatch_none_with_arg() {
 
 #[test]
 fn test_parse_empty_input() {
-    // Empty input defaults to 0 in parlang
+    // Empty input is a program with no trailing expression.
     let code = "";
-    let result = parse(code);
+    let result = parse_program(code);
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), parse("0").unwrap());
+    assert_eq!(result.unwrap().body, None);
 }
 
 #[test]
 fn test_parse_whitespace_only() {
-    // Whitespace-only input also defaults to 0
+    // Whitespace-only input is also a program with no trailing expression.
     let code = "   \n\t  ";
-    let result = parse(code);
+    let result = parse_program(code);
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), parse("0").unwrap());
+    assert_eq!(result.unwrap().body, None);
 }
 
 #[test]

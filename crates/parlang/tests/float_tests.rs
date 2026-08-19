@@ -1,5 +1,5 @@
 /// Tests for floating point type support
-use parlang::{eval, parse, typecheck, Environment, Value};
+use parlang::{eval, parse_expr as parse, typecheck, Environment, Value};
 
 const THREE_POINT_FOURTEEN: f64 = 314.0 / 100.0;
 

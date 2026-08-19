@@ -1,7 +1,7 @@
 use parlang::ast::Pattern;
 /// Integration tests to prove exhaustiveness checking works
 /// These tests verify warnings by checking the exhaustiveness results directly
-use parlang::{check_exhaustiveness, parse, Environment};
+use parlang::{check_exhaustiveness, parse_expr as parse, Environment};
 
 /// Test that exhaustive Option match has no warnings
 #[test]

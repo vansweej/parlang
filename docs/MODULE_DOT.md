@@ -218,7 +218,7 @@ Escapes:
 | `Fun(param, body)` | `Fun\n{param}` | body |
 | `App(func, arg)` | `App` | func, arg |
 | `Load(path, body)` | `Load\n{path}` | body |
-| `Seq(bindings, body)` | `Seq` | binding 0..n, body |
+| `Program { decls, body }` | `Program` root | Let declaration(s), body |
 | `Rec(name, body)` | `Rec\n{name}` | body |
 | `Match(scrut, arms)` | `Match` | scrutinee, arm 0..n |
 | `Tuple(elems)` | `Tuple` | elem 0..n |
@@ -257,7 +257,8 @@ Edges are labeled to show the relationship:
 - `scrutinee` - Match expression input
 - `pattern`, `result` - Match arm components
 - `elem N` - Tuple elements
-- `binding N` - Sequential bindings
+- `decl N` - Program declaration edges
+- `value` - Let declaration value
 
 ## Usage Examples
 

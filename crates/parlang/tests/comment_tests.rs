@@ -1,4 +1,4 @@
-use parlang::{parse, BinOp, Expr};
+use parlang::{parse_expr as parse, BinOp, Expr};
 
 #[test]
 fn leading_line_comment() {

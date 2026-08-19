@@ -31,8 +31,8 @@ fn main() -> ExitCode {
         }
     };
 
-    let expr = match parlang::parse(&source) {
-        Ok(expr) => expr,
+    let program = match parlang::parse_program(&source) {
+        Ok(program) => program,
         Err(err) => {
             eprintln!("parse error: {err}");
             return ExitCode::FAILURE;
@@ -40,21 +40,21 @@ fn main() -> ExitCode {
     };
 
     if cli.dump {
-        println!("{expr}");
+        println!("{program}");
         return ExitCode::SUCCESS;
     }
     if cli.dump_dot {
-        println!("{}", parlang::dot::ast_to_dot(&expr));
+        println!("{}", parlang::program_to_dot(&program));
         return ExitCode::SUCCESS;
     }
 
-    if let Err(err) = parlang::typecheck(&expr) {
+    if let Err(err) = parlang::typecheck_program(&program) {
         eprintln!("type error: {err}");
         return ExitCode::FAILURE;
     }
 
     let env = parlang::Environment::new();
-    match parlang::eval(&expr, &env) {
+    match parlang::eval_program(&program, &env) {
         Ok(value) => {
             println!("{value}");
             ExitCode::SUCCESS

@@ -1,6 +1,6 @@
 /// Advanced exhaustiveness checking tests
 /// Tests for nested constructors, complex patterns, and edge cases
-use parlang::{parse, typecheck};
+use parlang::{parse_expr as parse, typecheck};
 
 // Nested Constructor Exhaustiveness Tests
 

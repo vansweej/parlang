@@ -11,10 +11,10 @@
 /// # Example
 ///
 /// ```
-/// use parlang::{parse, eval, Environment};
+/// use parlang::{eval, parse_expr, Environment};
 ///
 /// let program = "let x = 42 in x + 1";
-/// let expr = parse(program).expect("Parse error");
+/// let expr = parse_expr(program).expect("Parse error");
 /// let env = Environment::new();
 /// let result = eval(&expr, &env).expect("Evaluation error");
 /// println!("Result: {}", result); // prints "Result: 43"
@@ -23,10 +23,10 @@
 /// # Type Checking Example
 ///
 /// ```
-/// use parlang::{parse, typecheck};
+/// use parlang::{parse_expr, typecheck};
 ///
 /// let program = "fun x -> x + 1";
-/// let expr = parse(program).expect("Parse error");
+/// let expr = parse_expr(program).expect("Parse error");
 /// let ty = typecheck(&expr).expect("Type error");
 /// println!("Type: {}", ty); // prints "Type: Int -> Int"
 /// ```
@@ -39,9 +39,15 @@ pub mod typechecker;
 pub mod types;
 
 // Re-export commonly used types and functions
-pub use ast::{BinOp, Expr};
-pub use eval::{eval, extract_bindings, Environment, EvalError, Value};
+pub use ast::{BinOp, Decl, Expr, Program};
+pub use dot::program_to_dot;
+pub use eval::{
+    eval, eval_program, eval_program_with_env, extend_env_with_program, extract_bindings,
+    Environment, EvalError, Value,
+};
 pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
-pub use parser::parse;
-pub use typechecker::{typecheck, TypeEnv, TypeError};
+pub use parser::{parse_expr, parse_program};
+pub use typechecker::{
+    typecheck, typecheck_program, typecheck_program_with_env, TypeEnv, TypeError,
+};
 pub use types::{Type, TypeScheme, TypeVar};

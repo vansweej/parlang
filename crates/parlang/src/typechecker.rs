@@ -1,5 +1,5 @@
 /// Hindley-Milner type inference implementation
-use crate::ast::{BinOp, Expr};
+use crate::ast::{BinOp, Decl, Expr, Program};
 use crate::types::{Type, TypeScheme, TypeVar};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -40,6 +40,11 @@ impl TypeEnv {
         let var = Type::Var(TypeVar(self.next_var));
         self.next_var += 1;
         var
+    }
+
+    /// Advance the fresh-variable counter past an existing type variable.
+    fn advance_past(&mut self, var: &TypeVar) {
+        self.next_var = self.next_var.max(var.0.saturating_add(1));
     }
 
     /// Look up a variable and instantiate its type scheme
@@ -624,6 +629,7 @@ fn infer_binop(
     env: &mut TypeEnv,
 ) -> Result<(Type, Substitution), TypeError> {
     let (left_ty, s1) = infer(left, env)?;
+    advance_next_var_from_inference(env, &left_ty, &s1);
     let mut env1 = env.clone();
     apply_subst_env(&s1, &mut env1);
 
@@ -656,6 +662,7 @@ fn infer_let(
     env: &mut TypeEnv,
 ) -> Result<(Type, Substitution), TypeError> {
     let (value_ty, s1) = infer(value, env)?;
+    advance_next_var_from_inference(env, &value_ty, &s1);
 
     // If there's a type annotation, check it matches the inferred type
     if let Some(ty_ann) = ty_ann_opt {
@@ -671,6 +678,8 @@ fn infer_let(
         env1.bind(name.to_string(), scheme);
 
         let (body_ty, s2) = infer(body, &mut env1)?;
+        advance_next_var_from_inference(&mut env1, &body_ty, &s2);
+        env.next_var = env.next_var.max(env1.next_var);
 
         let subst = compose_subst(&s2, &s1);
         Ok((body_ty, subst))
@@ -683,6 +692,8 @@ fn infer_let(
         env1.bind(name.to_string(), scheme);
 
         let (body_ty, s2) = infer(body, &mut env1)?;
+        advance_next_var_from_inference(&mut env1, &body_ty, &s2);
+        env.next_var = env.next_var.max(env1.next_var);
 
         let subst = compose_subst(&s2, &s1);
         Ok((body_ty, subst))
@@ -784,16 +795,20 @@ fn infer_if(
 ) -> Result<(Type, Substitution), TypeError> {
     let (cond_ty, s1) = infer(cond, env)?;
     let s2 = unify(&cond_ty, &Type::Bool)?;
+    advance_next_var_from_inference(env, &cond_ty, &s1);
 
     let mut env1 = env.clone();
     apply_subst_env(&compose_subst(&s2, &s1), &mut env1);
 
     let (then_ty, s3) = infer(then_br, &mut env1)?;
+    advance_next_var_from_inference(&mut env1, &then_ty, &s3);
 
     let mut env2 = env1.clone();
     apply_subst_env(&s3, &mut env2);
 
     let (else_ty, s4) = infer(else_br, &mut env2)?;
+    advance_next_var_from_inference(&mut env2, &else_ty, &s4);
+    env.next_var = env.next_var.max(env2.next_var);
 
     let then_ty = apply_subst(&s4, &then_ty);
     let s5 = unify(&then_ty, &else_ty)?;
@@ -815,11 +830,13 @@ fn infer_app(
     env: &mut TypeEnv,
 ) -> Result<(Type, Substitution), TypeError> {
     let (func_ty, s1) = infer(func, env)?;
+    advance_next_var_from_inference(env, &func_ty, &s1);
 
     let mut env1 = env.clone();
     apply_subst_env(&s1, &mut env1);
 
     let (arg_ty, s2) = infer(arg, &mut env1)?;
+    advance_next_var_from_inference(&mut env1, &arg_ty, &s2);
 
     let func_ty = apply_subst(&s2, &func_ty);
     let result_ty = env1.fresh_var();
@@ -852,6 +869,8 @@ fn infer_rec(
     let mut extended_env = env.extend(name.to_string(), rec_ty.clone());
 
     let (body_ty, subst) = infer(body, &mut extended_env)?;
+    advance_next_var_from_inference(&mut extended_env, &body_ty, &subst);
+    env.next_var = env.next_var.max(extended_env.next_var);
 
     // The body type should be the same as the recursive function type
     // (after applying the substitution from inferring the body)
@@ -883,6 +902,8 @@ fn infer_fun(
     env1 = env1.extend(param.to_string(), param_ty.clone());
 
     let (body_ty, s1) = infer(body, &mut env1)?;
+    advance_next_var_from_inference(&mut env1, &body_ty, &s1);
+    env.next_var = env.next_var.max(env1.next_var);
     let param_ty = apply_subst(&s1, &param_ty);
 
     Ok((Type::Fun(Box::new(param_ty), Box::new(body_ty)), s1))
@@ -949,11 +970,6 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
 
         Expr::Load(_, _) => {
             // For now, return a type variable for load expressions
-            Ok((env.fresh_var(), HashMap::new()))
-        }
-
-        Expr::Seq(_, _) => {
-            // For now, return a type variable for sequential expressions
             Ok((env.fresh_var(), HashMap::new()))
         }
 
@@ -1032,10 +1048,80 @@ pub fn typecheck(expr: &Expr) -> Result<Type, TypeError> {
     Ok(apply_subst(&subst, &ty))
 }
 
+/// Synchronise a cloned environment's fresh-variable counter with an inference result.
+///
+/// Several inference helpers recurse through cloned `TypeEnv`s. Their fresh variables
+/// must not be re-issued by a sibling inference branch that starts from the original
+/// environment.
+fn advance_next_var_from_inference(env: &mut TypeEnv, ty: &Type, subst: &Substitution) {
+    for var in free_type_vars(ty) {
+        env.advance_past(&var);
+    }
+    for (var, replacement) in subst {
+        env.advance_past(var);
+        for replacement_var in free_type_vars(replacement) {
+            env.advance_past(&replacement_var);
+        }
+    }
+}
+
+/// Type check a top-level program, threading generalized declarations left to right.
+///
+/// # Errors
+///
+/// Returns a `TypeError` if a declaration or the trailing body fails to type-check.
+pub fn typecheck_program(program: &Program) -> Result<Type, TypeError> {
+    let mut env = TypeEnv::new();
+    typecheck_program_with_env(program, &mut env)
+}
+
+/// Type check a top-level program and persist its declarations in `env` on success.
+///
+/// # Errors
+///
+/// Returns a `TypeError` if a declaration or the trailing body fails to type-check.
+/// The supplied environment is unchanged on error.
+pub fn typecheck_program_with_env(program: &Program, env: &mut TypeEnv) -> Result<Type, TypeError> {
+    let mut program_env = env.clone();
+
+    for decl in &program.decls {
+        match decl {
+            Decl::Let {
+                name,
+                ty_ann,
+                value,
+                ..
+            } => {
+                let (value_ty, mut subst) = infer(value, &mut program_env)?;
+                advance_next_var_from_inference(&mut program_env, &value_ty, &subst);
+                if let Some(ty_ann) = ty_ann {
+                    let annotated_ty = resolve_type_annotation(ty_ann, &mut program_env)?;
+                    let annotation_subst = unify(&value_ty, &annotated_ty)?;
+                    subst = compose_subst(&annotation_subst, &subst);
+                }
+                apply_subst_env(&subst, &mut program_env);
+                let value_ty = apply_subst(&subst, &value_ty);
+                let scheme = program_env.generalize(&value_ty);
+                program_env.bind(name.clone(), scheme);
+            }
+        }
+    }
+
+    let ty = match &program.body {
+        Some(body) => {
+            let (ty, subst) = infer(body, &mut program_env)?;
+            Ok(apply_subst(&subst, &ty))
+        }
+        None => Ok(Type::Int),
+    }?;
+    *env = program_env;
+    Ok(ty)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::parse;
+    use crate::parser::parse_expr as parse;
 
     fn check(source: &str) -> Result<Type, TypeError> {
         let expr = parse(source).unwrap();

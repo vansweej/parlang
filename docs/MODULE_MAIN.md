@@ -236,9 +236,9 @@ flowchart TD
 
 **Behavior**:
 - Reads the specified file
-- Parses the entire file contents as a single expression
+- Parses the entire file contents as a `Program`
 - **Optional**: If `--dump` or `--dump-dot` is specified, prints the AST to stdout and exits before evaluation
-- Evaluates the expression in a fresh environment
+- Type-checks and evaluates the program in a fresh environment
 - Prints the final result value
 - Exits with code 0 on success, code 1 on any error
 
@@ -263,15 +263,17 @@ digraph AST {
   node [shape=box, style=rounded];
   edge [fontsize=10];
 
-  node0 [label="Let\ndouble"];
-  node1 [label="Fun\nx"];
-  node2 [label="BinOp\n+"];
-  node3 [label="Var\nx"];
-  node4 [label="Var\nx"];
-  node2 -> node3 [label="left"];
-  node2 -> node4 [label="right"];
-  node1 -> node2 [label="body"];
-  node0 -> node1 [label="value"];
+   node0 [label="Program"];
+   node1 [label="Let\ndouble"];
+   node2 [label="Fun\nx"];
+   node3 [label="BinOp\n+"];
+   node4 [label="Var\nx"];
+   node5 [label="Var\nx"];
+   node3 -> node4 [label="left"];
+   node3 -> node5 [label="right"];
+   node2 -> node3 [label="body"];
+   node1 -> node2 [label="value"];
+   node0 -> node1 [label="decl 0"];
   ...
 }
 ```
@@ -300,13 +302,25 @@ fn main()
 
 **File Execution Mode Logic**:
 ```rust
-let filename = &args[1];
+let filename = cli.file.as_ref().expect("file mode requires a filename");
 match fs::read_to_string(filename) {
     Ok(contents) => {
-        match execute(&contents) {
-            Ok(value) => println!("{}", value),
-            Err(e) => {
-                eprintln!("Error: {}", e);
+        match parse_program(&contents) {
+            Ok(program) => {
+                if let Err(error) = typecheck_program(&program) {
+                    eprintln!("type error: {error}");
+                    process::exit(1);
+                }
+                match eval_program(&program, &Environment::new()) {
+                    Ok(value) => println!("{value}"),
+                    Err(error) => {
+                        eprintln!("Error: {error}");
+                        process::exit(1);
+                    }
+                }
+            }
+            Err(error) => {
+                eprintln!("Parse error: {error}");
                 std::process::exit(1);
             }
         }
@@ -330,48 +344,27 @@ repl();
 - `0`: Success (REPL exit or successful file execution)
 - `1`: Error (file read failure, parse error, or evaluation error)
 
-### `execute()`
+### File Execution Flow
 
-Executes a ParLang source string and returns the result value.
-
-```rust
-fn execute(source: &str) -> Result<Value, String>
-```
-
-**Parameters**:
-- `source`: ParLang source code as a string slice
-
-**Returns**:
-- `Ok(Value)`: The computed value from evaluating the expression
-- `Err(String)`: Error message describing parse or evaluation failure
-
-**Implementation Flow**:
+File mode handles the parsed program directly in `main()`.
 
 ```mermaid
 flowchart LR
-    SOURCE[source: &str] --> PARSE[parse source]
-    PARSE -->|Ok| EXPR[expr: Expr]
-    PARSE -->|Err| ERR1[Return Err]
-    
-    EXPR --> ENV[Create new<br/>Environment]
-    ENV --> EVAL[eval expr<br/>in env]
-    
-    EVAL -->|Ok| VALUE[Return Ok Value]
-    EVAL -->|Err| ERR2[Convert to String<br/>Return Err]
-```
-
-**Example**:
-```rust
-let result = execute("1 + 2");
-assert_eq!(result, Ok(Value::Int(3)));
-
-let error = execute("x + 1");  // undefined variable
-assert!(error.is_err());
+    SOURCE[file contents] --> PARSE[parse_program]
+    PARSE -->|Ok| PROGRAM[program: Program]
+    PARSE -->|Err| PARSE_ERROR[Print parse error and exit]
+    PROGRAM --> TYPECHECK[typecheck_program]
+    TYPECHECK -->|Err| TYPE_ERROR[Print type error and exit]
+    TYPECHECK -->|Ok| ENV[Create new<br/>Environment]
+    ENV --> EVAL[eval_program<br/>in env]
+    EVAL -->|Ok| VALUE[Print value]
+    EVAL -->|Err| EVAL_ERROR[Print evaluation error and exit]
 ```
 
 **Error Handling**:
-- Parse errors from `parse()` are propagated directly (already strings)
-- Evaluation errors from `eval()` are converted to strings via `.map_err(|e| e.to_string())`
+- Parse errors from `parse_program()` are reported directly (already strings)
+- Type errors from `typecheck_program()` stop execution before evaluation
+- Evaluation errors from `eval_program()` are converted to strings via `.map_err(|e| e.to_string())`
 
 ### `repl()`
 
@@ -383,18 +376,18 @@ fn repl()
 
 **Behavior**:
 - Creates a fresh `Environment` for the REPL session
-- Enters an infinite loop reading and evaluating expressions
+- Enters an infinite loop reading and evaluating programs
 - **Multiline Input**: Accumulates input across multiple lines
   - First line shows `> ` prompt
   - Continuation lines show `... ` prompt
   - Empty line (just Enter) signals end of input and triggers evaluation (if accumulated input is not yet parseable)
   - **Auto-submit**: After each line, if the accumulated input forms a complete, parseable program, it's automatically submitted without requiring a blank line
 - Each submission cycle:
-  1. Accumulates lines until blank line is entered or complete expression is detected
+  1. Accumulates lines until blank line is entered or a complete program is detected
   2. Joins all accumulated lines
   3. Trims whitespace
-  4. Parses the complete input
-  5. Evaluates the expression
+  4. Parses and type-checks the complete program
+  5. Evaluates the program
   6. Prints the result or error
   7. Returns to initial `> ` prompt
 - Exits on EOF (Ctrl+D on Unix, Ctrl+Z on Windows)
@@ -477,7 +470,7 @@ The REPL supports both single-line and multiline input with intelligent auto-sub
 42
 ```
 
-**Let assignment with semicolon (auto-submits)**:
+**Top-level let declaration with semicolon (auto-submits)**:
 ```
 > let x = 42;
 0
@@ -485,7 +478,7 @@ The REPL supports both single-line and multiline input with intelligent auto-sub
 42
 ```
 
-**Multiple let bindings with semicolon (auto-submits)**:
+**Multiple top-level let declarations (auto-submit)**:
 ```
 > let x = 1; let y = 2; let z = 3;
 0
@@ -510,11 +503,11 @@ The REPL supports both single-line and multiline input with intelligent auto-sub
 15
 ```
 
-**Auto-Submit Behavior**: The REPL intelligently detects when your expression is complete and parseable after each line you type. When a complete expression is detected (like simple arithmetic, function calls, or semicolon-terminated let assignments), it automatically submits without requiring a blank line. For incomplete multiline expressions (like `let...in` syntax split across lines), simply continue typing on new lines - the REPL waits until your expression is complete.
+**Auto-Submit Behavior**: The REPL checks the accumulated input with `parse_program` after each line. When it forms a complete program or expression (including a semicolon-terminated top-level `let` declaration), it automatically submits without requiring a blank line. For incomplete multiline expressions such as `let ... in`, continue typing on new lines until the input is complete.
 
-### Expression Evaluation
+### Program Evaluation
 
-Each complete expression (after blank line submission or auto-submit) is evaluated immediately:
+Each complete program (after blank line submission or auto-submit) is type-checked and evaluated immediately:
 
 ```
 > 42
@@ -565,32 +558,31 @@ Evaluation error: Division by zero
 
 ### Environment Persistence
 
-**Persistent Environment**: The REPL now maintains a persistent environment across evaluations. When you define functions or load libraries using semicolon syntax (Seq expressions), they remain available for subsequent evaluations.
+**Persistent Environment**: The REPL maintains a persistent environment across evaluations. Top-level `Decl::Let` declarations and bindings loaded from libraries remain available for subsequent evaluations.
 
 **How it works**:
 ```rust
 fn repl() {
     let mut env = Environment::new();  // Mutable environment
     // ... in evaluation loop:
-    match eval(&expr, &env) {
-        Ok(value) => {
+    let program = parse_program(input)?;
+    typecheck_program(&program)?;
+    match eval_program_with_env(&program, &env) {
+        Ok((value, new_env)) => {
             println!("{}", value);
-            // Extract bindings from the expression and merge into environment
-            match extract_bindings(&expr, &env) {
-                Ok(new_env) => {
-                    env = new_env;
-                }
-                Err(e) => {
-                    eprintln!("Warning: Failed to persist bindings: {}", e);
-                }
-            }
+            // Persist declarations evaluated as part of this submission.
+            env = new_env;
         }
         // ...
     }
 }
 ```
 
-**Example with semicolon syntax (persists, auto-submits)**:
+The REPL uses `parse_program`, `typecheck_program`, and
+`eval_program_with_env` for each submission. The latter returns both the value
+and the environment containing declarations evaluated by that submission.
+
+**Example with top-level declarations (persists, auto-submits)**:
 ```
 > let double = fun x -> x + x;
 0
@@ -598,7 +590,7 @@ fn repl() {
 42
 ```
 
-**Note:** The trailing expression after semicolons is now optional. Both `let x = 42;` and `let x = 42; 0` work identically, defaulting to `0` when omitted. All complete parseable expressions are automatically submitted after you press Enter.
+**Note:** A `Program` may omit its trailing expression. Both `let x = 42;` and `let x = 42; 0` evaluate to `0`; the former has no body. All complete parseable programs are automatically submitted after you press Enter.
 
 **Example with traditional let-in syntax (does not persist)**:
 ```
@@ -674,8 +666,8 @@ sequenceDiagram
     participant User
     participant Main
     participant FS as std::fs
-    participant Execute
     participant Parse
+    participant Typecheck
     participant Eval
     
     User->>Main: parlang script.par
@@ -683,27 +675,25 @@ sequenceDiagram
     
     alt File read success
         FS-->>Main: Ok(contents)
-        Main->>Execute: execute(&contents)
-        Execute->>Parse: parse(&contents)
+        Main->>Parse: parse_program(&contents)
         
         alt Parse success
-            Parse-->>Execute: Ok(expr)
-            Execute->>Eval: eval(&expr, &env)
+            Parse-->>Main: Ok(program)
+            Main->>Typecheck: typecheck_program(&program)
+            Typecheck-->>Main: Ok(type)
+            Main->>Eval: eval_program(&program, &env)
             
             alt Eval success
-                Eval-->>Execute: Ok(value)
-                Execute-->>Main: Ok(value)
+                Eval-->>Main: Ok(value)
                 Main->>User: println!("{}", value)
                 Main->>User: exit(0)
             else Eval error
-                Eval-->>Execute: Err(e)
-                Execute-->>Main: Err(e.to_string())
+                Eval-->>Main: Err(e)
                 Main->>User: eprintln!("Error: {}", e)
                 Main->>User: exit(1)
             end
         else Parse error
-            Parse-->>Execute: Err(e)
-            Execute-->>Main: Err(e)
+            Parse-->>Main: Err(e)
             Main->>User: eprintln!("Error: {}", e)
             Main->>User: exit(1)
         end
@@ -714,23 +704,24 @@ sequenceDiagram
     end
 ```
 
-### Single Expression Requirement
+### Program Structure
 
-The file must contain exactly one expression. Multiple expressions are not supported:
+A file is parsed as a `Program`: zero or more semicolon-terminated top-level
+`let` declarations followed by an optional trailing expression. A bare
+top-level `let` without its terminating semicolon is not a declaration.
 
 **Valid** (`valid.par`):
 ```
-let x = 10 in
-let y = 20 in
+let x = 10;
+let y = 20;
 x + y
 ```
 
-**Invalid** (`invalid.par`):
+**Declarations only** (`definitions.par`):
 ```
-let x = 10
-x + 5
+let x = 10;
 ```
-Error: The parser will try to parse this as a single expression and fail.
+This program evaluates to `0`.
 
 ### Output Format
 
@@ -813,10 +804,13 @@ Error: Division by zero
 Errors in the REPL are **non-fatal** - they are printed but the REPL continues:
 
 ```rust
-match parse(input) {
-    Ok(expr) => match eval(&expr, &env) {
-        Ok(value) => println!("{}", value),
-        Err(e) => eprintln!("Evaluation error: {}", e),  // Continue
+match parse_program(input) {
+    Ok(program) => match typecheck_program_with_env(&program, &mut type_env) {
+        Ok(_) => match eval_program(&program, &env) {
+            Ok(value) => println!("{}", value),
+            Err(e) => eprintln!("Evaluation error: {}", e),  // Continue
+        },
+        Err(e) => eprintln!("Type error: {}", e),  // Continue
     },
     Err(e) => eprintln!("Parse error: {}", e),  // Continue
 }
@@ -1233,41 +1227,43 @@ This ensures proper interaction even when stdout is buffered.
 
 ## Design Considerations
 
-### Stateless Execution
+### Stateless File Execution
 
-The `execute()` function creates a fresh environment for each call:
+File execution creates a fresh environment, parses a `Program`, type-checks it,
+and evaluates it. `main()` performs these operations directly:
 
 ```rust
-fn execute(source: &str) -> Result<Value, String> {
-    let expr = parse(source)?;
-    let env = Environment::new();  // Fresh environment
-    eval(&expr, &env).map_err(|e| e.to_string())
-}
+let program = parse_program(&contents)?;
+typecheck_program(&program)?;
+let env = Environment::new();
+let value = eval_program(&program, &env)?;
+println!("{value}");
 ```
 
 **Implications**:
 - No state carries over between file executions
 - Each file execution is independent and reproducible
-- REPL evaluations don't share bindings (in current implementation)
+- Top-level declarations are available to the trailing expression in the same program
 
 ### Environment Persistence in REPL
 
-**Current Limitation**: The REPL creates one environment but doesn't persist bindings:
+The REPL creates one environment and persists top-level declarations after a
+program evaluates successfully:
 
 ```rust
 fn repl() {
-    let env = Environment::new();  // Created once
+    let mut env = Environment::new();  // Created once
     loop {
         // ...
-        match eval(&expr, &env) {  // Uses same env
-            // But bindings from `let` don't persist
+        match eval_program_with_env(&program, &env) {
+            Ok((_, new_env)) => env = new_env,
+            Err(error) => report(error),
         }
     }
 }
 ```
 
-**Why Bindings Don't Persist**:
-The `let` expression in ParLang creates a new scope for its body only:
+Expression-form `let ... in` still creates a scope for its body only:
 ```
 let x = 10 in x + 5  // x only exists in `x + 5`
 ```
@@ -1306,26 +1302,19 @@ The main module uses only the standard library:
 
 This keeps the CLI lightweight and maximizes portability.
 
-### Single Expression Design
+### Program Design
 
-Files must contain one complete expression. This design:
+Files and REPL submissions are parsed as `Program { decls: Vec<Decl>, body:
+Option<Expr> }`. Each semicolon-terminated `Decl::Let` is checked and evaluated
+left to right, and the optional body runs in the resulting environment. This
+allows multiple top-level definitions without wrapping them in nested `let ... in`
+expressions.
 
-**Advantages**:
-- Simple implementation
-- Clear semantics
-- Matches functional language design
-- Easy to reason about
-
-**Limitations**:
-- Cannot have multiple top-level definitions
-- Must wrap everything in nested `let` expressions
-- No module or import system
-
-**Workaround** (nested lets):
+**Example**:
 ```
-let helper1 = fun x -> x * 2 in
-let helper2 = fun y -> y + 1 in
-let main = fun n -> helper2 (helper1 n) in
+let helper1 = fun x -> x * 2;
+let helper2 = fun y -> y + 1;
+let main = fun n -> helper2 (helper1 n);
 main 5
 ```
 
@@ -1418,9 +1407,10 @@ main 5
 ## Related Modules
 
 - **[`lib.rs`](./ARCHITECTURE.md)**: Defines the public API exported to main.rs
-- **[`parser.rs`](./MODULE_PARSER.md)**: Provides the `parse()` function used by main.rs
-- **[`eval.rs`](./MODULE_EVAL.md)**: Provides the `eval()` function and `Environment` used by main.rs
-- **[`ast.rs`](./MODULE_AST.md)**: Defines `Expr` type returned by `parse()` and consumed by `eval()`
+- **[`parser.rs`](./MODULE_PARSER.md)**: Provides `parse_program()` for main.rs
+- **[`typechecker.rs`](./MODULE_TYPECHECKER.md)**: Provides `typecheck_program()` for main.rs
+- **[`eval.rs`](./MODULE_EVAL.md)**: Provides `eval_program()`, `extend_env_with_program()`, and `Environment`
+- **[`ast.rs`](./MODULE_AST.md)**: Defines the `Program`, `Decl`, and `Expr` types used by the program APIs
 
 ## Testing Recommendations
 

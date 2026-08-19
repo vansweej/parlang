@@ -1,6 +1,6 @@
 /// Advanced parser tests
 /// Tests for operator precedence, invalid syntax, and edge cases
-use parlang::parse;
+use parlang::{parse_expr as parse, parse_program};
 
 // Operator Precedence Tests
 
@@ -494,7 +494,7 @@ fn test_record_empty() {
 fn test_sequential_let_with_semicolons() {
     // Test sequential let bindings with semicolons
     let code = "let x = 1; let y = 2; x + y";
-    let result = parse(code);
+    let result = parse_program(code);
     assert!(result.is_ok());
 }
 

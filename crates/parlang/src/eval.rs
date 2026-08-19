@@ -1,6 +1,6 @@
 /// Evaluator/Interpreter for the `ParLang` language
 /// This module implements the runtime evaluation of `ParLang` expressions
-use crate::ast::{BinOp, Expr, Literal, Pattern};
+use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
 use crate::exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
 use std::collections::HashMap;
 use std::fmt;
@@ -358,33 +358,23 @@ pub fn extract_bindings(expr: &Expr, env: &Environment) -> Result<Environment, E
             let content = fs::read_to_string(Path::new(filepath)).map_err(|e| {
                 EvalError::LoadError(format!("Failed to read file '{filepath}': {e}"))
             })?;
-            let lib_expr = crate::parser::parse(&content).map_err(|e| {
+            let lib_program = crate::parser::parse_program(&content).map_err(|e| {
                 EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}"))
             })?;
 
             // Extract bindings from the loaded library
             // Pass current environment so type constructors are available
-            let lib_env = extract_bindings(&lib_expr, env)?;
+            let lib_env = extend_env_with_program(&lib_program, env)?;
             // Merge with current environment
             let new_env = env.merge(&lib_env);
             // Continue extracting from the body
             extract_bindings(body, &new_env)
         }
-        Expr::Seq(bindings, body) => {
-            // Process each binding in the sequence
-            let mut current_env = env.clone();
-            for (name, _ty_ann, value) in bindings {
-                let val = eval(value, &current_env)?;
-                current_env = current_env.extend(name.clone(), val);
-            }
-            // Continue extracting from the body
-            extract_bindings(body, &current_env)
-        }
         Expr::TypeAlias(_name, _ty_expr, body) => {
             // Type aliases don't create runtime bindings, just pass through to the body
             extract_bindings(body, env)
         }
-        // If we reach anything other than a Let, Load, Seq, or TypeAlias, we're done extracting
+        // If we reach anything other than a Let, Load, or TypeAlias, we're done extracting
         // Return the accumulated environment
         _ => Ok(env.clone()),
     }
@@ -557,12 +547,12 @@ fn eval_load(filepath: &str, body: &Expr, env: &Environment) -> Result<Value, Ev
         .map_err(|e| EvalError::LoadError(format!("Failed to read file '{filepath}': {e}")))?;
 
     // Parse the file contents
-    let lib_expr = crate::parser::parse(&content)
+    let lib_program = crate::parser::parse_program(&content)
         .map_err(|e| EvalError::LoadError(format!("Failed to parse file '{filepath}': {e}")))?;
 
     // Extract bindings from the library file
     // Pass current environment so type constructors are available
-    let lib_env = extract_bindings(&lib_expr, env)?;
+    let lib_env = extend_env_with_program(&lib_program, env)?;
 
     // Merge library bindings into current environment
     let extended_env = env.merge(&lib_env);
@@ -799,17 +789,6 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
 
         Expr::Load(filepath, body) => eval_load(filepath, body, env),
 
-        Expr::Seq(bindings, body) => {
-            // Process each binding in sequence, extending the environment
-            let mut current_env = env.clone();
-            for (name, _ty_ann, value) in bindings {
-                let val = eval(value, &current_env)?;
-                current_env = current_env.extend(name.clone(), val);
-            }
-            // Evaluate the body in the extended environment
-            eval(body, &current_env)
-        }
-
         Expr::Rec(name, body) => eval_rec(name, body, env),
 
         Expr::Match(scrutinee, arms) => eval_match(scrutinee, arms, env),
@@ -845,6 +824,56 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
         } => eval_type_def(name, constructors, body, env),
 
         Expr::Constructor(ctor_name, args) => eval_constructor(ctor_name, args, env),
+    }
+}
+
+/// Evaluate a top-level program by threading declaration bindings into the environment.
+///
+/// # Errors
+///
+/// Returns an `EvalError` if a declaration or the trailing body cannot be evaluated.
+pub fn eval_program(program: &Program, env: &Environment) -> Result<Value, EvalError> {
+    eval_program_with_env(program, env).map(|(value, _)| value)
+}
+
+/// Evaluate a top-level program and return its persistent environment.
+///
+/// # Errors
+///
+/// Returns an `EvalError` if a declaration or the trailing body cannot be evaluated.
+pub fn eval_program_with_env(
+    program: &Program,
+    env: &Environment,
+) -> Result<(Value, Environment), EvalError> {
+    let current_env = extend_env_with_program(program, env)?;
+    let value = match &program.body {
+        Some(body) => eval(body, &current_env),
+        None => Ok(Value::Int(0)),
+    }?;
+    Ok((value, current_env))
+}
+
+/// Extend an environment with the evaluated declarations of a top-level program.
+///
+/// # Errors
+///
+/// Returns an `EvalError` if evaluating a declaration value fails.
+pub fn extend_env_with_program(
+    program: &Program,
+    env: &Environment,
+) -> Result<Environment, EvalError> {
+    let mut current_env = env.clone();
+    for decl in &program.decls {
+        match decl {
+            Decl::Let { name, value, .. } => {
+                let value = eval(value, &current_env)?;
+                current_env = current_env.extend(name.clone(), value);
+            }
+        }
+    }
+    match &program.body {
+        Some(body) => extract_bindings(body, &current_env),
+        None => Ok(current_env),
     }
 }
 
@@ -1848,90 +1877,153 @@ mod tests {
         assert_eq!(format!("{err}"), "Load error: test load error");
     }
 
-    // Test Seq evaluation
+    // Test top-level program evaluation
     #[test]
-    fn test_eval_seq_single() {
+    fn test_eval_program_single() {
         let env = Environment::new();
-        let bindings = vec![("x".to_string(), None, Expr::Int(42))];
-        let expr = Expr::Seq(bindings, Box::new(Expr::Var("x".to_string())));
-        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+        let program = Program {
+            decls: vec![Decl::Let {
+                name: "x".to_string(),
+                ty_ann: None,
+                value: Expr::Int(42),
+                doc: None,
+            }],
+            body: Some(Expr::Var("x".to_string())),
+        };
+        assert_eq!(eval_program(&program, &env), Ok(Value::Int(42)));
     }
 
     #[test]
-    fn test_eval_seq_multiple() {
+    fn test_eval_program_multiple() {
         let env = Environment::new();
-        let bindings = vec![
-            ("x".to_string(), None, Expr::Int(10)),
-            ("y".to_string(), None, Expr::Int(32)),
-        ];
-        let expr = Expr::Seq(
-            bindings,
-            Box::new(Expr::BinOp(
+        let program = Program {
+            decls: vec![
+                Decl::Let {
+                    name: "x".to_string(),
+                    ty_ann: None,
+                    value: Expr::Int(10),
+                    doc: None,
+                },
+                Decl::Let {
+                    name: "y".to_string(),
+                    ty_ann: None,
+                    value: Expr::Int(32),
+                    doc: None,
+                },
+            ],
+            body: Some(Expr::BinOp(
                 BinOp::Add,
                 Box::new(Expr::Var("x".to_string())),
                 Box::new(Expr::Var("y".to_string())),
             )),
-        );
-        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+        };
+        assert_eq!(eval_program(&program, &env), Ok(Value::Int(42)));
     }
 
     #[test]
-    fn test_eval_seq_with_functions() {
+    fn test_eval_program_with_functions() {
         let env = Environment::new();
-        let bindings = vec![(
-            "double".to_string(),
-            None,
-            Expr::Fun(
-                "x".to_string(),
-                None,
-                Box::new(Expr::BinOp(
-                    BinOp::Mul,
-                    Box::new(Expr::Var("x".to_string())),
-                    Box::new(Expr::Int(2)),
-                )),
-            ),
-        )];
-        let expr = Expr::Seq(
-            bindings,
-            Box::new(Expr::App(
+        let program = Program {
+            decls: vec![Decl::Let {
+                name: "double".to_string(),
+                ty_ann: None,
+                value: Expr::Fun(
+                    "x".to_string(),
+                    None,
+                    Box::new(Expr::BinOp(
+                        BinOp::Mul,
+                        Box::new(Expr::Var("x".to_string())),
+                        Box::new(Expr::Int(2)),
+                    )),
+                ),
+                doc: None,
+            }],
+            body: Some(Expr::App(
                 Box::new(Expr::Var("double".to_string())),
                 Box::new(Expr::Int(21)),
             )),
-        );
-        assert_eq!(eval(&expr, &env), Ok(Value::Int(42)));
+        };
+        assert_eq!(eval_program(&program, &env), Ok(Value::Int(42)));
     }
 
     #[test]
-    fn test_eval_seq_scoping() {
+    fn test_eval_program_scoping() {
         let env = Environment::new();
         // let x = 10; let y = x + 5; y
-        let bindings = vec![
-            ("x".to_string(), None, Expr::Int(10)),
-            (
-                "y".to_string(),
-                None,
-                Expr::BinOp(
-                    BinOp::Add,
-                    Box::new(Expr::Var("x".to_string())),
-                    Box::new(Expr::Int(5)),
-                ),
-            ),
-        ];
-        let expr = Expr::Seq(bindings, Box::new(Expr::Var("y".to_string())));
-        assert_eq!(eval(&expr, &env), Ok(Value::Int(15)));
+        let program = Program {
+            decls: vec![
+                Decl::Let {
+                    name: "x".to_string(),
+                    ty_ann: None,
+                    value: Expr::Int(10),
+                    doc: None,
+                },
+                Decl::Let {
+                    name: "y".to_string(),
+                    ty_ann: None,
+                    value: Expr::BinOp(
+                        BinOp::Add,
+                        Box::new(Expr::Var("x".to_string())),
+                        Box::new(Expr::Int(5)),
+                    ),
+                    doc: None,
+                },
+            ],
+            body: Some(Expr::Var("y".to_string())),
+        };
+        assert_eq!(eval_program(&program, &env), Ok(Value::Int(15)));
     }
 
     #[test]
-    fn test_extract_bindings_seq() {
-        let bindings = vec![
-            ("x".to_string(), None, Expr::Int(1)),
-            ("y".to_string(), None, Expr::Int(2)),
-        ];
-        let expr = Expr::Seq(bindings, Box::new(Expr::Int(0)));
+    fn test_extend_env_with_program() {
+        let program = Program {
+            decls: vec![
+                Decl::Let {
+                    name: "x".to_string(),
+                    ty_ann: None,
+                    value: Expr::Int(1),
+                    doc: None,
+                },
+                Decl::Let {
+                    name: "y".to_string(),
+                    ty_ann: None,
+                    value: Expr::Int(2),
+                    doc: None,
+                },
+            ],
+            body: Some(Expr::Int(0)),
+        };
         let env = Environment::new();
-        let result_env = extract_bindings(&expr, &env).unwrap();
+        let result_env = extend_env_with_program(&program, &env).unwrap();
         assert_eq!(result_env.lookup("x"), Some(&Value::Int(1)));
         assert_eq!(result_env.lookup("y"), Some(&Value::Int(2)));
+    }
+
+    #[test]
+    fn test_load_many_function_bindings() {
+        use std::fs;
+
+        let bindings = (0..8)
+            .map(|index| format!("let f{index} = fun x -> x in"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let lib_content = format!("{bindings} 0");
+        let temp_file = std::env::temp_dir().join(format!(
+            "test_load_many_function_bindings_{}.par",
+            std::process::id()
+        ));
+        fs::write(&temp_file, lib_content).unwrap();
+
+        let expr = Expr::Load(
+            temp_file.to_string_lossy().into_owned(),
+            Box::new(Expr::App(
+                Box::new(Expr::Var("f7".to_string())),
+                Box::new(Expr::Int(42)),
+            )),
+        );
+
+        assert_eq!(eval(&expr, &Environment::new()), Ok(Value::Int(42)));
+        fs::remove_file(&temp_file).ok();
     }
 
     // Test Tuple evaluation

@@ -1,6 +1,6 @@
 /// Advanced unit tests for typechecker internals
 /// Tests for type unification edge cases and helper functions
-use parlang::{parse, typecheck, Type};
+use parlang::{parse_expr as parse, typecheck, Type};
 
 // Type Unification Edge Cases
 

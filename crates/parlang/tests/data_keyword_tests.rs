@@ -1,4 +1,4 @@
-use parlang::parse;
+use parlang::parse_expr as parse;
 
 #[test]
 fn test_data_keyword_parses_adt() {

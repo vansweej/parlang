@@ -281,10 +281,10 @@ with Haddock-style attachment deferred to a later language slice.
 
 ```ebnf
 (* Programs *)
-program ::= (let_binding)* expression
+program ::= (let_binding)* [expression]
 
-(* Let bindings (top-level) *)
-let_binding ::= "let" identifier '=' expression ';'
+(* Top-level declarations *)
+let_binding ::= "let" identifier [':' type_expr] '=' expression ';'
 
 (* Expressions *)
 expression ::= comparison_expr
@@ -651,19 +651,19 @@ match(_, v) = Some(Γ)                         [MATCH-WILDCARD]
 ∅ ⊢ let x = 5 in let x = 10 in x ⇓ Int(10)  (shadowing)
 ```
 
-#### 5.2.7 Sequential Let Bindings
+#### 5.2.7 Top-Level Let Declarations
 
 ```
 Γ ⊢ e₁ ⇓ v₁    Γ[x₁ ↦ v₁] ⊢ e₂ ⇓ v₂    ...    Γ[x₁ ↦ v₁, ..., xₙ ↦ vₙ] ⊢ e ⇓ v
-──────────────────────────────────────────────────────────────────────────────  [E-SEQ]
-Γ ⊢ let x₁ = e₁; ...; let xₙ = eₙ; e ⇓ v
+──────────────────────────────────────────────────────────────────────────────  [E-PROGRAM]
+Γ ⊢ program { let x₁ = e₁; ...; let xₙ = eₙ; e } ⇓ v
 ```
 
 **Semantics:**
-1. Evaluate each binding expression in sequence
-2. Extend the environment with each binding before evaluating the next
-3. Each binding can reference previous bindings
-4. Evaluate the final expression in the fully extended environment
+1. A program contains zero or more semicolon-terminated top-level declarations and an optional trailing expression.
+2. Each `let` declaration is evaluated left to right and extends the environment before the next declaration.
+3. During mandatory Hindley-Milner inference, each declaration is inferred and generalized before the next declaration is checked.
+4. The optional trailing expression is evaluated in the fully extended environment; when absent, the program evaluates to `0`.
 
 **Syntax:**
 ```parlang
@@ -679,7 +679,7 @@ x * y
 ∅ ⊢ let double = fun x -> x * 2; double 21 ⇓ Int(42)
 ```
 
-**Note:** This is syntactic sugar for nested let-in expressions but with cleaner syntax when defining multiple bindings at the program level.
+**Note:** These are direct `Program` declarations, not syntactic sugar for nested `let ... in` expressions. Expression-form `let ... in` remains available wherever an expression is expected.
 
 #### 5.2.7.1 Type Aliases
 

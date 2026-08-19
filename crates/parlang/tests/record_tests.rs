@@ -1,5 +1,5 @@
 /// Integration tests for record types
-use parlang::{eval, parse, typecheck, Environment, EvalError, Type, TypeError};
+use parlang::{eval, parse_expr as parse, typecheck, Environment, EvalError, Type, TypeError};
 
 #[test]
 fn test_simple_record_construction() {
