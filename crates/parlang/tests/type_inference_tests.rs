@@ -655,3 +655,38 @@ fn test_unit_in_if() {
     let ty = typecheck(&expr).unwrap();
     assert_eq!(ty, Type::Unit);
 }
+
+#[test]
+fn test_rec_bare_var_type_checks() {
+    // `rec x -> x` type-checks successfully (bind_var short-circuits before
+    // the occurs check when both sides are the same variable).
+    let expr = parse("rec x -> x").unwrap();
+    let result = typecheck(&expr);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_rec_int_body_infers_int() {
+    // A non-function recursive body is allowed; `rec x -> 42` infers Int.
+    let expr = parse("rec x -> 42").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(ty, Type::Int);
+}
+
+#[test]
+fn test_rec_self_application_occurs_check() {
+    // `rec f -> f f` fails the occurs check.
+    let expr = parse("rec f -> f f").unwrap();
+    assert!(matches!(
+        typecheck(&expr),
+        Err(parlang::TypeError::OccursCheckFailed(_, _))
+    ));
+}
+
+#[test]
+fn test_rec_factorial_infers_int_to_int() {
+    // The factorial form infers Int -> Int.
+    let expr = parse("rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    assert_eq!(ty, Type::Fun(Box::new(Type::Int), Box::new(Type::Int)));
+}
