@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 /// Stack reserved for evaluation workers.
 ///
-/// At the policy limit, 4,000 × 24,912 B is about 95 MB, leaving roughly 2.7× headroom in a
+/// At the policy limit, 4,000 × 30,608 B is about 117 MiB, leaving roughly 2.19× capacity in a
 /// 256 MiB worker stack.
 pub const EVALUATOR_STACK_SIZE: usize = 256 * 1024 * 1024;
 
@@ -77,13 +77,15 @@ where
 
 /// Policy limit for non-tail evaluator recursion.
 ///
-/// A depth of 4,000 commits about 95 MB at the measured 24,912 B per increment; the 256 MiB
-/// evaluator worker stack therefore provides roughly 2.7× headroom. Curried multi-argument tail
-/// loops cost about 2–3.3 increments per iteration, so this guarantees at least 1,200 iterations
-/// (likely about 2,000); single-argument tail loops remain unbounded.
+/// A depth of 4,000 commits about 117 MiB at the measured 30,608 B per increment; the 256 MiB
+/// evaluator worker stack therefore provides roughly 2.19× capacity. Curried multi-argument
+/// tail loops remain flat across their ramps, as verified by
+/// `curried_if_tail_rec_stays_flat_across_ramp`,
+/// `curried_match_tail_rec_stays_flat_across_ramp`, and
+/// `saturated_partial_curried_rec_stays_flat_across_ramp`.
 ///
-/// Historical measurement (2026-08): aggregate cost is 24,912 B per evaluator-depth increment,
-/// independently reconfirmed at 24,896 B. A one-increment trace was inferred as
+/// Historical measurement (2026-08, superseded): a lower aggregate cost was observed before the
+/// current measurement. A one-increment trace was inferred as
 /// `eval_with_tco@d → eval_inner(BinOp@d) → eval_inner(App@d+1) → eval_app@d+1 →
 /// eval_with_tco@d+1`, with an 83.0% (20,656 B) `eval_with_tco→eval_app` split and 17.0%
 /// (4,240 B) return path. This gave an arm-extraction ceiling of about 83%, below the 91.6%
@@ -2189,10 +2191,45 @@ mod tests {
     }
 
     #[test]
+    fn curried_match_tail_rec_stays_flat_across_ramp() {
+        const RAMP: [i64; 3] = [1_000, 10_000, 100_000];
+        let thread = std::thread::Builder::new()
+            .stack_size(EVALUATOR_STACK_SIZE)
+            .spawn(|| {
+                let mut depths = Vec::new();
+                for loops in RAMP {
+                    let expr = crate::parser::parse_expr(&format!(
+                        "(rec f -> fun acc -> fun n -> match n with | 0 -> acc | _ -> f (acc + n) (n - 1)) 0 {loops}"
+                    ))
+                    .expect("the curried match-tail accumulator must parse");
+                    crate::typechecker::typecheck(&expr)
+                        .expect("the curried match-tail accumulator must typecheck");
+                    let _ = take_max_eval_depth();
+                    assert_eq!(
+                        eval(&expr, &Environment::new()),
+                        Ok(Value::Int(loops * (loops + 1) / 2))
+                    );
+                    let depth = take_max_eval_depth();
+                    eprintln!("curried match-tail depth at {loops}: {depth}");
+                    depths.push(depth);
+                }
+                depths
+            })
+            .expect("the curried match-tail ramp thread must spawn");
+        let depths = thread
+            .join()
+            .expect("the curried match-tail ramp must not panic");
+        assert!(
+            depths.windows(2).all(|window| window[0] == window[1]),
+            "curried match-tail calls must preserve a flat evaluator depth across the ramp"
+        );
+    }
+
+    #[test]
     fn corpus_match_tail_workload_stays_flat_across_ramp() {
-        // Value environments clone their recursive list bindings; keep the corpus smoke ramp
-        // small while the scalar curried-rec ramp above establishes the 100,000-call proof.
-        const RAMP: [usize; 3] = [1, 5, 10];
+        // The corpus load exercises `strrev`'s match-tail recursion. The measured flat depth is
+        // 1 at the largest input; the guard limit is 2, leaving one increment of margin.
+        const RAMP: [usize; 3] = [100, 200, 400];
         let thread = std::thread::Builder::new()
             .stack_size(EVALUATOR_STACK_SIZE)
             .spawn(|| {
@@ -2202,23 +2239,53 @@ mod tests {
                 .expect("the string corpus wrapper must parse");
                 let strrev = eval(&definitions, &Environment::new())
                     .expect("the string corpus strrev closure must evaluate");
-                let mut depths = Vec::new();
-                for length in RAMP {
+
+                let make_input = |length| {
                     let mut input = Value::Variant("Nil".to_string(), Vec::new());
                     for _ in 0..length {
                         input = Value::Variant("Cons".to_string(), vec![Value::Char('x'), input]);
                     }
+                    input
+                };
+                let nil = Value::Variant("Nil".to_string(), Vec::new());
+
+                let _ = take_max_eval_depth();
+                let measurement = apply_value_spine(
+                    strrev.clone(),
+                    vec![nil.clone(), make_input(RAMP[RAMP.len() - 1])],
+                    0,
+                );
+                assert!(matches!(
+                    measurement,
+                    Ok(Value::Variant(name, _)) if name == "Cons"
+                ));
+                let measured_flat_depth = take_max_eval_depth();
+                let depth_limit = measured_flat_depth
+                    .checked_add(1)
+                    .expect("the measured corpus depth must leave room for the guard margin");
+                eprintln!(
+                    "corpus match-tail measured flat depth: {measured_flat_depth}; guard limit: {depth_limit}"
+                );
+
+                set_eval_depth_limit_override(Some(depth_limit));
+                let mut observations = Vec::with_capacity(RAMP.len());
+                for length in RAMP {
                     let _ = take_max_eval_depth();
                     let result = apply_value_spine(
                         strrev.clone(),
-                        vec![Value::Variant("Nil".to_string(), Vec::new()), input],
+                        vec![nil.clone(), make_input(length)],
                         0,
                     );
+                    observations.push((result, take_max_eval_depth()));
+                }
+                clear_eval_depth_limit_override();
+                let mut depths = Vec::with_capacity(observations.len());
+                for (result, depth) in observations {
                     assert!(matches!(
                         result,
                         Ok(Value::Variant(name, _)) if name == "Cons"
                     ));
-                    depths.push(take_max_eval_depth());
+                    depths.push(depth);
                 }
                 eprintln!("corpus match-tail depth ramp: {depths:?}");
                 depths
@@ -2228,6 +2295,104 @@ mod tests {
             .join()
             .expect("the corpus match-tail measurement thread must not panic");
         assert!(depths.windows(2).all(|window| window[0] == window[1]));
+    }
+
+    #[test]
+    fn saturated_partial_curried_rec_stays_flat_across_ramp() {
+        // Under-application returns a closure with `acc` and the recursive closure bound.
+        // Saturation evaluates the residual body once, then the self-call resolves to the full
+        // recursive closure and re-enters TCO; this setup prefix must remain constant.
+        const RAMP: [i64; 3] = [1_000, 10_000, 100_000];
+        let thread = std::thread::Builder::new()
+            .stack_size(EVALUATOR_STACK_SIZE)
+            .spawn(|| {
+                let mut depths = Vec::new();
+                for loops in RAMP {
+                    let expr = crate::parser::parse_expr(&format!(
+                        "let sum = rec f -> fun acc -> fun n -> if n == 0 then acc else f (acc + n) (n - 1) in let partial = sum 0 in partial {loops}"
+                    ))
+                    .expect("the saturated partial recursive accumulator must parse");
+                    crate::typechecker::typecheck(&expr)
+                        .expect("the saturated partial recursive accumulator must typecheck");
+                    let _ = take_max_eval_depth();
+                    assert_eq!(
+                        eval(&expr, &Environment::new()),
+                        Ok(Value::Int(loops * (loops + 1) / 2))
+                    );
+                    let depth = take_max_eval_depth();
+                    eprintln!("saturated partial depth at {loops}: {depth}");
+                    depths.push(depth);
+                }
+                depths
+            })
+            .expect("the saturated partial ramp thread must spawn");
+        let depths = thread
+            .join()
+            .expect("the saturated partial ramp must not panic");
+        assert!(
+            depths.windows(2).all(|window| window[0] == window[1]),
+            "saturating a partial recursive application must preserve a flat evaluator depth"
+        );
+    }
+
+    #[test]
+    fn corpus_strcat_constructor_wrap_grows_depth_linearly() {
+        // `Cons c (cat rest s2)` is a Constructor, not an App. The TCO loop falls back to
+        // `eval_inner`, and `eval_constructor` evaluates its recursive argument at `depth + 1`.
+        // The observed cost is one depth increment per list element: 201 at 200 elements, safely
+        // below DEFAULT_MAX_EVAL_DEPTH (4,000).
+        const RAMP: [usize; 3] = [50, 100, 200];
+        let thread = std::thread::Builder::new()
+            .stack_size(EVALUATOR_STACK_SIZE)
+            .spawn(|| {
+                let definitions = crate::parser::parse_expr(
+                    "data List a = Nil | Cons a (List a) in load \"examples/string.par\" in strcat",
+                )
+                .expect("the string corpus strcat wrapper must parse");
+                let strcat = eval(&definitions, &Environment::new())
+                    .expect("the string corpus strcat closure must evaluate");
+                let make_input = |length| {
+                    let mut input = Value::Variant("Nil".to_string(), Vec::new());
+                    for _ in 0..length {
+                        input = Value::Variant("Cons".to_string(), vec![Value::Char('x'), input]);
+                    }
+                    input
+                };
+                let nil = Value::Variant("Nil".to_string(), Vec::new());
+                let mut depths = Vec::new();
+                for length in RAMP {
+                    let _ = take_max_eval_depth();
+                    let result =
+                        apply_value_spine(strcat.clone(), vec![make_input(length), nil.clone()], 0);
+                    assert!(matches!(
+                        result,
+                        Ok(Value::Variant(name, _)) if name == "Cons"
+                    ));
+                    let depth = take_max_eval_depth();
+                    eprintln!("corpus strcat depth at {length}: {depth}");
+                    depths.push(depth);
+                }
+                depths
+            })
+            .expect("the corpus strcat measurement thread must spawn");
+        let depths = thread
+            .join()
+            .expect("the corpus strcat measurement thread must not panic");
+        assert!(
+            depths.windows(2).all(|window| window[0] < window[1]),
+            "constructor-wrapped strcat recursion must increase evaluator depth"
+        );
+        let first_growth = depths[1] - depths[0];
+        let second_growth = depths[2] - depths[1];
+        assert_eq!(
+            second_growth,
+            first_growth * 2,
+            "strcat depth must grow linearly with its input length"
+        );
+        assert!(
+            depths[2] < DEFAULT_MAX_EVAL_DEPTH,
+            "the largest strcat workload must retain depth-limit headroom"
+        );
     }
 
     // Test Value Clone and PartialEq
