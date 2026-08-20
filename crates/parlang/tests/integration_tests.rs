@@ -777,6 +777,72 @@ fn test_rec_gcd() {
 }
 
 #[test]
+fn test_curried_rec_under_over_application_and_tail_contexts() {
+    let under_applied = r"
+        let sum = rec f -> fun acc -> fun n ->
+            if n == 0 then acc else f (acc + n) (n - 1)
+        in sum 0
+    ";
+    assert_eq!(
+        parse_and_eval(under_applied).map(|value| value.to_string()),
+        Ok("<function n>".to_string())
+    );
+
+    let returned_function = r"
+        (rec f -> fun n -> fun x -> if n == 0 then x else (f (n - 1)) x) 1 42
+    ";
+    assert_eq!(parse_and_eval(returned_function), Ok(Value::Int(42)));
+
+    let over_applied = r"
+        (rec f -> fun n -> if n == 0 then fun x -> x + 1 else f (n - 1)) 1 41
+    ";
+    assert_eq!(parse_and_eval(over_applied), Ok(Value::Int(42)));
+
+    let staged_partial = r"
+        let f = rec sum -> fun a -> fun b -> fun c -> a + b + c in
+        let with_a = f 1 in
+        let with_ab = with_a 2 in
+        with_ab 3
+    ";
+    assert_eq!(parse_and_eval(staged_partial), Ok(Value::Int(6)));
+
+    let tail_let = r"
+        (rec f -> fun n -> let step = n - 1 in if n == 0 then 0 else f step) 1000
+    ";
+    assert_eq!(parse_and_eval(tail_let), Ok(Value::Int(0)));
+}
+
+#[test]
+fn test_application_spine_evaluates_head_before_arguments() {
+    assert_eq!(
+        parse_and_eval("missing_head missing_first missing_second"),
+        Err("Unbound variable: missing_head".to_string())
+    );
+    assert_eq!(
+        parse_and_eval("(fun x -> fun y -> x) missing_first missing_second"),
+        Err("Unbound variable: missing_first".to_string())
+    );
+}
+
+#[test]
+fn test_tail_match_and_let_shadowing_use_the_shadowed_function() {
+    let let_shadow = r"
+        (rec f -> fun n -> let f = fun x -> x + 1 in f n) 41
+    ";
+    assert_eq!(parse_and_eval(let_shadow), Ok(Value::Int(42)));
+
+    let match_shadow = r"
+        (rec f -> fun n -> match n with | f -> f + 1) 41
+    ";
+    assert_eq!(parse_and_eval(match_shadow), Ok(Value::Int(42)));
+
+    let match_tail = r"
+        (rec f -> fun n -> match n with | 0 -> 0 | _ -> f (n - 1)) 1000
+    ";
+    assert_eq!(parse_and_eval(match_tail), Ok(Value::Int(0)));
+}
+
+#[test]
 fn test_rec_nested_calls() {
     // Test recursive function with nested arithmetic
     let code = r"
