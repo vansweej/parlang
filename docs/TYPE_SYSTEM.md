@@ -761,30 +761,42 @@ The `const` function ignores its second argument and returns the first. It's pol
 
 While ParLang's type system is robust and well-implemented, there are some known limitations:
 
-### 1. Recursive Functions Not Supported
+### 1. Recursive Functions Have No Polymorphic Recursion
 
-The type checker cannot currently infer types for recursive functions defined with the `rec` keyword:
+The type checker infers types for recursive functions defined with the `rec`
+keyword, but the recursive name is bound *monomorphically*: it is given one
+fresh type variable (no generalization), so polymorphic recursion is not
+available.
 
 ```parlang
 rec factorial -> fun n ->
     if n == 0 then 1 else n * factorial (n - 1)
-# Error: RecursionRequiresAnnotation
+# Inferred type: Int -> Int
 ```
 
-**Workaround**: Use fixpoint types or explicit type annotations so recursive functions type-check (type checking can no longer be disabled).
+The `rec` body need not be a function: `rec x -> 42` infers `Int`, and
+`rec x -> x` type-checks to a bare type variable. A `rec` expression is
+rejected only by ordinary Hindley-Milner failure — for example `rec f -> f f`
+yields `OccursCheckFailed`, and a body whose branches disagree yields
+`UnificationError`.
 
-**Why**: Typing recursive functions requires either:
-- Fixpoint types (fix: (a -> a) -> a)
-- Explicit type annotations
-- Or special handling of recursive let-bindings
+**Note**: Type checking can no longer be disabled; inference runs before every
+evaluation.
 
-**Future Plans**: Add support through explicit type annotations or automatic fixpoint typing.
+**Future Plans**: Support polymorphic recursion (generalizing the recursive
+binding), which currently requires an explicit annotation elsewhere.
 
 ### 2. Pattern Matching Type Checking is Incomplete
 
 While pattern matching works at runtime, the type checker has limited support:
 - Pattern types are assigned fresh type variables
-- No exhaustiveness checking (won't warn about missing cases)
+- Exhaustiveness is checked at evaluation time only (never by the type
+  checker): a warning is printed to stderr and evaluation always continues.
+  Coverage is analysed only for booleans and sum-type constructors; integer
+  literals, tuples, and records fall back to a conservative "non-exhaustive
+  unless a catch-all is present" rule, and char literals are not analysed at
+  all (a char-only match without a catch-all is silently treated as
+  exhaustive).
 - No redundancy checking (won't warn about unreachable patterns)
 
 ```parlang
@@ -795,7 +807,8 @@ match value with
 # Missing case for other values - no warning
 ```
 
-**Future Plans**: Implement full case analysis with exhaustiveness and redundancy checking.
+**Future Plans**: Add redundancy checking (unreachable-pattern detection) and
+extend exhaustiveness analysis beyond booleans and sum-type constructors.
 
 ### 3. Records Are Closed and Exact-Match
 

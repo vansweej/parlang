@@ -335,12 +335,14 @@ The type checker can produce several types of errors:
 
 ### 1. Recursive Functions
 
-Recursive functions (using `rec` keyword) are not yet supported in the type checker:
+Recursive functions (using the `rec` keyword) are type-checked, but the
+recursive name is bound monomorphically (one fresh type variable, no
+generalization), so polymorphic recursion is not supported:
 
 ```parlang
 rec factorial -> fun n ->
     if n == 0 then 1 else n * factorial (n - 1)
-# Error: Recursion requires explicit type annotation
+# Inferred type: Int -> Int
 ```
 
 **Workaround**: Use Y-combinator or implement fixpoint typing.
@@ -354,7 +356,10 @@ rec factorial -> fun n ->
 
 Pattern matching is partially supported:
 - Type checking assigns fresh type variables to patterns
-- No exhaustiveness checking
+- Exhaustiveness is checked at evaluation time only (never by the type
+  checker); it prints a warning to stderr and never halts evaluation, and it
+  analyses only booleans and sum-type constructors (integers, tuples, and
+  records use a conservative catch-all rule; char literals are not analysed)
 - No redundancy checking
 
 **Future**: Full pattern matching would require:
@@ -376,10 +381,16 @@ let p = { age: 30 } in p.age
 
 ### 4. Type Annotations
 
-Users cannot explicitly annotate types:
+Type annotations are supported on `let` bindings:
 ```parlang
-(42 : Int)  # Not supported
-fun (x : Int) -> x + 1  # Not supported
+let x : Int = 42        # Supported
+```
+
+The following are not supported:
+```parlang
+(42 : Int)              # Standalone expression annotations: not supported
+let o : Option Int = …  # Applied-type annotations: not supported
+fun (x : Int) -> x + 1  # Parameter annotations: `->` precedence limitation
 ```
 
 **Future**: Add syntax for type annotations to:
