@@ -2001,11 +2001,11 @@ in sign (-42)
 
 ### C.4 Limitations
 
-- **No tail call optimization**: Deep recursion causes stack overflow
 - **No garbage collection**: (Rust manages memory)
 - **No memoization**: Repeated computations not cached
 - **No parallel execution**: Sequential interpreter only
-- **No type inference**: All typing is dynamic
+- **No mutual/indirect tail recursion**: Only direct self-calls are optimized by the TCO loop; cross-function tail calls are not flattened
+- **No fuel limit for infinite tail loops**: A curried, `match`-tail or `let`-tail self-recursion that never terminates spins forever rather than hitting the depth guard, consistent with the existing `if`-tail behaviour
 
 ---
 
@@ -2013,11 +2013,11 @@ in sign (-42)
 
 | Feature | ParLang | ML | Scheme | Haskell |
 |---------|---------|----|---------| --------|
-| Typing | Dynamic | Static | Dynamic | Static |
+| Typing | Static (Hindley-Milner) | Static | Dynamic | Static |
 | Evaluation | Eager | Eager | Eager | Lazy |
-| Recursion | Manual (Y-combinator) | Built-in `let rec` | Built-in | Built-in |
-| Pattern matching | No | Yes | Limited | Yes |
-| Type inference | No | Yes | No | Yes |
+| Recursion | Built-in (`rec`) | Built-in `let rec` | Built-in | Built-in |
+| Pattern matching | Yes | Yes | Limited | Yes |
+| Type inference | Yes (Algorithm W) | Yes | No | Yes |
 | Modules | No | Yes | Yes | Yes |
 | Syntax | Minimal | Rich | S-expressions | Indentation |
 

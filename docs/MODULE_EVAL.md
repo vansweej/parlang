@@ -1378,15 +1378,16 @@ Functions capture their **defining environment**, not their calling environment.
 
 **Trade-off**: Memory overhead from cloning
 
-### 4. No Tail Call Optimization
+### 4. Tail Call Optimization (TCO)
 
-Recursive calls build up stack frames.
+Curried, `match`-tail and `let`-tail self-calls are optimized by the TCO loop
+in `eval_with_tco`: the flat loop is entered with all parameters already bound,
+and depth remains constant across iterations (measured flat at `[1,1,1]` across
+a `[1_000, 10_000, 100_000]` ramp).
 
-**Rationale**: Simplicity of implementation
-
-**Trade-off**: Stack overflow on deep recursion
-
-**Future Enhancement**: Could add trampolining or explicit TCO
+**Accepted trade-off**: Mutual/indirect tail recursion is not optimized (only
+direct self-calls are); infinite tail loops spin forever rather than hitting the
+depth guard, consistent with the pre-existing `if`-tail behaviour.
 
 ### 5. Integer-Only Arithmetic
 
