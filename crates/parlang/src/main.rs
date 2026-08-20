@@ -205,21 +205,18 @@ fn repl() -> bool {
                 break;
             }
 
-            match response_receiver.recv() {
-                Ok(response) => {
-                    if let Some(type_line) = response.type_line {
-                        println!("{type_line}");
-                    }
-                    match response.outcome {
-                        Ok(value) => println!("{value}"),
-                        Err(error) => eprintln!("{error}"),
-                    }
+            if let Ok(response) = response_receiver.recv() {
+                if let Some(type_line) = response.type_line {
+                    println!("{type_line}");
                 }
-                Err(_) => {
-                    eprintln!("Error: evaluator worker stopped unexpectedly");
-                    failed = true;
-                    break;
+                match response.outcome {
+                    Ok(value) => println!("{value}"),
+                    Err(error) => eprintln!("{error}"),
                 }
+            } else {
+                eprintln!("Error: evaluator worker stopped unexpectedly");
+                failed = true;
+                break 'session;
             }
         }
     }
