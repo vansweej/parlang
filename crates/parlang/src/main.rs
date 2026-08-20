@@ -123,9 +123,9 @@ fn repl() -> bool {
             return false;
         }
     };
-    let mut should_continue = true;
+    let mut failed = false;
 
-    loop {
+    'session: loop {
         // Accumulate multiline input
         let mut lines = Vec::new();
         let mut is_first_line = true;
@@ -178,19 +178,14 @@ fn repl() -> bool {
                 Err(ReadlineError::Eof) => {
                     // Ctrl+D
                     println!("\nGoodbye!");
-                    should_continue = false;
-                    break;
+                    break 'session;
                 }
                 Err(err) => {
                     eprintln!("Error reading input: {err}");
-                    should_continue = false;
-                    break;
+                    failed = true;
+                    break 'session;
                 }
             }
-        }
-
-        if !should_continue {
-            break;
         }
 
         // Input is parsed again by the worker so persistent non-Send evaluator state never
@@ -198,7 +193,7 @@ fn repl() -> bool {
         if !lines.is_empty() {
             if input_sender.send(lines.concat()).is_err() {
                 eprintln!("Error: evaluator worker stopped unexpectedly");
-                should_continue = false;
+                failed = true;
                 break;
             }
 
@@ -207,7 +202,7 @@ fn repl() -> bool {
                 Ok(Err(error)) => eprintln!("{error}"),
                 Err(_) => {
                     eprintln!("Error: evaluator worker stopped unexpectedly");
-                    should_continue = false;
+                    failed = true;
                     break;
                 }
             }
@@ -220,7 +215,7 @@ fn repl() -> bool {
         return false;
     }
 
-    should_continue
+    !failed
 }
 
 fn start_repl_worker(

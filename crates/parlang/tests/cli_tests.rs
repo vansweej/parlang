@@ -2,7 +2,7 @@ use std::env;
 /// CLI integration tests
 /// These tests verify the command-line interface functionality
 use std::fs;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 #[test]
 fn test_cli_file_execution() {
@@ -22,6 +22,19 @@ fn test_cli_file_execution() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim(), "6");
+}
+
+#[test]
+fn test_repl_eof_exits_successfully() {
+    let output = Command::new("cargo")
+        .args(["run", "--quiet", "--"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Goodbye!"), "stdout was: {stdout}");
 }
 
 #[test]
