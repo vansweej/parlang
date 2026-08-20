@@ -22,7 +22,8 @@
 /// - Variables: `Var(String)`
 /// - Functions: `Fun(param, body)`
 /// - Applications: `App(func, arg)`
-/// - Recursion: `Rec(name, param, body)`
+/// - Recursion: `Rec(name, body)`, where `body` begins with a `Fun` whose parameter is
+///   peeled by the evaluator when it creates the recursive closure
 /// - Let bindings: `Let(name, ty_ann, value, body)`
 /// - Conditionals: `If(cond, then_expr, else_expr)`
 /// - Binary operations: `BinOp(op, left, right)`
