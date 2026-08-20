@@ -23,7 +23,7 @@ fn run_example(relative_path: &str) -> Result<String, String> {
         let program = parse_program(&source)?;
         typecheck_program(&program).map_err(|error| error.to_string())?;
         eval_program(&program, &Environment::new())
-            .map(|value| format!("{value}"))
+            .map(|value| format!("{value:?}"))
             .map_err(|error| error.to_string())
     })
     .map_err(|error| error.to_string())?
@@ -31,19 +31,22 @@ fn run_example(relative_path: &str) -> Result<String, String> {
 
 #[test]
 fn executes_stdlib_example() {
-    assert_eq!(run_example("examples/stdlib.par"), Ok("0".to_string()));
+    assert_eq!(run_example("examples/stdlib.par"), Ok("Int(0)".to_string()));
 }
 
 #[test]
 fn executes_use_stdlib_example() {
-    assert_eq!(run_example("examples/use_stdlib.par"), Ok("30".to_string()));
+    assert_eq!(
+        run_example("examples/use_stdlib.par"),
+        Ok("Int(30)".to_string())
+    );
 }
 
 #[test]
 fn executes_map_example() {
     assert_eq!(
         run_example("examples/stdlib/map.par"),
-        Ok("146".to_string())
+        Ok("Int(146)".to_string())
     );
 }
 
@@ -51,7 +54,7 @@ fn executes_map_example() {
 fn executes_treemap_example() {
     assert_eq!(
         run_example("examples/stdlib/treemap.par"),
-        Ok("400".to_string())
+        Ok("Int(400)".to_string())
     );
 }
 

@@ -34,6 +34,11 @@ struct Cli {
     dump_dot: bool,
 }
 
+struct ReplResponse {
+    type_line: Option<String>,
+    outcome: Result<String, String>,
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Start interactive REPL
@@ -115,7 +120,7 @@ fn main() {
 fn repl() -> bool {
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
     let (input_sender, input_receiver) = mpsc::channel::<String>();
-    let (response_sender, response_receiver) = mpsc::channel::<Result<String, String>>();
+    let (response_sender, response_receiver) = mpsc::channel::<ReplResponse>();
     let worker = match start_repl_worker(input_receiver, response_sender) {
         Ok(worker) => worker,
         Err(error) => {
@@ -123,9 +128,9 @@ fn repl() -> bool {
             return false;
         }
     };
-    let mut should_continue = true;
+    let mut failed = false;
 
-    loop {
+    'session: loop {
         // Accumulate multiline input
         let mut lines = Vec::new();
         let mut is_first_line = true;
@@ -178,36 +183,41 @@ fn repl() -> bool {
                 Err(ReadlineError::Eof) => {
                     // Ctrl+D
                     println!("\nGoodbye!");
-                    should_continue = false;
-                    break;
+                    break 'session;
                 }
                 Err(err) => {
                     eprintln!("Error reading input: {err}");
-                    should_continue = false;
-                    break;
+                    failed = true;
+                    break 'session;
                 }
             }
-        }
-
-        if !should_continue {
-            break;
         }
 
         // Input is parsed again by the worker so persistent non-Send evaluator state never
         // crosses the channel. Ctrl-C only interrupts `readline`, as before.
         if !lines.is_empty() {
-            if input_sender.send(lines.concat()).is_err() {
+            if input_sender
+                .send(lines.concat().trim().to_string())
+                .is_err()
+            {
                 eprintln!("Error: evaluator worker stopped unexpectedly");
-                should_continue = false;
+                failed = true;
                 break;
             }
 
             match response_receiver.recv() {
-                Ok(Ok(response)) => println!("{response}"),
-                Ok(Err(error)) => eprintln!("{error}"),
+                Ok(response) => {
+                    if let Some(type_line) = response.type_line {
+                        println!("{type_line}");
+                    }
+                    match response.outcome {
+                        Ok(value) => println!("{value}"),
+                        Err(error) => eprintln!("{error}"),
+                    }
+                }
                 Err(_) => {
                     eprintln!("Error: evaluator worker stopped unexpectedly");
-                    should_continue = false;
+                    failed = true;
                     break;
                 }
             }
@@ -220,12 +230,12 @@ fn repl() -> bool {
         return false;
     }
 
-    should_continue
+    !failed
 }
 
 fn start_repl_worker(
     input_receiver: mpsc::Receiver<String>,
-    response_sender: mpsc::Sender<Result<String, String>>,
+    response_sender: mpsc::Sender<ReplResponse>,
 ) -> std::io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .stack_size(EVALUATOR_STACK_SIZE)
@@ -242,23 +252,44 @@ fn start_repl_worker(
         })
 }
 
-fn evaluate_repl_input(
-    input: &str,
-    env: &mut Environment,
-    type_env: &mut TypeEnv,
-) -> Result<String, String> {
-    let program = parse_program(input).map_err(|error| format!("Parse error: {error}"))?;
+fn evaluate_repl_input(input: &str, env: &mut Environment, type_env: &mut TypeEnv) -> ReplResponse {
+    let program = match parse_program(input) {
+        Ok(program) => program,
+        Err(error) => {
+            return ReplResponse {
+                type_line: None,
+                outcome: Err(format!("Parse error: {error}")),
+            };
+        }
+    };
     let mut next_type_env = type_env.clone();
-    let ty = typecheck_program_with_env(&program, &mut next_type_env)
-        .map_err(|error| format!("Type error: {error}"))?;
-    let (value, new_env) = eval_program_with_env(&program, env)
-        .map_err(|error| format!("Evaluation error: {error}"))?;
+    let ty = match typecheck_program_with_env(&program, &mut next_type_env) {
+        Ok(ty) => ty,
+        Err(error) => {
+            return ReplResponse {
+                type_line: None,
+                outcome: Err(format!("Type error: {error}")),
+            };
+        }
+    };
+    let type_line = program.body.is_some().then(|| format!("Type: {ty}"));
+    let (value, new_env) = match eval_program_with_env(&program, env) {
+        Ok(result) => result,
+        Err(error) => {
+            return ReplResponse {
+                type_line,
+                outcome: Err(format!("Evaluation error: {error}")),
+            };
+        }
+    };
 
     *env = new_env;
     *type_env = next_type_env;
-    if program.body.is_some() {
-        Ok(format!("Type: {ty}\n{value}"))
+    let outcome = if program.body.is_some() {
+        Ok(format!("{value}"))
     } else {
         Ok("Declarations added.".to_string())
-    }
+    };
+
+    ReplResponse { type_line, outcome }
 }
