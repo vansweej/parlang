@@ -12,9 +12,9 @@ use std::rc::Rc;
 
 /// Stack reserved for evaluation workers.
 ///
-/// At the policy limit, 1,000 × 24,912 B is about 24.9 MB, leaving roughly 2.5× headroom in a
-/// 64 MiB worker stack.
-pub const EVALUATOR_STACK_SIZE: usize = 64 * 1024 * 1024;
+/// At the policy limit, 4,000 × 24,912 B is about 95 MB, leaving roughly 2.7× headroom in a
+/// 256 MiB worker stack.
+pub const EVALUATOR_STACK_SIZE: usize = 256 * 1024 * 1024;
 
 /// Failure while starting or joining an evaluator worker.
 #[derive(Debug)]
@@ -77,8 +77,10 @@ where
 
 /// Policy limit for non-tail evaluator recursion.
 ///
-/// A depth of 1,000 commits about 24.9 MB at the measured 24,912 B per increment; the 64 MiB
-/// evaluator worker stack therefore provides roughly 2.5× headroom.
+/// A depth of 4,000 commits about 95 MB at the measured 24,912 B per increment; the 256 MiB
+/// evaluator worker stack therefore provides roughly 2.7× headroom. Curried multi-argument tail
+/// loops cost about 2–3.3 increments per iteration, so this guarantees at least 1,200 iterations
+/// (likely about 2,000); single-argument tail loops remain unbounded.
 ///
 /// Historical measurement (2026-08): aggregate cost is 24,912 B per evaluator-depth increment,
 /// independently reconfirmed at 24,896 B. A one-increment trace was inferred as
@@ -88,7 +90,7 @@ where
 /// required reduction. The split and ceiling are no longer re-derivable because the known-wrong
 /// per-frame diagnostic was removed; re-derivation requires new instrumentation. The aggregate
 /// cost remains reproducible with `measures_stack_bytes_per_eval_depth_increment_in_test_profile`.
-const DEFAULT_MAX_EVAL_DEPTH: usize = 1_000;
+const DEFAULT_MAX_EVAL_DEPTH: usize = 4_000;
 
 #[cfg(test)]
 thread_local! {
@@ -1809,34 +1811,6 @@ mod tests {
     fn test_eval_error_display_division_by_zero() {
         let err = EvalError::DivisionByZero;
         assert_eq!(format!("{err}"), "Division by zero");
-    }
-
-    #[test]
-    #[ignore = "cannot pass until the guard is calibrated; the frame-size-reduction slice is the unblocker"]
-    fn test_non_tail_recursion_returns_recursion_limit_on_four_mib_stack() {
-        const STACK_SIZE_BYTES: usize = 4 * 1024 * 1024;
-        let thread = std::thread::Builder::new()
-            // The smallest stack where the preliminary 128-level probe tripped the guard.
-            .stack_size(STACK_SIZE_BYTES)
-            .spawn(|| {
-                let _ = take_max_eval_depth();
-                let expr = crate::parser::parse_expr("(rec f -> fun n -> 1 + f n) 0")
-                    .expect("the non-tail recursion trip expression must parse");
-                crate::typechecker::typecheck(&expr)
-                    .expect("the non-tail recursion trip expression must typecheck");
-                matches!(
-                    eval(&expr, &Environment::new()),
-                    Err(EvalError::RecursionLimit)
-                )
-            })
-            .expect("the calibration thread must spawn");
-
-        assert!(
-            thread
-                .join()
-                .expect("the calibration thread must not panic"),
-            "the evaluation policy must return RecursionLimit at its configured limit"
-        );
     }
 
     #[test]

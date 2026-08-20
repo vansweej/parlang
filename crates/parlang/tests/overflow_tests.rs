@@ -1,6 +1,8 @@
 /// Tests for integer overflow handling and edge cases
 /// These tests verify that arithmetic operations properly detect and report overflow conditions
-use parlang::{eval, parse_expr as parse, Environment, Value};
+use parlang::{
+    eval, parse_expr as parse, run_on_evaluator_stack, typecheck, Environment, EvalError, Value,
+};
 
 fn parse_and_eval(input: &str) -> Result<Value, String> {
     let expr = parse(input)?;
@@ -206,18 +208,49 @@ fn test_arithmetic_overflow_in_function_application() {
 }
 
 #[test]
-#[ignore = "causes stack overflow and aborts - run manually if needed"]
 fn test_arithmetic_overflow_in_recursive_function() {
-    // Overflow within recursive call
-    // This test is ignored because factorial(100) causes stack overflow
     let code = r"
         let factorial = rec fact -> fun n ->
             if n == 0 then 1 else n * fact (n - 1)
         in factorial 100
     ";
-    let result = parse_and_eval(code);
-    // Should either overflow or stack overflow (both are acceptable)
-    assert!(result.is_err());
+    let overflowed = run_on_evaluator_stack(move || {
+        let result = parse(code).and_then(|expr| {
+            typecheck(&expr).map_err(|error| error.to_string())?;
+            eval(&expr, &Environment::new()).map_err(|error| error.to_string())
+        });
+        result.is_err_and(|error| error.contains("overflow"))
+    })
+    .expect("the evaluator worker must start and not panic");
+
+    // Overflow is currently a `TypeError` string, not a distinct `EvalError::ArithmeticOverflow`.
+    assert!(overflowed);
+}
+
+#[test]
+fn non_tail_recursion_obeys_the_policy_limit_on_the_evaluator_stack() {
+    // A depth-1000 worker commits about 24.9 MB. This single deep test performs its workers in
+    // sequence so this file does not concurrently commit multiple deep evaluator stacks.
+    let completes_below_limit = run_on_evaluator_stack(|| {
+        let expr = parse("(rec f -> fun n -> if n == 0 then 0 else 1 + f (n - 1)) 500")
+            .expect("the below-limit recursive expression must parse");
+        typecheck(&expr).expect("the below-limit recursive expression must typecheck");
+        matches!(eval(&expr, &Environment::new()), Ok(Value::Int(500)))
+    })
+    .expect("the evaluator worker must start and not panic");
+    assert!(completes_below_limit);
+
+    let reaches_limit = run_on_evaluator_stack(|| {
+        let expr = parse("(rec f -> fun n -> if n == 0 then 0 else 1 + f (n - 1)) 4500")
+            .expect("the over-limit recursive expression must parse");
+        typecheck(&expr).expect("the over-limit recursive expression must typecheck");
+        matches!(
+            eval(&expr, &Environment::new()),
+            Err(EvalError::RecursionLimit)
+        )
+    })
+    .expect("the evaluator worker must start and not panic");
+    assert!(reaches_limit);
 }
 
 #[test]
