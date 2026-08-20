@@ -10,22 +10,78 @@ use std::fs;
 use std::path::Path;
 use std::rc::Rc;
 
-/// The guard mechanism is implemented but NOT YET CALIBRATED and currently inert.
+/// The evaluator depth guard is measured in the debug/test profile but remains inactive until the
+/// evaluator stack budget is configured.
 ///
-/// Probes at 2048, 1024, 512, 256, and 128 all aborted on a 2 MiB stack. The
-/// smallest stack where the 128-level probe returned `EvalError::RecursionLimit`
-/// was 4 MiB, measuring 32 KiB per evaluation level. A usable limit requires the
-/// frame-size-reduction slice first; see Cerebrum memory `6ea26961`.
+/// Historical measurement (2026-08): aggregate cost is 24,912 B per evaluator-depth increment,
+/// independently reconfirmed at 24,896 B. A one-increment trace was inferred as
+/// `eval_with_tco@d → eval_inner(BinOp@d) → eval_inner(App@d+1) → eval_app@d+1 →
+/// eval_with_tco@d+1`, with an 83.0% (20,656 B) `eval_with_tco→eval_app` split and 17.0%
+/// (4,240 B) return path. This gave an arm-extraction ceiling of about 83%, below the 91.6%
+/// required reduction. The split and ceiling are no longer re-derivable because the known-wrong
+/// per-frame diagnostic was removed; re-derivation requires new instrumentation. The aggregate
+/// cost remains reproducible with `measures_stack_bytes_per_eval_depth_increment_in_test_profile`.
 const DEFAULT_MAX_EVAL_DEPTH: usize = 1_000_000;
 
 #[cfg(test)]
 thread_local! {
     static MAX_EVAL_DEPTH: Cell<usize> = const { Cell::new(0) };
+    static EVAL_DEPTH_LIMIT_OVERRIDE: Cell<Option<usize>> = const { Cell::new(None) };
+    static STACK_POINTER_MEASUREMENT_ACTIVE: Cell<bool> = const { Cell::new(false) };
+    static ENTRY_STACK_POINTER: Cell<Option<usize>> = const { Cell::new(None) };
+    static DEEPEST_STACK_POINTER: Cell<Option<usize>> = const { Cell::new(None) };
+    static COUNT_EVAL_INNER: Cell<usize> = const { Cell::new(0) };
+    static COUNT_EVAL_APP: Cell<usize> = const { Cell::new(0) };
+    static COUNT_EVAL_WITH_TCO: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
 pub(crate) fn take_max_eval_depth() -> usize {
     MAX_EVAL_DEPTH.with(|max_depth| max_depth.replace(0))
+}
+
+/// Overrides the evaluation-depth limit only so tests can trip the guard without exhausting the
+/// native stack.
+#[cfg(test)]
+fn set_eval_depth_limit_override(limit: Option<usize>) {
+    EVAL_DEPTH_LIMIT_OVERRIDE.with(|override_limit| override_limit.set(limit));
+}
+
+#[cfg(test)]
+fn clear_eval_depth_limit_override() {
+    set_eval_depth_limit_override(None);
+}
+
+#[cfg(test)]
+fn start_stack_pointer_measurement() {
+    STACK_POINTER_MEASUREMENT_ACTIVE.with(|active| active.set(true));
+    ENTRY_STACK_POINTER.with(|entry| entry.set(None));
+    DEEPEST_STACK_POINTER.with(|deepest| deepest.set(None));
+}
+
+#[cfg(test)]
+fn take_stack_pointer_measurement() -> Option<(usize, usize)> {
+    STACK_POINTER_MEASUREMENT_ACTIVE.with(|active| active.set(false));
+    let entry = ENTRY_STACK_POINTER.with(|entry| entry.replace(None));
+    let deepest = DEEPEST_STACK_POINTER.with(|deepest| deepest.replace(None));
+    entry.zip(deepest)
+}
+
+#[cfg(test)]
+fn reset_frame_diagnostics() {
+    COUNT_EVAL_INNER.with(|count| count.set(0));
+    COUNT_EVAL_APP.with(|count| count.set(0));
+    COUNT_EVAL_WITH_TCO.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+fn frame_diagnostic_entry_counts() -> (usize, usize, usize) {
+    COUNT_EVAL_INNER.with(|eval_inner| {
+        COUNT_EVAL_APP.with(|eval_app| {
+            COUNT_EVAL_WITH_TCO
+                .with(|eval_with_tco| (eval_inner.get(), eval_app.get(), eval_with_tco.get()))
+        })
+    })
 }
 
 /// Runtime values in the language
@@ -341,6 +397,11 @@ fn eval_with_tco(
     closure_env: &Environment,
     depth: usize,
 ) -> Result<Value, EvalError> {
+    #[cfg(test)]
+    {
+        COUNT_EVAL_WITH_TCO.with(|count| count.set(count.get() + 1));
+    }
+
     let mut current_expr = body.clone();
     let mut current_env = initial_env.clone();
 
@@ -596,6 +657,11 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
 /// Evaluate a function application `func arg` (extracted from `eval` to keep
 /// its line count down).
 fn eval_app(func: &Expr, arg: &Expr, env: &Environment, depth: usize) -> Result<Value, EvalError> {
+    #[cfg(test)]
+    {
+        COUNT_EVAL_APP.with(|count| count.set(count.get() + 1));
+    }
+
     let func_val = eval_inner(func, env, depth + 1)?;
     let arg_val = eval_inner(arg, env, depth + 1)?;
 
@@ -872,11 +938,42 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
 // `extract_bindings`, `extend_env_with_program`, and load evaluation re-enter through
 // public `eval` at depth zero; deeply nested top-level lets or loads remain out of scope.
 fn eval_inner(expr: &Expr, env: &Environment, depth: usize) -> Result<Value, EvalError> {
-    if depth >= DEFAULT_MAX_EVAL_DEPTH {
+    #[cfg(test)]
+    let max_depth = EVAL_DEPTH_LIMIT_OVERRIDE
+        .with(|override_limit| override_limit.get())
+        .unwrap_or(DEFAULT_MAX_EVAL_DEPTH);
+    #[cfg(not(test))]
+    let max_depth = DEFAULT_MAX_EVAL_DEPTH;
+
+    if depth >= max_depth {
         return Err(EvalError::RecursionLimit);
     }
     #[cfg(test)]
-    MAX_EVAL_DEPTH.with(|max_depth| max_depth.set(max_depth.get().max(depth)));
+    {
+        MAX_EVAL_DEPTH.with(|max_depth| max_depth.set(max_depth.get().max(depth)));
+        COUNT_EVAL_INNER.with(|count| count.set(count.get() + 1));
+
+        // This is the sole stack-pointer probe site. Debug/test measurements use it to avoid
+        // comparing distinct evaluator-frame layouts.
+        let stack_probe = depth;
+        let stack_pointer = std::hint::black_box(&stack_probe as *const usize as usize);
+        STACK_POINTER_MEASUREMENT_ACTIVE.with(|active| {
+            if active.get() {
+                ENTRY_STACK_POINTER.with(|entry| {
+                    if entry.get().is_none() {
+                        entry.set(Some(stack_pointer));
+                    }
+                });
+                DEEPEST_STACK_POINTER.with(|deepest| {
+                    deepest.set(Some(
+                        deepest
+                            .get()
+                            .map_or(stack_pointer, |current| current.min(stack_pointer)),
+                    ));
+                });
+            }
+        });
+    }
 
     match expr {
         Expr::Int(n) => Ok(Value::Int(*n)),
@@ -1672,6 +1769,91 @@ mod tests {
                 .join()
                 .expect("the calibration thread must not panic"),
             "the evaluation guard must return RecursionLimit before the native stack overflows"
+        );
+    }
+
+    #[test]
+    fn measures_stack_bytes_per_eval_depth_increment_in_test_profile() {
+        const STACK_SIZE_BYTES: usize = 4 * 1024 * 1024;
+        const DEPTH_LIMIT: usize = 128;
+
+        let thread = std::thread::Builder::new()
+            // The debug/test profile is measured because this is a test-only calibration harness.
+            .stack_size(STACK_SIZE_BYTES)
+            .spawn(|| {
+                set_eval_depth_limit_override(Some(DEPTH_LIMIT));
+                start_stack_pointer_measurement();
+
+                let expr = crate::parser::parse_expr("(rec f -> fun n -> 1 + f n) 0")
+                    .expect("the non-tail recursion trip expression must parse");
+                crate::typechecker::typecheck(&expr)
+                    .expect("the non-tail recursion trip expression must typecheck");
+                let evaluation = eval(&expr, &Environment::new());
+                clear_eval_depth_limit_override();
+
+                assert!(matches!(evaluation, Err(EvalError::RecursionLimit)));
+                let (entry_stack_pointer, deepest_stack_pointer) = take_stack_pointer_measurement()
+                    .expect("the guard probe must record entry and deepest stack pointers");
+                let stack_delta = entry_stack_pointer.abs_diff(deepest_stack_pointer);
+                let depth_increments = DEPTH_LIMIT - 1;
+
+                assert!(
+                    stack_delta > 0,
+                    "the evaluator must consume stack while recursing"
+                );
+                eprintln!(
+                    "debug/test stack measurement: {stack_delta} bytes across {depth_increments} \
+                     depth increments ({} bytes/increment)",
+                    stack_delta / depth_increments
+                );
+            })
+            .expect("the measurement thread must spawn");
+
+        thread
+            .join()
+            .expect("the measurement thread must not panic");
+    }
+
+    #[test]
+    fn measures_eval_depth_increments_per_non_tail_recursion_level() {
+        const LOWER_LOGICAL_DEPTH: usize = 16;
+        const UPPER_LOGICAL_DEPTH: usize = 32;
+
+        let lower_expr = crate::parser::parse_expr(&format!(
+            "(rec f -> fun n -> if n == 0 then 0 else 1 + f (n - 1)) {LOWER_LOGICAL_DEPTH}"
+        ))
+        .expect("the lower-depth non-tail recursion expression must parse");
+        let upper_expr = crate::parser::parse_expr(&format!(
+            "(rec f -> fun n -> if n == 0 then 0 else 1 + f (n - 1)) {UPPER_LOGICAL_DEPTH}"
+        ))
+        .expect("the upper-depth non-tail recursion expression must parse");
+
+        crate::typechecker::typecheck(&lower_expr)
+            .expect("the lower-depth non-tail recursion expression must typecheck");
+        crate::typechecker::typecheck(&upper_expr)
+            .expect("the upper-depth non-tail recursion expression must typecheck");
+
+        let _ = take_max_eval_depth();
+        assert_eq!(
+            eval(&lower_expr, &Environment::new()),
+            Ok(Value::Int(LOWER_LOGICAL_DEPTH as i64))
+        );
+        let lower_depth = take_max_eval_depth();
+
+        assert_eq!(
+            eval(&upper_expr, &Environment::new()),
+            Ok(Value::Int(UPPER_LOGICAL_DEPTH as i64))
+        );
+        let upper_depth = take_max_eval_depth();
+        let additional_depth_increments = upper_depth
+            .checked_sub(lower_depth)
+            .expect("non-tail recursion must increase the recorded evaluator depth");
+        let additional_logical_levels = UPPER_LOGICAL_DEPTH - LOWER_LOGICAL_DEPTH;
+
+        assert!(additional_depth_increments > 0);
+        eprintln!(
+            "debug/test depth multiplier: {additional_depth_increments}/{additional_logical_levels} \
+             depth increments per logical non-tail recursion level"
         );
     }
 
