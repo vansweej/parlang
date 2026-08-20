@@ -43,7 +43,8 @@ pub use ast::{BinOp, Decl, Expr, Program};
 pub use dot::program_to_dot;
 pub use eval::{
     eval, eval_program, eval_program_with_env, extend_env_with_program, extract_bindings,
-    Environment, EvalError, Value,
+    run_on_evaluator_stack, Environment, EvalError, EvaluatorStackError, Value,
+    EVALUATOR_STACK_SIZE,
 };
 pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
 pub use parser::{parse_expr, parse_program};

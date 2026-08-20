@@ -10,6 +10,71 @@ use std::fs;
 use std::path::Path;
 use std::rc::Rc;
 
+/// Stack reserved for evaluation workers.
+///
+/// At the policy limit, 1,000 × 24,912 B is about 24.9 MB, leaving roughly 2.5× headroom in a
+/// 64 MiB worker stack.
+pub const EVALUATOR_STACK_SIZE: usize = 64 * 1024 * 1024;
+
+/// Failure while starting or joining an evaluator worker.
+#[derive(Debug)]
+pub enum EvaluatorStackError {
+    /// The operating system could not create the evaluator worker.
+    Spawn(std::io::Error),
+    /// The evaluator worker panicked, optionally with its recovered message.
+    WorkerPanicked(Option<String>),
+}
+
+impl fmt::Display for EvaluatorStackError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EvaluatorStackError::Spawn(error) => {
+                write!(f, "failed to spawn evaluator worker: {error}")
+            }
+            EvaluatorStackError::WorkerPanicked(Some(message)) => {
+                write!(f, "evaluator worker panicked: {message}")
+            }
+            EvaluatorStackError::WorkerPanicked(None) => write!(f, "evaluator worker panicked"),
+        }
+    }
+}
+
+impl std::error::Error for EvaluatorStackError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            EvaluatorStackError::Spawn(error) => Some(error),
+            EvaluatorStackError::WorkerPanicked(_) => None,
+        }
+    }
+}
+
+/// Runs a `Send` result-producing operation on a dedicated evaluator stack.
+///
+/// `Value` and `Environment` are not `Send`, so callers must turn results into a `Send` payload
+/// such as formatted text before the worker returns.
+///
+/// # Errors
+///
+/// Returns an error when the evaluator worker cannot be spawned or panics.
+pub fn run_on_evaluator_stack<F, R>(f: F) -> Result<R, EvaluatorStackError>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    let worker = std::thread::Builder::new()
+        .stack_size(EVALUATOR_STACK_SIZE)
+        .spawn(f)
+        .map_err(EvaluatorStackError::Spawn)?;
+
+    worker.join().map_err(|payload| {
+        let message = payload
+            .downcast_ref::<&'static str>()
+            .map(ToString::to_string)
+            .or_else(|| payload.downcast_ref::<String>().cloned());
+        EvaluatorStackError::WorkerPanicked(message)
+    })
+}
+
 /// The evaluator depth guard is measured in the debug/test profile but remains inactive until the
 /// evaluator stack budget is configured.
 ///
@@ -940,7 +1005,7 @@ pub fn eval(expr: &Expr, env: &Environment) -> Result<Value, EvalError> {
 fn eval_inner(expr: &Expr, env: &Environment, depth: usize) -> Result<Value, EvalError> {
     #[cfg(test)]
     let max_depth = EVAL_DEPTH_LIMIT_OVERRIDE
-        .with(|override_limit| override_limit.get())
+        .with(Cell::get)
         .unwrap_or(DEFAULT_MAX_EVAL_DEPTH);
     #[cfg(not(test))]
     let max_depth = DEFAULT_MAX_EVAL_DEPTH;
@@ -956,7 +1021,7 @@ fn eval_inner(expr: &Expr, env: &Environment, depth: usize) -> Result<Value, Eva
         // This is the sole stack-pointer probe site. Debug/test measurements use it to avoid
         // comparing distinct evaluator-frame layouts.
         let stack_probe = depth;
-        let stack_pointer = std::hint::black_box(&stack_probe as *const usize as usize);
+        let stack_pointer = std::hint::black_box(&raw const stack_probe as usize);
         STACK_POINTER_MEASUREMENT_ACTIVE.with(|active| {
             if active.get() {
                 ENTRY_STACK_POINTER.with(|entry| {
@@ -1781,6 +1846,7 @@ mod tests {
             // The debug/test profile is measured because this is a test-only calibration harness.
             .stack_size(STACK_SIZE_BYTES)
             .spawn(|| {
+                reset_frame_diagnostics();
                 set_eval_depth_limit_override(Some(DEPTH_LIMIT));
                 start_stack_pointer_measurement();
 
@@ -1796,11 +1862,16 @@ mod tests {
                     .expect("the guard probe must record entry and deepest stack pointers");
                 let stack_delta = entry_stack_pointer.abs_diff(deepest_stack_pointer);
                 let depth_increments = DEPTH_LIMIT - 1;
+                let (eval_inner_entries, eval_app_entries, eval_with_tco_entries) =
+                    frame_diagnostic_entry_counts();
 
                 assert!(
                     stack_delta > 0,
                     "the evaluator must consume stack while recursing"
                 );
+                assert!(eval_inner_entries > 0);
+                assert!(eval_app_entries > 0);
+                assert!(eval_with_tco_entries > 0);
                 eprintln!(
                     "debug/test stack measurement: {stack_delta} bytes across {depth_increments} \
                      depth increments ({} bytes/increment)",
@@ -1816,8 +1887,8 @@ mod tests {
 
     #[test]
     fn measures_eval_depth_increments_per_non_tail_recursion_level() {
-        const LOWER_LOGICAL_DEPTH: usize = 16;
-        const UPPER_LOGICAL_DEPTH: usize = 32;
+        const LOWER_LOGICAL_DEPTH: i64 = 16;
+        const UPPER_LOGICAL_DEPTH: i64 = 32;
 
         let lower_expr = crate::parser::parse_expr(&format!(
             "(rec f -> fun n -> if n == 0 then 0 else 1 + f (n - 1)) {LOWER_LOGICAL_DEPTH}"
@@ -1836,13 +1907,13 @@ mod tests {
         let _ = take_max_eval_depth();
         assert_eq!(
             eval(&lower_expr, &Environment::new()),
-            Ok(Value::Int(LOWER_LOGICAL_DEPTH as i64))
+            Ok(Value::Int(LOWER_LOGICAL_DEPTH))
         );
         let lower_depth = take_max_eval_depth();
 
         assert_eq!(
             eval(&upper_expr, &Environment::new()),
-            Ok(Value::Int(UPPER_LOGICAL_DEPTH as i64))
+            Ok(Value::Int(UPPER_LOGICAL_DEPTH))
         );
         let upper_depth = take_max_eval_depth();
         let additional_depth_increments = upper_depth
