@@ -6,13 +6,14 @@
 /// - AST dumping to stdout as text IR (--dump) or Graphviz DOT (--dump-dot)
 use clap::{Parser, Subcommand};
 use parlang::{
-    eval_program, eval_program_with_env, parse_program, program_to_dot, typecheck_program,
-    typecheck_program_with_env, Environment, TypeEnv,
+    eval_program, eval_program_with_env, parse_program, program_to_dot, run_on_evaluator_stack,
+    typecheck_program, typecheck_program_with_env, Environment, TypeEnv, EVALUATOR_STACK_SIZE,
 };
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 use std::fs;
 use std::process;
+use std::sync::mpsc;
 
 #[derive(Parser)]
 #[command(name = "parlang")]
@@ -51,7 +52,9 @@ fn main() {
         );
         println!("Type expressions to evaluate them. Press Ctrl+C to exit.");
         println!();
-        repl();
+        if !repl() {
+            process::exit(1);
+        }
         return;
     }
 
@@ -78,12 +81,19 @@ fn main() {
                             process::exit(1);
                         }
 
-                        // Execute the program
-                        let env = Environment::new();
-                        match eval_program(&program, &env).map_err(|e| e.to_string()) {
-                            Ok(value) => println!("{value}"),
-                            Err(e) => {
-                                eprintln!("Error: {e}");
+                        match run_on_evaluator_stack(move || {
+                            let env = Environment::new();
+                            eval_program(&program, &env)
+                                .map(|value| format!("{value}"))
+                                .map_err(|error| format!("Error: {error}"))
+                        }) {
+                            Ok(Ok(value)) => println!("{value}"),
+                            Ok(Err(error)) => {
+                                eprintln!("{error}");
+                                process::exit(1);
+                            }
+                            Err(error) => {
+                                eprintln!("Error: {error}");
                                 process::exit(1);
                             }
                         }
@@ -102,10 +112,18 @@ fn main() {
     }
 }
 
-fn repl() {
-    let mut env = Environment::new();
-    let mut type_env = TypeEnv::new();
+fn repl() -> bool {
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
+    let (input_sender, input_receiver) = mpsc::channel::<String>();
+    let (response_sender, response_receiver) = mpsc::channel::<Result<String, String>>();
+    let worker = match start_repl_worker(input_receiver, response_sender) {
+        Ok(worker) => worker,
+        Err(error) => {
+            eprintln!("Error starting evaluator worker: {error}");
+            return false;
+        }
+    };
+    let mut should_continue = true;
 
     loop {
         // Accumulate multiline input
@@ -160,50 +178,87 @@ fn repl() {
                 Err(ReadlineError::Eof) => {
                     // Ctrl+D
                     println!("\nGoodbye!");
-                    return;
+                    should_continue = false;
+                    break;
                 }
                 Err(err) => {
                     eprintln!("Error reading input: {err}");
+                    should_continue = false;
+                    break;
+                }
+            }
+        }
+
+        if !should_continue {
+            break;
+        }
+
+        // Input is parsed again by the worker so persistent non-Send evaluator state never
+        // crosses the channel. Ctrl-C only interrupts `readline`, as before.
+        if !lines.is_empty() {
+            if input_sender.send(lines.concat()).is_err() {
+                eprintln!("Error: evaluator worker stopped unexpectedly");
+                should_continue = false;
+                break;
+            }
+
+            match response_receiver.recv() {
+                Ok(Ok(response)) => println!("{response}"),
+                Ok(Err(error)) => eprintln!("{error}"),
+                Err(_) => {
+                    eprintln!("Error: evaluator worker stopped unexpectedly");
+                    should_continue = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    drop(input_sender);
+    if worker.join().is_err() {
+        eprintln!("Error: evaluator worker panicked");
+        return false;
+    }
+
+    should_continue
+}
+
+fn start_repl_worker(
+    input_receiver: mpsc::Receiver<String>,
+    response_sender: mpsc::Sender<Result<String, String>>,
+) -> std::io::Result<std::thread::JoinHandle<()>> {
+    std::thread::Builder::new()
+        .stack_size(EVALUATOR_STACK_SIZE)
+        .spawn(move || {
+            let mut env = Environment::new();
+            let mut type_env = TypeEnv::new();
+
+            while let Ok(input) = input_receiver.recv() {
+                let response = evaluate_repl_input(&input, &mut env, &mut type_env);
+                if response_sender.send(response).is_err() {
                     return;
                 }
             }
-        }
+        })
+}
 
-        // Join all lines and try to parse/evaluate
-        if !lines.is_empty() {
-            let input = lines.concat(); // Preserves newlines
-            let input = input.trim();
+fn evaluate_repl_input(
+    input: &str,
+    env: &mut Environment,
+    type_env: &mut TypeEnv,
+) -> Result<String, String> {
+    let program = parse_program(input).map_err(|error| format!("Parse error: {error}"))?;
+    let mut next_type_env = type_env.clone();
+    let ty = typecheck_program_with_env(&program, &mut next_type_env)
+        .map_err(|error| format!("Type error: {error}"))?;
+    let (value, new_env) = eval_program_with_env(&program, env)
+        .map_err(|error| format!("Evaluation error: {error}"))?;
 
-            match parse_program(input) {
-                Ok(program) => {
-                    // Type check before evaluating (mandatory)
-                    let mut next_type_env = type_env.clone();
-                    match typecheck_program_with_env(&program, &mut next_type_env) {
-                        Ok(ty) if program.body.is_some() => println!("Type: {ty}"),
-                        Ok(_) => {}
-                        Err(e) => {
-                            eprintln!("Type error: {e}");
-                            continue;
-                        }
-                    }
-
-                    match eval_program_with_env(&program, &env) {
-                        Ok((value, new_env)) => {
-                            if program.body.is_some() {
-                                println!("{value}");
-                            } else {
-                                // Declaration-only input persists bindings without a synthetic value.
-                                println!("Declarations added.");
-                            }
-                            // Persist declarations evaluated as part of this REPL input.
-                            env = new_env;
-                            type_env = next_type_env;
-                        }
-                        Err(e) => eprintln!("Evaluation error: {e}"),
-                    }
-                }
-                Err(e) => eprintln!("Parse error: {e}"),
-            }
-        }
+    *env = new_env;
+    *type_env = next_type_env;
+    if program.body.is_some() {
+        Ok(format!("Type: {ty}\n{value}"))
+    } else {
+        Ok("Declarations added.".to_string())
     }
 }

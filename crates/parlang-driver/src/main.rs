@@ -53,14 +53,22 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let env = parlang::Environment::new();
-    match parlang::eval_program(&program, &env) {
-        Ok(value) => {
+    match parlang::run_on_evaluator_stack(move || {
+        let env = parlang::Environment::new();
+        parlang::eval_program(&program, &env)
+            .map(|value| format!("{value}"))
+            .map_err(|error| format!("eval error: {error}"))
+    }) {
+        Ok(Ok(value)) => {
             println!("{value}");
             ExitCode::SUCCESS
         }
-        Err(err) => {
-            eprintln!("eval error: {err}");
+        Ok(Err(error)) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+        Err(error) => {
+            eprintln!("eval error: {error}");
             ExitCode::FAILURE
         }
     }

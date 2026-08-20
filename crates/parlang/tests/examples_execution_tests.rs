@@ -1,8 +1,10 @@
-use parlang::{eval_program, parse_program, typecheck_program, Environment, Value};
+use parlang::{
+    eval_program, parse_program, run_on_evaluator_stack, typecheck_program, Environment,
+};
 use std::fs;
 use std::path::Path;
 
-fn run_example(relative_path: &str) -> Result<Value, String> {
+fn example_source(relative_path: &str) -> Result<String, String> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
     let mut source = fs::read_to_string(path).map_err(|error| error.to_string())?;
     if relative_path == "examples/use_strings.par" {
@@ -12,31 +14,44 @@ fn run_example(relative_path: &str) -> Result<Value, String> {
             .into_owned();
         source = source.replace("examples/string.par", &string_library);
     }
-    let program = parse_program(&source)?;
-    typecheck_program(&program).map_err(|error| error.to_string())?;
-    eval_program(&program, &Environment::new()).map_err(|error| error.to_string())
+    Ok(source)
+}
+
+fn run_example(relative_path: &str) -> Result<String, String> {
+    let source = example_source(relative_path)?;
+    run_on_evaluator_stack(move || -> Result<String, String> {
+        let program = parse_program(&source)?;
+        typecheck_program(&program).map_err(|error| error.to_string())?;
+        eval_program(&program, &Environment::new())
+            .map(|value| format!("{value}"))
+            .map_err(|error| error.to_string())
+    })
+    .map_err(|error| error.to_string())?
 }
 
 #[test]
 fn executes_stdlib_example() {
-    assert_eq!(run_example("examples/stdlib.par"), Ok(Value::Int(0)));
+    assert_eq!(run_example("examples/stdlib.par"), Ok("0".to_string()));
 }
 
 #[test]
 fn executes_use_stdlib_example() {
-    assert_eq!(run_example("examples/use_stdlib.par"), Ok(Value::Int(30)));
+    assert_eq!(run_example("examples/use_stdlib.par"), Ok("30".to_string()));
 }
 
 #[test]
 fn executes_map_example() {
-    assert_eq!(run_example("examples/stdlib/map.par"), Ok(Value::Int(146)));
+    assert_eq!(
+        run_example("examples/stdlib/map.par"),
+        Ok("146".to_string())
+    );
 }
 
 #[test]
 fn executes_treemap_example() {
     assert_eq!(
         run_example("examples/stdlib/treemap.par"),
-        Ok(Value::Int(400))
+        Ok("400".to_string())
     );
 }
 
@@ -47,7 +62,6 @@ fn executes_use_strings_example() {
 }
 
 #[test]
-#[ignore = "evaluator recurses on the native stack with no depth guard; overflows a default test thread. Passes with the main thread's larger stack. Unblocked by the EvalError::RecursionLimit slice."]
 fn executes_use_recursion_example() {
     assert!(run_example("examples/use_recursion.par").is_ok());
 }
