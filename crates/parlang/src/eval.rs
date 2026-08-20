@@ -861,7 +861,14 @@ fn apply_value_spine(
             Value::RecClosure(rec_name, rec_param, body, closure_env) => {
                 let mut rec_args = vec![arg];
                 rec_args.extend(remaining);
-                return apply_rec_closure(rec_name, rec_param, body, closure_env, rec_args, depth);
+                return apply_rec_closure(
+                    &rec_name,
+                    rec_param,
+                    &body,
+                    &closure_env,
+                    &rec_args,
+                    depth,
+                );
             }
             _ => {
                 return Err(EvalError::TypeError(
@@ -874,30 +881,30 @@ fn apply_value_spine(
 }
 
 fn apply_rec_closure(
-    rec_name: String,
+    rec_name: &str,
     rec_param: String,
-    body: Expr,
-    closure_env: Environment,
-    args: Vec<Value>,
+    body: &Expr,
+    closure_env: &Environment,
+    args: &[Value],
     depth: usize,
 ) -> Result<Value, EvalError> {
-    let available = rec_arity(&body);
+    let available = rec_arity(body);
     let consumed = args.len().min(available);
-    let (params, remaining_body) = peel_rec_params(&rec_param, &body, consumed);
+    let (params, remaining_body) = peel_rec_params(&rec_param, body, consumed);
     if params.len() != consumed {
         return Err(EvalError::TypeError(
             "Recursive function parameter arity is inconsistent".to_string(),
         ));
     }
     let rec_value = Value::RecClosure(
-        rec_name.clone(),
+        rec_name.to_string(),
         rec_param,
         body.clone(),
         closure_env.clone(),
     );
     let bound_env = bind_rec_params(
-        &closure_env,
-        &rec_name,
+        closure_env,
+        rec_name,
         &rec_value,
         &params,
         &args[..consumed],
@@ -919,9 +926,9 @@ fn apply_rec_closure(
     let result = eval_with_tco(
         remaining_body,
         &bound_env,
-        &rec_name,
+        rec_name,
         &params,
-        &closure_env,
+        closure_env,
         &rec_value,
         depth,
     )?;
