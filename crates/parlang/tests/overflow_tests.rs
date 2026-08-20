@@ -214,23 +214,30 @@ fn test_arithmetic_overflow_in_recursive_function() {
             if n == 0 then 1 else n * fact (n - 1)
         in factorial 100
     ";
-    let overflowed = run_on_evaluator_stack(move || {
+    let result = run_on_evaluator_stack(move || {
         let result = parse(code).and_then(|expr| {
             typecheck(&expr).map_err(|error| error.to_string())?;
             eval(&expr, &Environment::new()).map_err(|error| error.to_string())
         });
-        result.is_err_and(|error| error.contains("overflow"))
+        match result {
+            Err(error) => Err(error),
+            Ok(value) => Ok(format!("{value:?}")),
+        }
     })
     .expect("the evaluator worker must start and not panic");
 
     // Overflow is currently a `TypeError` string, not a distinct `EvalError::ArithmeticOverflow`.
-    assert!(overflowed);
+    assert!(
+        matches!(&result, Err(error) if error.contains("overflow")),
+        "expected an overflow error, got: {result:?}"
+    );
 }
 
 #[test]
 fn non_tail_recursion_obeys_the_policy_limit_on_the_evaluator_stack() {
-    // A depth-1000 worker commits about 24.9 MB. This single deep test performs its workers in
-    // sequence so this file does not concurrently commit multiple deep evaluator stacks.
+    // A depth-4_000 worker commits about 95 MiB. The deep commit is confined to this test; the
+    // only other worker in this file recurses only about 21 levels before `factorial` overflows an
+    // `i64`.
     let completes_below_limit = run_on_evaluator_stack(|| {
         let expr = parse("(rec f -> fun n -> if n == 0 then 0 else 1 + f (n - 1)) 500")
             .expect("the below-limit recursive expression must parse");
