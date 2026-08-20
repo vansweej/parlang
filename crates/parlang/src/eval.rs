@@ -75,8 +75,10 @@ where
     })
 }
 
-/// The evaluator depth guard is measured in the debug/test profile but remains inactive until the
-/// evaluator stack budget is configured.
+/// Policy limit for non-tail evaluator recursion.
+///
+/// A depth of 1,000 commits about 24.9 MB at the measured 24,912 B per increment; the 64 MiB
+/// evaluator worker stack therefore provides roughly 2.5× headroom.
 ///
 /// Historical measurement (2026-08): aggregate cost is 24,912 B per evaluator-depth increment,
 /// independently reconfirmed at 24,896 B. A one-increment trace was inferred as
@@ -86,7 +88,7 @@ where
 /// required reduction. The split and ceiling are no longer re-derivable because the known-wrong
 /// per-frame diagnostic was removed; re-derivation requires new instrumentation. The aggregate
 /// cost remains reproducible with `measures_stack_bytes_per_eval_depth_increment_in_test_profile`.
-const DEFAULT_MAX_EVAL_DEPTH: usize = 1_000_000;
+const DEFAULT_MAX_EVAL_DEPTH: usize = 1_000;
 
 #[cfg(test)]
 thread_local! {
@@ -390,7 +392,7 @@ pub enum EvalError {
     ConstructorArityMismatch(String, usize, usize),
     /// Pattern match is non-exhaustive
     PatternMatchNonExhaustive,
-    /// Evaluation exceeded the native-stack-safe recursion depth.
+    /// Evaluation exceeded the non-tail recursion policy limit.
     RecursionLimit,
 }
 
@@ -1833,7 +1835,7 @@ mod tests {
             thread
                 .join()
                 .expect("the calibration thread must not panic"),
-            "the evaluation guard must return RecursionLimit before the native stack overflows"
+            "the evaluation policy must return RecursionLimit at its configured limit"
         );
     }
 
@@ -1843,7 +1845,7 @@ mod tests {
         const DEPTH_LIMIT: usize = 128;
 
         let thread = std::thread::Builder::new()
-            // The debug/test profile is measured because this is a test-only calibration harness.
+            // The test-only override keeps this policy-measurement harness below its 4 MiB stack.
             .stack_size(STACK_SIZE_BYTES)
             .spawn(|| {
                 reset_frame_diagnostics();
@@ -1925,6 +1927,46 @@ mod tests {
         eprintln!(
             "debug/test depth multiplier: {additional_depth_increments}/{additional_logical_levels} \
              depth increments per logical non-tail recursion level"
+        );
+    }
+
+    #[test]
+    fn tail_calls_do_not_accumulate_evaluator_depth() {
+        const RAMP: [i64; 3] = [1_000, 10_000, 100_000];
+
+        let thread = std::thread::Builder::new()
+            .stack_size(EVALUATOR_STACK_SIZE)
+            .spawn(|| {
+                let mut observed_depths = Vec::with_capacity(RAMP.len());
+
+                for depth in RAMP {
+                    let expr = crate::parser::parse_expr(&format!(
+                        "(rec f -> fun n -> if n == 0 then 0 else f (n - 1)) {depth}"
+                    ))
+                    .expect("the tail-recursive countdown must parse");
+                    crate::typechecker::typecheck(&expr)
+                        .expect("the tail-recursive countdown must typecheck");
+
+                    let _ = take_max_eval_depth();
+                    assert_eq!(eval(&expr, &Environment::new()), Ok(Value::Int(0)));
+                    observed_depths.push(take_max_eval_depth());
+                }
+
+                eprintln!("tail forwarding depth ramp: {observed_depths:?}");
+                observed_depths
+            })
+            .expect("the tail-forwarding test thread must spawn");
+
+        let observed_depths = thread
+            .join()
+            .expect("the tail-forwarding test thread must not panic");
+        // If this grows with the ramp, the expression is not tail-position under this evaluator
+        // or the forwarding invariant is broken; stop and report rather than weakening the guard.
+        assert!(
+            observed_depths
+                .windows(2)
+                .all(|window| window[0] == window[1]),
+            "tail calls must preserve a flat evaluator depth across the ramp"
         );
     }
 
