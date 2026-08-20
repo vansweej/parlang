@@ -511,7 +511,10 @@ let factorial = rec f -> fun n ->
 in factorial 10     # Result: 3628800
 ```
 
-The language implements tail call optimization (TCO) for recursive functions, allowing deep recursion without stack overflow for tail-recursive patterns.
+The language implements tail call optimization (TCO) for recursive functions, including
+curried calls, allowing deep tail-recursive patterns through `if`, `let`, and `match` to
+run in constant evaluator depth. As with other tail-recursive loops, an infinite tail loop
+does not terminate by reaching the recursion-depth guard.
 
 ### Loading Libraries
 ```

@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 /// Stack reserved for evaluation workers.
 ///
-/// At the policy limit, 4,000 × 24,912 B is about 95 MB, leaving roughly 2.7× headroom in a
+/// At the policy limit, 4,000 × 30,608 B is about 117 MiB, leaving roughly 2.19× capacity in a
 /// 256 MiB worker stack.
 pub const EVALUATOR_STACK_SIZE: usize = 256 * 1024 * 1024;
 
@@ -77,13 +77,15 @@ where
 
 /// Policy limit for non-tail evaluator recursion.
 ///
-/// A depth of 4,000 commits about 95 MB at the measured 24,912 B per increment; the 256 MiB
-/// evaluator worker stack therefore provides roughly 2.7× headroom. Curried multi-argument tail
-/// loops cost about 2–3.3 increments per iteration, so this guarantees at least 1,200 iterations
-/// (likely about 2,000); single-argument tail loops remain unbounded.
+/// A depth of 4,000 commits about 117 MiB at the measured 30,608 B per increment; the 256 MiB
+/// evaluator worker stack therefore provides roughly 2.19× capacity. Curried multi-argument
+/// tail loops remain flat across their ramps, as verified by
+/// `curried_if_tail_rec_stays_flat_across_ramp`,
+/// `curried_match_tail_rec_stays_flat_across_ramp`, and
+/// `saturated_partial_curried_rec_stays_flat_across_ramp`.
 ///
-/// Historical measurement (2026-08): aggregate cost is 24,912 B per evaluator-depth increment,
-/// independently reconfirmed at 24,896 B. A one-increment trace was inferred as
+/// Historical measurement (2026-08, superseded): a lower aggregate cost was observed before the
+/// current measurement. A one-increment trace was inferred as
 /// `eval_with_tco@d → eval_inner(BinOp@d) → eval_inner(App@d+1) → eval_app@d+1 →
 /// eval_with_tco@d+1`, with an 83.0% (20,656 B) `eval_with_tco→eval_app` split and 17.0%
 /// (4,240 B) return path. This gave an arm-extraction ceiling of about 83%, below the 91.6%
@@ -443,9 +445,9 @@ impl std::error::Error for EvalError {}
 ///
 /// # Arguments
 /// * `body` - The body expression of the recursive function
-/// * `initial_env` - The initial environment with the argument binding
+/// * `initial_env` - The initial environment with the argument bindings
 /// * `rec_name` - The name of the recursive function
-/// * `param_name` - The name of the function parameter
+/// * `param_names` - The names of the saturated function parameters
 /// * `closure_env` - The environment captured in the closure
 ///
 /// # Returns
@@ -458,12 +460,19 @@ impl std::error::Error for EvalError {}
 ///     if n == 0 then acc else fact (acc * n) (n - 1)
 /// ```
 /// Instead of recursing, this function updates `acc` and `n` and re-evaluates the body.
+/// `if`, `let`, and `match` preserve tail position while this loop runs. Infinite
+/// `let`- or `match`-tail recursion therefore spins rather than reaching the depth guard,
+/// consistent with the existing behaviour for an infinite `if`-tail loop.
+///
+/// The `App` arm rebuilds `current_env` from `closure_env` on every iteration. This reset
+/// bounds bindings introduced by the `Let` and `Match` arms.
 fn eval_with_tco(
     body: &Expr,
     initial_env: &Environment,
     rec_name: &str,
-    param_name: &str,
+    param_names: &[String],
     closure_env: &Environment,
+    rec_value: &Value,
     depth: usize,
 ) -> Result<Value, EvalError> {
     #[cfg(test)]
@@ -474,25 +483,18 @@ fn eval_with_tco(
     let mut current_expr = body.clone();
     let mut current_env = initial_env.clone();
 
-    loop {
+    'tco: loop {
         // Check if the expression is a tail call to the recursive function
         match &current_expr {
-            // Direct tail call: rec_name arg
-            Expr::App(func, arg) => {
-                // Check if this is a call to the recursive function (possibly nested in applications)
+            Expr::App(_, _) => {
+                let (func, args) = collect_app_spine(&current_expr);
                 if is_tail_call_to(func, rec_name) {
-                    // This is a tail call - evaluate arg and loop instead of recursing
-                    let arg_val = eval_inner(arg, &current_env, depth)?;
-
-                    // Reset environment for next iteration
-                    let rec_val = Value::RecClosure(
-                        rec_name.to_string(),
-                        param_name.to_string(),
-                        body.clone(),
-                        closure_env.clone(),
-                    );
-                    current_env = closure_env.extend(rec_name.to_string(), rec_val);
-                    current_env = current_env.extend(param_name.to_string(), arg_val);
+                    let values = eval_spine_args(&args, &current_env, depth)?;
+                    if values.len() != param_names.len() {
+                        break apply_value_spine(rec_value.clone(), values, depth);
+                    }
+                    current_env =
+                        bind_rec_params(closure_env, rec_name, rec_value, param_names, &values);
                     current_expr = body.clone();
                     continue;
                 }
@@ -515,6 +517,28 @@ fn eval_with_tco(
                         ))
                     }
                 }
+            }
+            Expr::Let(name, _, value, body) => {
+                if name == rec_name {
+                    break eval_inner(&current_expr, &current_env, depth);
+                }
+                let value = eval_inner(value, &current_env, depth)?;
+                current_env = current_env.extend(name.clone(), value);
+                current_expr = (**body).clone();
+            }
+            Expr::Match(scrutinee, arms) => {
+                let value = eval_inner(scrutinee, &current_env, depth)?;
+                for (pattern, result) in arms {
+                    if let Some(matched_env) = match_pattern(pattern, &value, &current_env) {
+                        if pattern_binds(pattern, rec_name) {
+                            break 'tco eval_inner(&current_expr, &current_env, depth);
+                        }
+                        current_env = matched_env;
+                        current_expr = result.clone();
+                        continue 'tco;
+                    }
+                }
+                break Err(EvalError::PatternMatchNonExhaustive);
             }
             // For other expressions, evaluate normally and return
             _ => break eval_inner(&current_expr, &current_env, depth),
@@ -544,6 +568,89 @@ fn is_tail_call_to(expr: &Expr, rec_name: &str) -> bool {
         Expr::Var(name) => name == rec_name,
         Expr::App(func, _) => is_tail_call_to(func, rec_name),
         _ => false,
+    }
+}
+
+/// Collect an applicative spine as its head and source-ordered arguments.
+fn collect_app_spine(expr: &Expr) -> (&Expr, Vec<&Expr>) {
+    let mut args = Vec::new();
+    let mut head = expr;
+    while let Expr::App(func, arg) = head {
+        args.push(arg.as_ref());
+        head = func;
+    }
+    args.reverse();
+    (head, args)
+}
+
+/// Peel requested parameters from a recursive closure body.
+///
+/// `eval_rec` has already peeled the first `fun`, so the returned list begins with
+/// `rec_param`; subsequent leading `Fun` layers provide any further parameters.
+fn peel_rec_params<'a>(
+    rec_param: &str,
+    body: &'a Expr,
+    requested: usize,
+) -> (Vec<String>, &'a Expr) {
+    let mut params = Vec::new();
+    let mut remaining = body;
+    if requested == 0 {
+        return (params, remaining);
+    }
+    params.push(rec_param.to_string());
+    while params.len() < requested {
+        let Expr::Fun(param, _, next_body) = remaining else {
+            break;
+        };
+        params.push(param.clone());
+        remaining = next_body;
+    }
+    (params, remaining)
+}
+
+fn rec_arity(body: &Expr) -> usize {
+    let mut arity = 1;
+    let mut remaining = body;
+    while let Expr::Fun(_, _, next_body) = remaining {
+        arity += 1;
+        remaining = next_body;
+    }
+    arity
+}
+
+fn eval_spine_args(
+    args: &[&Expr],
+    env: &Environment,
+    depth: usize,
+) -> Result<Vec<Value>, EvalError> {
+    args.iter().map(|arg| eval_inner(arg, env, depth)).collect()
+}
+
+fn bind_rec_params(
+    closure_env: &Environment,
+    rec_name: &str,
+    rec_value: &Value,
+    params: &[String],
+    values: &[Value],
+) -> Environment {
+    let mut bound = closure_env.extend(rec_name.to_string(), rec_value.clone());
+    for (param, value) in params.iter().zip(values) {
+        bound = bound.extend(param.clone(), value.clone());
+    }
+    bound
+}
+
+fn pattern_binds(pattern: &Pattern, name: &str) -> bool {
+    match pattern {
+        Pattern::Wildcard | Pattern::Literal(_) => false,
+        Pattern::Var(bound) => bound == name,
+        Pattern::Tuple(patterns) => patterns.iter().any(|pattern| pattern_binds(pattern, name)),
+        Pattern::Record(fields) => fields
+            .iter()
+            .any(|(_, pattern)| pattern_binds(pattern, name)),
+        Pattern::Constructor(_, patterns) => {
+            patterns.iter().any(|pattern| pattern_binds(pattern, name))
+        }
     }
 }
 
@@ -723,41 +830,111 @@ fn match_pattern(pattern: &Pattern, value: &Value, env: &Environment) -> Option<
     }
 }
 
-/// Evaluate a function application `func arg` (extracted from `eval` to keep
-/// its line count down).
-fn eval_app(func: &Expr, arg: &Expr, env: &Environment, depth: usize) -> Result<Value, EvalError> {
+/// Evaluate an application spine (extracted from `eval` to keep its line count down).
+fn eval_app(expr: &Expr, env: &Environment, depth: usize) -> Result<Value, EvalError> {
     #[cfg(test)]
     {
         COUNT_EVAL_APP.with(|count| count.set(count.get() + 1));
     }
 
-    let func_val = eval_inner(func, env, depth + 1)?;
-    let arg_val = eval_inner(arg, env, depth + 1)?;
+    let (head, args) = collect_app_spine(expr);
+    let function = eval_inner(head, env, depth + 1)?;
+    let args = eval_spine_args(&args, env, depth + 1)?;
+    apply_value_spine(function, args, depth)
+}
 
-    match func_val {
-        Value::Closure(param, body, closure_env) => {
-            let new_env = closure_env.extend(param, arg_val);
-            eval_inner(&body, &new_env, depth + 1)
-        }
-        Value::RecClosure(rec_name, param, body, closure_env) => {
-            // Create an environment with the recursive function bound to itself
-            let rec_val = Value::RecClosure(
-                rec_name.clone(),
-                param.clone(),
-                body.clone(),
-                closure_env.clone(),
-            );
-            let env_with_rec = closure_env.extend(rec_name.clone(), rec_val);
-            let new_env = env_with_rec.extend(param.clone(), arg_val);
-
-            // Evaluate the body - TCO happens naturally via iteration below
-            // when the body is a tail call
-            eval_with_tco(&body, &new_env, &rec_name, &param, &closure_env, depth)
-        }
-        _ => Err(EvalError::TypeError(
-            "Application requires a function".to_string(),
-        )),
+/// Apply an evaluated function to already-evaluated arguments.
+fn apply_value_spine(
+    mut function: Value,
+    args: Vec<Value>,
+    depth: usize,
+) -> Result<Value, EvalError> {
+    let mut remaining = args.into_iter().peekable();
+    while let Some(arg) = remaining.next() {
+        function = match function {
+            Value::Closure(param, body, closure_env) => {
+                let bound_env = closure_env.extend(param, arg);
+                eval_inner(
+                    &body,
+                    &bound_env,
+                    depth.checked_add(1).ok_or(EvalError::RecursionLimit)?,
+                )?
+            }
+            Value::RecClosure(rec_name, rec_param, body, closure_env) => {
+                let mut rec_args = vec![arg];
+                rec_args.extend(remaining);
+                return apply_rec_closure(
+                    &rec_name,
+                    rec_param,
+                    &body,
+                    &closure_env,
+                    &rec_args,
+                    depth,
+                );
+            }
+            _ => {
+                return Err(EvalError::TypeError(
+                    "Application requires a function".to_string(),
+                ))
+            }
+        };
     }
+    Ok(function)
+}
+
+fn apply_rec_closure(
+    rec_name: &str,
+    rec_param: String,
+    body: &Expr,
+    closure_env: &Environment,
+    args: &[Value],
+    depth: usize,
+) -> Result<Value, EvalError> {
+    let available = rec_arity(body);
+    let consumed = args.len().min(available);
+    let (params, remaining_body) = peel_rec_params(&rec_param, body, consumed);
+    if params.len() != consumed {
+        return Err(EvalError::TypeError(
+            "Recursive function parameter arity is inconsistent".to_string(),
+        ));
+    }
+    let rec_value = Value::RecClosure(
+        rec_name.to_string(),
+        rec_param,
+        body.clone(),
+        closure_env.clone(),
+    );
+    let bound_env = bind_rec_params(
+        closure_env,
+        rec_name,
+        &rec_value,
+        &params,
+        &args[..consumed],
+    );
+
+    if args.len() < available {
+        let Expr::Fun(param, _, residual_body) = remaining_body else {
+            return Err(EvalError::TypeError(
+                "Recursive function parameter arity is inconsistent".to_string(),
+            ));
+        };
+        return Ok(Value::Closure(
+            param.clone(),
+            (**residual_body).clone(),
+            bound_env,
+        ));
+    }
+
+    let result = eval_with_tco(
+        remaining_body,
+        &bound_env,
+        rec_name,
+        &params,
+        closure_env,
+        &rec_value,
+        depth,
+    )?;
+    apply_value_spine(result, args[consumed..].to_vec(), depth)
 }
 
 /// Evaluate `load "path" in body` (extracted from `eval` to keep its line
@@ -1075,7 +1252,7 @@ fn eval_inner(expr: &Expr, env: &Environment, depth: usize) -> Result<Value, Eva
             Ok(Value::Closure(param.clone(), (**body).clone(), env.clone()))
         }
 
-        Expr::App(func, arg) => eval_app(func, arg, env, depth),
+        Expr::App(_, _) => eval_app(expr, env, depth),
 
         Expr::Load(filepath, body) => eval_load(filepath, body, env, depth),
 
@@ -1941,6 +2118,280 @@ mod tests {
                 .windows(2)
                 .all(|window| window[0] == window[1]),
             "tail calls must preserve a flat evaluator depth across the ramp"
+        );
+    }
+
+    #[test]
+    fn curried_rec_tail_call_stays_flat_for_small_ramp() {
+        const LOWER: i64 = 16;
+        const UPPER: i64 = 32;
+
+        let thread = std::thread::Builder::new()
+            .stack_size(EVALUATOR_STACK_SIZE)
+            .spawn(|| {
+                let mut depths = Vec::new();
+                for loops in [LOWER, UPPER] {
+                    let expr = crate::parser::parse_expr(&format!(
+                        "(rec f -> fun acc -> fun n -> if n == 0 then acc else f (acc + n) (n - 1)) 0 {loops}"
+                    ))
+                    .expect("the curried recursive accumulator must parse");
+                    crate::typechecker::typecheck(&expr)
+                        .expect("the curried recursive accumulator must typecheck");
+                    let _ = take_max_eval_depth();
+                    assert_eq!(eval(&expr, &Environment::new()), Ok(Value::Int(loops * (loops + 1) / 2)));
+                    depths.push(take_max_eval_depth());
+                }
+                eprintln!("curried tail-call depth ramp: {depths:?}");
+                depths
+            })
+            .expect("the depth measurement thread must spawn");
+        let depths = thread
+            .join()
+            .expect("the depth measurement thread must not panic");
+        assert_eq!(depths[0], depths[1], "curried tail calls must remain flat");
+    }
+
+    #[test]
+    fn peel_rec_params_binds_acc_first_for_two_arg_call() {
+        let body =
+            crate::parser::parse_expr("fun n -> if n == 0 then acc else f (acc + n) (n - 1)")
+                .expect("the recursive body must parse");
+        let (params, inner) = peel_rec_params("acc", &body, 2);
+        assert_eq!(params, ["acc", "n"]);
+        assert!(matches!(inner, Expr::If(_, _, _)));
+    }
+
+    #[test]
+    fn curried_if_tail_rec_stays_flat_across_ramp() {
+        const RAMP: [i64; 3] = [1_000, 10_000, 100_000];
+        let thread = std::thread::Builder::new()
+            .stack_size(EVALUATOR_STACK_SIZE)
+            .spawn(|| {
+                let mut depths = Vec::new();
+                for loops in RAMP {
+                    let expr = crate::parser::parse_expr(&format!(
+                        "(rec f -> fun acc -> fun n -> if n == 0 then acc else f (acc + n) (n - 1)) 0 {loops}"
+                    ))
+                    .expect("the curried recursive accumulator must parse");
+                    crate::typechecker::typecheck(&expr)
+                        .expect("the curried recursive accumulator must typecheck");
+                    let _ = take_max_eval_depth();
+                    assert_eq!(
+                        eval(&expr, &Environment::new()),
+                        Ok(Value::Int(loops * (loops + 1) / 2))
+                    );
+                    depths.push(take_max_eval_depth());
+                }
+                eprintln!("curried if-tail depth ramp: {depths:?}");
+                depths
+            })
+            .expect("the curried ramp thread must spawn");
+        let depths = thread.join().expect("the curried ramp must not panic");
+        assert!(depths.windows(2).all(|window| window[0] == window[1]));
+    }
+
+    #[test]
+    fn curried_match_tail_rec_stays_flat_across_ramp() {
+        const RAMP: [i64; 3] = [1_000, 10_000, 100_000];
+        let thread = std::thread::Builder::new()
+            .stack_size(EVALUATOR_STACK_SIZE)
+            .spawn(|| {
+                let mut depths = Vec::new();
+                for loops in RAMP {
+                    let expr = crate::parser::parse_expr(&format!(
+                        "(rec f -> fun acc -> fun n -> match n with | 0 -> acc | _ -> f (acc + n) (n - 1)) 0 {loops}"
+                    ))
+                    .expect("the curried match-tail accumulator must parse");
+                    crate::typechecker::typecheck(&expr)
+                        .expect("the curried match-tail accumulator must typecheck");
+                    let _ = take_max_eval_depth();
+                    assert_eq!(
+                        eval(&expr, &Environment::new()),
+                        Ok(Value::Int(loops * (loops + 1) / 2))
+                    );
+                    let depth = take_max_eval_depth();
+                    eprintln!("curried match-tail depth at {loops}: {depth}");
+                    depths.push(depth);
+                }
+                depths
+            })
+            .expect("the curried match-tail ramp thread must spawn");
+        let depths = thread
+            .join()
+            .expect("the curried match-tail ramp must not panic");
+        assert!(
+            depths.windows(2).all(|window| window[0] == window[1]),
+            "curried match-tail calls must preserve a flat evaluator depth across the ramp"
+        );
+    }
+
+    #[test]
+    fn corpus_match_tail_workload_stays_flat_across_ramp() {
+        // The corpus load exercises `strrev`'s match-tail recursion. The measured flat depth is
+        // 1 at the largest input; the guard limit is 2, leaving one increment of margin.
+        const RAMP: [usize; 3] = [100, 200, 400];
+        let thread = std::thread::Builder::new()
+            .stack_size(EVALUATOR_STACK_SIZE)
+            .spawn(|| {
+                let definitions = crate::parser::parse_expr(
+                    "data List a = Nil | Cons a (List a) in load \"examples/string.par\" in strrev",
+                )
+                .expect("the string corpus wrapper must parse");
+                let strrev = eval(&definitions, &Environment::new())
+                    .expect("the string corpus strrev closure must evaluate");
+
+                let make_input = |length| {
+                    let mut input = Value::Variant("Nil".to_string(), Vec::new());
+                    for _ in 0..length {
+                        input = Value::Variant("Cons".to_string(), vec![Value::Char('x'), input]);
+                    }
+                    input
+                };
+                let nil = Value::Variant("Nil".to_string(), Vec::new());
+
+                let _ = take_max_eval_depth();
+                let measurement = apply_value_spine(
+                    strrev.clone(),
+                    vec![nil.clone(), make_input(RAMP[RAMP.len() - 1])],
+                    0,
+                );
+                assert!(matches!(
+                    measurement,
+                    Ok(Value::Variant(name, _)) if name == "Cons"
+                ));
+                let measured_flat_depth = take_max_eval_depth();
+                let depth_limit = measured_flat_depth
+                    .checked_add(1)
+                    .expect("the measured corpus depth must leave room for the guard margin");
+                eprintln!(
+                    "corpus match-tail measured flat depth: {measured_flat_depth}; guard limit: {depth_limit}"
+                );
+
+                set_eval_depth_limit_override(Some(depth_limit));
+                let mut observations = Vec::with_capacity(RAMP.len());
+                for length in RAMP {
+                    let _ = take_max_eval_depth();
+                    let result = apply_value_spine(
+                        strrev.clone(),
+                        vec![nil.clone(), make_input(length)],
+                        0,
+                    );
+                    observations.push((result, take_max_eval_depth()));
+                }
+                clear_eval_depth_limit_override();
+                let mut depths = Vec::with_capacity(observations.len());
+                for (result, depth) in observations {
+                    assert!(matches!(
+                        result,
+                        Ok(Value::Variant(name, _)) if name == "Cons"
+                    ));
+                    depths.push(depth);
+                }
+                eprintln!("corpus match-tail depth ramp: {depths:?}");
+                depths
+            })
+            .expect("the corpus match-tail measurement thread must spawn");
+        let depths = thread
+            .join()
+            .expect("the corpus match-tail measurement thread must not panic");
+        assert!(depths.windows(2).all(|window| window[0] == window[1]));
+    }
+
+    #[test]
+    fn saturated_partial_curried_rec_stays_flat_across_ramp() {
+        // Under-application returns a closure with `acc` and the recursive closure bound.
+        // Saturation evaluates the residual body once, then the self-call resolves to the full
+        // recursive closure and re-enters TCO; this setup prefix must remain constant.
+        const RAMP: [i64; 3] = [1_000, 10_000, 100_000];
+        let thread = std::thread::Builder::new()
+            .stack_size(EVALUATOR_STACK_SIZE)
+            .spawn(|| {
+                let mut depths = Vec::new();
+                for loops in RAMP {
+                    let expr = crate::parser::parse_expr(&format!(
+                        "let sum = rec f -> fun acc -> fun n -> if n == 0 then acc else f (acc + n) (n - 1) in let partial = sum 0 in partial {loops}"
+                    ))
+                    .expect("the saturated partial recursive accumulator must parse");
+                    crate::typechecker::typecheck(&expr)
+                        .expect("the saturated partial recursive accumulator must typecheck");
+                    let _ = take_max_eval_depth();
+                    assert_eq!(
+                        eval(&expr, &Environment::new()),
+                        Ok(Value::Int(loops * (loops + 1) / 2))
+                    );
+                    let depth = take_max_eval_depth();
+                    eprintln!("saturated partial depth at {loops}: {depth}");
+                    depths.push(depth);
+                }
+                depths
+            })
+            .expect("the saturated partial ramp thread must spawn");
+        let depths = thread
+            .join()
+            .expect("the saturated partial ramp must not panic");
+        assert!(
+            depths.windows(2).all(|window| window[0] == window[1]),
+            "saturating a partial recursive application must preserve a flat evaluator depth"
+        );
+    }
+
+    #[test]
+    fn corpus_strcat_constructor_wrap_grows_depth_linearly() {
+        // `Cons c (cat rest s2)` is a Constructor, not an App. The TCO loop falls back to
+        // `eval_inner`, and `eval_constructor` evaluates its recursive argument at `depth + 1`.
+        // The observed cost is one depth increment per list element: 201 at 200 elements, safely
+        // below DEFAULT_MAX_EVAL_DEPTH (4,000).
+        const RAMP: [usize; 3] = [50, 100, 200];
+        let thread = std::thread::Builder::new()
+            .stack_size(EVALUATOR_STACK_SIZE)
+            .spawn(|| {
+                let definitions = crate::parser::parse_expr(
+                    "data List a = Nil | Cons a (List a) in load \"examples/string.par\" in strcat",
+                )
+                .expect("the string corpus strcat wrapper must parse");
+                let strcat = eval(&definitions, &Environment::new())
+                    .expect("the string corpus strcat closure must evaluate");
+                let make_input = |length| {
+                    let mut input = Value::Variant("Nil".to_string(), Vec::new());
+                    for _ in 0..length {
+                        input = Value::Variant("Cons".to_string(), vec![Value::Char('x'), input]);
+                    }
+                    input
+                };
+                let nil = Value::Variant("Nil".to_string(), Vec::new());
+                let mut depths = Vec::new();
+                for length in RAMP {
+                    let _ = take_max_eval_depth();
+                    let result =
+                        apply_value_spine(strcat.clone(), vec![make_input(length), nil.clone()], 0);
+                    assert!(matches!(
+                        result,
+                        Ok(Value::Variant(name, _)) if name == "Cons"
+                    ));
+                    let depth = take_max_eval_depth();
+                    eprintln!("corpus strcat depth at {length}: {depth}");
+                    depths.push(depth);
+                }
+                depths
+            })
+            .expect("the corpus strcat measurement thread must spawn");
+        let depths = thread
+            .join()
+            .expect("the corpus strcat measurement thread must not panic");
+        assert!(
+            depths.windows(2).all(|window| window[0] < window[1]),
+            "constructor-wrapped strcat recursion must increase evaluator depth"
+        );
+        let first_growth = depths[1] - depths[0];
+        let second_growth = depths[2] - depths[1];
+        assert_eq!(
+            second_growth,
+            first_growth * 2,
+            "strcat depth must grow linearly with its input length"
+        );
+        assert!(
+            depths[2] < DEFAULT_MAX_EVAL_DEPTH,
+            "the largest strcat workload must retain depth-limit headroom"
         );
     }
 

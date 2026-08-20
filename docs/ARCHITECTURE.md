@@ -22,7 +22,12 @@ The interpreter consists of four main components:
 
 1. **AST Module** (`src/ast.rs`): Defines the Abstract Syntax Tree structure
 2. **Parser Module** (`src/parser.rs`): Transforms source code into AST
-3. **Evaluator Module** (`src/eval.rs`): Interprets and executes AST nodes
+3. **Evaluator Module** (`src/eval.rs`): Interprets and executes AST nodes. Recursive
+   application consumes a curried application spine in source order and rebinding its
+   saturated parameters lets tail calls through `if`, `let`, and `match` execute at
+   constant evaluator depth. A `let` or pattern binding that shadows the recursive name
+   falls back to ordinary evaluation. Infinite tail-recursive loops intentionally do not
+   reach the non-tail recursion-depth guard.
 4. **Main Module** (`src/main.rs`): Provides CLI interface (REPL and file execution)
 
 ## System Architecture
