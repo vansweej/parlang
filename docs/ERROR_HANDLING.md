@@ -241,17 +241,29 @@ This prevents creating types like `t0 = t0 -> t1` which are infinite.
 
 ### Recursive Functions
 
-Recursive functions are not yet supported in the type checker:
+Recursive functions are supported by the type checker. The `rec` form is
+inferred via ordinary Hindley-Milner unification, with the recursive name
+bound monomorphically inside the body:
 
 ```parlang
-> rec factorial -> fun n -> if n == 0 then 1 else n * factorial (n - 1)
-Type error: RecursionRequiresAnnotation
+> rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)
+Int -> Int
 ```
 
-**Workaround:** Disable type checking:
-```bash
-# Recursion works at runtime once the program type-checks
-cargo run examples/factorial.par
+A `rec` expression is rejected only by ordinary type-inference failures. An
+occurs-check violation, such as applying the recursive name to itself, fails
+with `OccursCheckFailed`:
+
+```parlang
+> rec f -> f f
+Type error: OccursCheckFailed
+```
+
+An inconsistent body fails with `UnificationError`:
+
+```parlang
+> rec f -> fun n -> if n == 0 then 1 else true
+Type error: UnificationError
 ```
 
 ### Constructor Arity Mismatch

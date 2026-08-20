@@ -339,7 +339,10 @@ assert!(typecheck(&expr).is_err());  // f expects Int but gets Bool
 Tuples and pattern matching currently receive type variables but are not fully type-checked. Full support would require:
 - Tuple types (e.g., `(Int, Bool)`)
 - Pattern type checking
-- Exhaustiveness checking
+
+Exhaustiveness is not a type-checker concern: it is analysed at evaluation
+time in `check_exhaustiveness` (called from `eval_match`), which prints a
+warning to stderr and continues rather than raising a type error.
 
 ## Testing
 
@@ -403,9 +406,6 @@ Recursive functions require type annotations
 ## Future Enhancements
 
 Potential improvements:
-1. **Recursive Functions**: Support for `rec` with fixpoint types
-2. **Tuple Types**: Full type checking for tuples
-3. **Pattern Exhaustiveness**: Check that pattern matching covers all cases
-4. **Type Annotations**: Allow optional type annotations
-5. **Better Error Messages**: More context in error messages
-6. **Type Classes**: Support for ad-hoc polymorphism
+1. **Tuple Types**: Full type checking for tuples
+2. **Better Error Messages**: More context in error messages
+3. **Type Classes**: Support for ad-hoc polymorphism
