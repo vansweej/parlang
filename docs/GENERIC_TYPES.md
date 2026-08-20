@@ -268,12 +268,11 @@ Each constructor stores:
 
 1. **No Higher-Kinded Types**: Type constructors must be fully applied (e.g., can't have `List` without a type argument in expressions)
 2. **No Type Constraints**: No way to constrain type parameters (e.g., "must be comparable")
-3. **No Type Annotations**: Users can't explicitly annotate types in expressions
+3. **Limited Type Annotations**: Type annotations are supported on `let` bindings (e.g. `let x : Int = 42`), but applied-type annotations (e.g. `Option Int`) and standalone-expression annotations (e.g. `(42 : Int)`) are not supported
 
 ### Planned Enhancements
 
-- **Pattern matching exhaustiveness checking**: Warn when match cases don't cover all constructors
-- **Type annotations**: Allow explicit type annotations for better error messages
+- **Applied-type annotations**: Allow type annotations using applied type constructors (e.g. `Option Int`)
 - **Improved error messages**: Better diagnostics for type mismatches with generic types
 - **Standard library**: Built-in generic types and functions
 

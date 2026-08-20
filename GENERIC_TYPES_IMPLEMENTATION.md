@@ -164,7 +164,6 @@ Some (Cons 1 (Cons 2 Nil))
 - Higher-kinded types
 - Type constraints
 - Explicit type annotations in expressions
-- Pattern matching exhaustiveness checking
 - Standard library with built-in generic types
 
 ## Conclusion

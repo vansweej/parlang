@@ -1424,7 +1424,7 @@ Evaluation **may not terminate** if:
   1 / 0   # EvalError::DivisionByZero
   ```
 
-**Note:** ParLang 1.0 does not have built-in recursion. Recursive functions require fixed-point combinators.
+**Note:** ParLang provides built-in recursion via `rec`, written as `rec name -> fun ... -> ...`. Direct self-recursion in tail position is optimized by the tail-call loop and runs in constant stack space; see Appendix C.4. Non-tail recursion may still fail to terminate.
 
 ---
 
@@ -2067,7 +2067,7 @@ digit           ::= [0-9]
 
 ```
 Delimiters:  ( ) =
-Keywords:    let in if then else fun true false
+Keywords:    let in if then else fun true false load rec match with type data
 Arrows:      ->
 Arithmetic:  + - * /
 Comparison:  == != < <= > >=

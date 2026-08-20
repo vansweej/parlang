@@ -178,12 +178,12 @@ fun x : Int -> x + 1
 # Parser sees: fun x : (Int -> x) + 1
 ```
 
-**Workaround:** Use type inference for function parameters for now:
+**Workaround:** Annotate the binding rather than the parameter:
 
 ```parlang
 # This works correctly:
-fun x -> x + 1
-# Type: Int -> Int (inferred)
+let f : Int -> Bool = fun x -> x > 0
+# Type: Int -> Bool
 ```
 
 ### Applied Types
