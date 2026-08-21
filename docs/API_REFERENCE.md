@@ -53,13 +53,13 @@ parlang = { path = "../parlang" }  # or from crates.io when published
 ### Basic Usage
 
 ```rust
-use parlang::{parse, eval, Environment};
+use parlang::{parse_expr, eval, Environment};
 
 fn main() {
     let program = "let x = 42 in x + 1";
     
     // Parse the program
-    let expr = parse(program).expect("Parse error");
+    let expr = parse_expr(program).expect("Parse error");
     
     // Create an environment
     let env = Environment::new();
@@ -89,14 +89,19 @@ parlang/
 The library re-exports commonly used types and functions at the crate root:
 
 ```rust
-// Re-exported from ast module
-pub use ast::{Expr, BinOp};
-
-// Re-exported from parser module
-pub use parser::parse;
-
-// Re-exported from eval module
-pub use eval::{eval, Value, Environment, EvalError};
+pub use ast::{BinOp, Decl, Expr, Program};
+pub use dot::program_to_dot;
+pub use eval::{
+    eval, eval_program, eval_program_with_env, extend_env_with_program, extract_bindings,
+    run_on_evaluator_stack, Environment, EvalError, EvaluatorStackError, Value,
+    EVALUATOR_STACK_SIZE,
+};
+pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
+pub use parser::{parse_expr, parse_program};
+pub use typechecker::{
+    typecheck, typecheck_program, typecheck_program_with_env, TypeEnv, TypeError,
+};
+pub use types::{Type, TypeScheme, TypeVar};
 ```
 
 ---
@@ -110,10 +115,20 @@ pub mod ast;      // AST definitions
 pub mod parser;   // Parser implementation
 pub mod eval;     // Evaluator implementation
 
-// Commonly used types
-pub use ast::{Expr, BinOp};
-pub use parser::parse;
-pub use eval::{eval, Value, Environment, EvalError};
+// Re-export commonly used types and functions
+pub use ast::{BinOp, Decl, Expr, Program};
+pub use dot::program_to_dot;
+pub use eval::{
+    eval, eval_program, eval_program_with_env, extend_env_with_program, extract_bindings,
+    run_on_evaluator_stack, Environment, EvalError, EvaluatorStackError, Value,
+    EVALUATOR_STACK_SIZE,
+};
+pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
+pub use parser::{parse_expr, parse_program};
+pub use typechecker::{
+    typecheck, typecheck_program, typecheck_program_with_env, TypeEnv, TypeError,
+};
+pub use types::{Type, TypeScheme, TypeVar};
 ```
 
 ### Quick Reference
@@ -122,7 +137,8 @@ pub use eval::{eval, Value, Environment, EvalError};
 |------|--------|---------|
 | `Expr` | `ast` | AST node representing an expression |
 | `BinOp` | `ast` | Binary operators (Add, Sub, etc.) |
-| `parse()` | `parser` | Parse string to `Expr` |
+| `parse_expr()` | `parser` | Parse a single expression to `Expr` |
+| `parse_program()` | `parser` | Parse a full program to `Program` |
 | `eval()` | `eval` | Evaluate `Expr` to `Value` |
 | `Value` | `eval` | Runtime values (Int, Bool, Closure) |
 | `Environment` | `eval` | Variable bindings |
@@ -141,15 +157,83 @@ The `Expr` enum represents all possible expressions in ParLang:
 ```rust
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
+    /// Integer literal: 42
     Int(i64),
+
+    /// Boolean literal: true, false
     Bool(bool),
+
+    /// Character literal: 'a', 'Z', '\n'
+    Char(char),
+
+    /// Floating point literal: 3.14, -2.5, 0.0
+    Float(f64),
+
+    /// Variable reference: x, y, foo
     Var(String),
+
+    /// Binary operation: e1 + e2, e1 * e2, etc.
     BinOp(BinOp, Box<Expr>, Box<Expr>),
+
+    /// If-then-else: if e1 then e2 else e3
     If(Box<Expr>, Box<Expr>, Box<Expr>),
-    Let(String, Box<Expr>, Box<Expr>),
-    Fun(String, Box<Expr>),
+
+    /// Let binding: let x = e1 in e2
+    /// Optional type annotation for the variable
+    Let(String, Option<TypeAnnotation>, Box<Expr>, Box<Expr>),
+
+    /// Function definition: fun x -> e
+    /// Optional type annotation for the parameter
+    Fun(String, Option<TypeAnnotation>, Box<Expr>),
+
+    /// Function application: f e
     App(Box<Expr>, Box<Expr>),
+
+    /// Load expression: load "filepath" in e
     Load(String, Box<Expr>),
+
+    /// Recursive function definition: rec name -> body
+    /// The function can reference itself by name within its body
+    Rec(String, Box<Expr>),
+
+    /// Pattern matching: match e with | p1 -> e1 | p2 -> e2 | ...
+    /// (scrutinee expression, vector of (pattern, result expression) arms)
+    Match(Box<Expr>, Vec<(Pattern, Expr)>),
+
+    /// Tuple construction: (e1, e2, e3, ...)
+    Tuple(Vec<Expr>),
+
+    /// Tuple projection: e.0, e.1, e.2, ...
+    TupleProj(Box<Expr>, usize),
+
+    /// Type alias definition: `type Name = TypeExpr in body`
+    /// Defines a type alias that can be used in the body expression
+    TypeAlias(String, TypeExpr, Box<Expr>),
+
+    /// Record construction: { field1: expr1, field2: expr2, ... }
+    /// Vec maintains insertion order for display purposes
+    Record(Vec<(String, Expr)>),
+
+    /// Field access: expr.field
+    /// Accesses a named field from a record
+    FieldAccess(Box<Expr>, String),
+
+    /// Data type definition: data Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
+    /// Introduces a new algebraic data type with constructors
+    TypeDef {
+        /// Type name (e.g., "Option", "Either", "List")
+        name: String,
+        /// Type parameters (e.g., `["a", "b"]` for polymorphic types)
+        type_params: Vec<String>,
+        /// Constructors: (name, payload types)
+        /// e.g., `[("Some", vec![TypeAnnotation::Var("a")]), ("None", vec![])]`
+        constructors: Vec<(String, Vec<TypeAnnotation>)>,
+        /// Body expression where this type is in scope
+        body: Box<Expr>,
+    },
+
+    /// Constructor application: Some 42, Cons 1 rest, Left x
+    Constructor(String, Vec<Expr>),
 }
 ```
 
@@ -374,10 +458,10 @@ println!("{}", expr);  // Output: (6 * 7)
 
 The `parser` module provides parsing functionality using the `combine` parser combinator library.
 
-### parse Function
+### parse_expr Function
 
 ```rust
-pub fn parse(input: &str) -> Result<Expr, String>
+pub fn parse_expr(input: &str) -> Result<Expr, String>
 ```
 
 Parse a string into an `Expr` AST.
@@ -392,9 +476,9 @@ Parse a string into an `Expr` AST.
 
 **Example:**
 ```rust
-use parlang::parse;
+use parlang::parse_expr;
 
-let result = parse("42");
+let result = parse_expr("42");
 assert!(result.is_ok());
 assert_eq!(result.unwrap(), parlang::Expr::Int(42));
 ```
@@ -404,7 +488,7 @@ assert_eq!(result.unwrap(), parlang::Expr::Int(42));
 Parse errors include descriptive messages:
 
 ```rust
-let result = parse("let x = 42");  // Missing "in"
+let result = parse_expr("let x = 42");  // Missing "in"
 assert!(result.is_err());
 assert!(result.unwrap_err().contains("Parse error"));
 ```
@@ -414,18 +498,18 @@ assert!(result.unwrap_err().contains("Parse error"));
 #### Literals
 
 ```rust
-use parlang::{parse, Expr};
+use parlang::{parse_expr, Expr};
 
-assert_eq!(parse("42"), Ok(Expr::Int(42)));
-assert_eq!(parse("true"), Ok(Expr::Bool(true)));
-assert_eq!(parse("false"), Ok(Expr::Bool(false)));
+assert_eq!(parse_expr("42"), Ok(Expr::Int(42)));
+assert_eq!(parse_expr("true"), Ok(Expr::Bool(true)));
+assert_eq!(parse_expr("false"), Ok(Expr::Bool(false)));
 ```
 
 #### Variables
 
 ```rust
-assert_eq!(parse("x"), Ok(Expr::Var("x".to_string())));
-assert_eq!(parse("foo_bar"), Ok(Expr::Var("foo_bar".to_string())));
+assert_eq!(parse_expr("x"), Ok(Expr::Var("x".to_string())));
+assert_eq!(parse_expr("foo_bar"), Ok(Expr::Var("foo_bar".to_string())));
 ```
 
 #### Binary Operations
@@ -433,7 +517,7 @@ assert_eq!(parse("foo_bar"), Ok(Expr::Var("foo_bar".to_string())));
 ```rust
 use parlang::BinOp;
 
-let expr = parse("1 + 2").unwrap();
+let expr = parse_expr("1 + 2").unwrap();
 assert_eq!(
     expr,
     Expr::BinOp(
@@ -447,7 +531,7 @@ assert_eq!(
 #### Let Bindings
 
 ```rust
-let expr = parse("let x = 42 in x").unwrap();
+let expr = parse_expr("let x = 42 in x").unwrap();
 assert_eq!(
     expr,
     Expr::Let(
@@ -461,7 +545,7 @@ assert_eq!(
 #### Functions
 
 ```rust
-let expr = parse("fun x -> x + 1").unwrap();
+let expr = parse_expr("fun x -> x + 1").unwrap();
 assert_eq!(
     expr,
     Expr::Fun(
@@ -479,7 +563,7 @@ assert_eq!(
 
 ```rust
 let program = "let double = fun x -> x + x in double 21";
-let expr = parse(program);
+let expr = parse_expr(program);
 assert!(expr.is_ok());
 ```
 
@@ -507,7 +591,22 @@ Runtime values in ParLang:
 pub enum Value {
     Int(i64),
     Bool(bool),
+    Char(char),
+    Float(f64),
     Closure(String, Expr, Environment),
+    /// Recursive closure: function name, parameter name, body, environment
+    RecClosure(String, String, Expr, Environment),
+    /// Tuple of values
+    Tuple(Vec<Value>),
+    /// Record value: field name -> value
+    /// Uses `HashMap` for O(1) field access at runtime
+    Record(HashMap<String, Value>),
+    /// Variant value (sum type instance)
+    /// Variant: (`constructor_name`, `payload_values`)
+    /// e.g., Some(42) -> Variant("Some", vec![Int(42)])
+    ///       None -> Variant("None", vec![])
+    ///       Cons(1, rest) -> Variant("Cons", vec![Int(1), <list>])
+    Variant(String, Vec<Value>),
 }
 ```
 
@@ -637,9 +736,9 @@ Evaluate an expression in an environment.
 
 **Example:**
 ```rust
-use parlang::{parse, eval, Environment};
+use parlang::{parse_expr, eval, Environment};
 
-let expr = parse("let x = 42 in x + 1").unwrap();
+let expr = parse_expr("let x = 42 in x + 1").unwrap();
 let env = Environment::new();
 let result = eval(&expr, &env).unwrap();
 
@@ -760,6 +859,19 @@ pub enum EvalError {
     TypeError(String),
     DivisionByZero,
     LoadError(String),
+    IndexOutOfBounds(String),
+    /// Field not found in record: field name, available fields
+    FieldNotFound(String, Vec<String>),
+    /// Expected record but got a different type
+    RecordExpected(String),
+    /// Unknown constructor
+    UnknownConstructor(String),
+    /// Constructor arity mismatch: name, expected, got
+    ConstructorArityMismatch(String, usize, usize),
+    /// Pattern match is non-exhaustive
+    PatternMatchNonExhaustive,
+    /// Evaluation exceeded the non-tail recursion policy limit.
+    RecursionLimit,
 }
 ```
 
@@ -770,9 +882,9 @@ pub enum EvalError {
 Variable not found in environment.
 
 ```rust
-use parlang::{parse, eval, Environment, EvalError};
+use parlang::{parse_expr, eval, Environment, EvalError};
 
-let expr = parse("x").unwrap();
+let expr = parse_expr("x").unwrap();
 let env = Environment::new();
 let result = eval(&expr, &env);
 
@@ -784,7 +896,7 @@ assert_eq!(result, Err(EvalError::UnboundVariable("x".to_string())));
 Type mismatch or invalid operation.
 
 ```rust
-let expr = parse("if 42 then 1 else 2").unwrap();
+let expr = parse_expr("if 42 then 1 else 2").unwrap();
 let result = eval(&expr, &env);
 
 assert!(matches!(result, Err(EvalError::TypeError(_))));
@@ -795,7 +907,7 @@ assert!(matches!(result, Err(EvalError::TypeError(_))));
 Attempted division by zero.
 
 ```rust
-let expr = parse("10 / 0").unwrap();
+let expr = parse_expr("10 / 0").unwrap();
 let result = eval(&expr, &env);
 
 assert_eq!(result, Err(EvalError::DivisionByZero));
@@ -810,10 +922,10 @@ Occurs when:
 - File contains invalid ParLang syntax
 
 ```rust
-use parlang::{parse, eval, Environment, EvalError};
+use parlang::{parse_expr, eval, Environment, EvalError};
 
 // File not found
-let expr = parse("load \"nonexistent.par\" in 42").unwrap();
+let expr = parse_expr("load \"nonexistent.par\" in 42").unwrap();
 let env = Environment::new();
 let result = eval(&expr, &env);
 
@@ -840,7 +952,7 @@ assert_eq!(format!("{}", err), "Division by zero");
 use std::error::Error;
 
 fn process() -> Result<(), Box<dyn Error>> {
-    let expr = parse("x")?;
+    let expr = parse_expr("x")?;
     let env = Environment::new();
     let result = eval(&expr, &env)?;
     Ok(())
@@ -854,7 +966,7 @@ fn process() -> Result<(), Box<dyn Error>> {
 ### Example 1: Simple REPL
 
 ```rust
-use parlang::{parse, eval, Environment};
+use parlang::{parse_expr, eval, Environment};
 use std::io::{self, Write};
 
 fn main() {
@@ -871,7 +983,7 @@ fn main() {
             break;
         }
         
-        match parse(&input) {
+        match parse_expr(&input) {
             Ok(expr) => {
                 match eval(&expr, &env) {
                     Ok(value) => println!("{}", value),
@@ -887,10 +999,10 @@ fn main() {
 ### Example 2: Evaluating a Program
 
 ```rust
-use parlang::{parse, eval, Environment};
+use parlang::{parse_expr, eval, Environment};
 
 fn evaluate_program(source: &str) -> Result<String, String> {
-    let expr = parse(source)
+    let expr = parse_expr(source)
         .map_err(|e| format!("Parse error: {}", e))?;
     
     let env = Environment::new();
@@ -937,7 +1049,7 @@ fn main() {
 ### Example 4: Persistent Environment
 
 ```rust
-use parlang::{parse, eval, Environment, Value};
+use parlang::{parse_expr, eval, Environment, Value};
 
 fn main() {
     let mut env = Environment::new();
@@ -946,7 +1058,7 @@ fn main() {
     env.bind("pi".to_string(), Value::Int(3));
     env.bind("tau".to_string(), Value::Int(6));
     
-    let expr = parse("pi + tau").unwrap();
+    let expr = parse_expr("pi + tau").unwrap();
     let result = eval(&expr, &env).unwrap();
     
     assert_eq!(result, Value::Int(9));
@@ -956,10 +1068,10 @@ fn main() {
 ### Example 5: Error Recovery
 
 ```rust
-use parlang::{parse, eval, Environment, EvalError};
+use parlang::{parse_expr, eval, Environment, EvalError};
 
 fn safe_eval(source: &str) -> String {
-    let expr = match parse(source) {
+    let expr = match parse_expr(source) {
         Ok(e) => e,
         Err(err) => return format!("Parse error: {}", err),
     };
@@ -976,6 +1088,10 @@ fn safe_eval(source: &str) -> String {
         Err(EvalError::DivisionByZero) => {
             format!("Cannot divide by zero")
         }
+        Err(_) => {
+            // Remaining error variants are elided.
+            "Evaluation error".to_string()
+        }
     }
 }
 
@@ -989,14 +1105,14 @@ fn main() {
 ### Example 6: File Execution
 
 ```rust
-use parlang::{parse, eval, Environment};
+use parlang::{parse_expr, eval, Environment};
 use std::fs;
 
 fn run_file(path: &str) -> Result<String, String> {
     let source = fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
     
-    let expr = parse(&source)?;
+    let expr = parse_expr(&source)?;
     let env = Environment::new();
     let value = eval(&expr, &env)
         .map_err(|e| format!("{}", e))?;
@@ -1021,7 +1137,7 @@ fn main() {
 Use ParLang for dynamic configuration:
 
 ```rust
-use parlang::{parse, eval, Environment, Value};
+use parlang::{parse_expr, eval, Environment, Value};
 use std::collections::HashMap;
 
 struct Config {
@@ -1040,7 +1156,7 @@ impl Config {
     }
     
     fn eval_expression(&self, expr: &str) -> Result<i64, String> {
-        let ast = parse(expr)?;
+        let ast = parse_expr(expr)?;
         
         let mut env = Environment::new();
         for (key, value) in &self.values {
@@ -1070,7 +1186,7 @@ fn main() {
 Safe execution of user-provided scripts:
 
 ```rust
-use parlang::{parse, eval, Environment, Value};
+use parlang::{parse_expr, eval, Environment, Value};
 use std::time::{Duration, Instant};
 
 struct Sandbox {
@@ -1087,7 +1203,7 @@ impl Sandbox {
     }
     
     fn eval_safe(&self, source: &str) -> Result<Value, String> {
-        let expr = parse(source)?;
+        let expr = parse_expr(source)?;
         let env = Environment::new();
         
         let start = Instant::now();
@@ -1271,14 +1387,14 @@ All fallible operations return `Result`:
 
 ```rust
 // Parse can fail
-let expr: Result<Expr, String> = parse("...");
+let expr: Result<Expr, String> = parse_expr("...");
 
 // Eval can fail
 let value: Result<Value, EvalError> = eval(&expr, &env);
 
 // Use ? operator for error propagation
 fn process() -> Result<Value, Box<dyn std::error::Error>> {
-    let expr = parse("let x = 42 in x")?;
+    let expr = parse_expr("let x = 42 in x")?;
     let env = Environment::new();
     let value = eval(&expr, &env)?;
     Ok(value)
@@ -1326,7 +1442,7 @@ dbg!(&expr);  // Debug output with full structure
 
 The ParLang API provides:
 
-- **Simple parsing**: Single `parse()` function
+- **Simple parsing**: `parse_expr()` and `parse_program()` functions
 - **Straightforward evaluation**: Single `eval()` function
 - **Type-safe AST**: Strong typing for all expressions
 - **Flexible environments**: Both mutable and immutable operations
@@ -1336,8 +1452,8 @@ The ParLang API provides:
 ### Quick Start Checklist
 
 1. Add ParLang to `Cargo.toml`
-2. Import types: `use parlang::{parse, eval, Environment};`
-3. Parse source: `let expr = parse(source)?;`
+2. Import types: `use parlang::{parse_expr, eval, Environment};`
+3. Parse source: `let expr = parse_expr(source)?;`
 4. Create environment: `let env = Environment::new();`
 5. Evaluate: `let value = eval(&expr, &env)?;`
 6. Display result: `println!("{}", value);`
