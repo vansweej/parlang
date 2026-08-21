@@ -24,17 +24,85 @@ The AST module serves as the intermediate representation between the parser and 
 The `Expr` enum represents all possible expressions in ParLang:
 
 ```rust
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Int(i64),                                    // Integer literal
-    Bool(bool),                                  // Boolean literal
-    Var(String),                                 // Variable reference
-    BinOp(BinOp, Box<Expr>, Box<Expr>),        // Binary operation
-    If(Box<Expr>, Box<Expr>, Box<Expr>),       // Conditional
-    Let(String, Box<Expr>, Box<Expr>),         // Let binding
-    Fun(String, Box<Expr>),                    // Function definition
-    App(Box<Expr>, Box<Expr>),                 // Function application
-    Load(String, Box<Expr>),                   // Load library
-    Rec(String, Box<Expr>),                    // Recursive function
+    /// Integer literal: 42
+    Int(i64),
+
+    /// Boolean literal: true, false
+    Bool(bool),
+
+    /// Character literal: 'a', 'Z', '\n'
+    Char(char),
+
+    /// Floating point literal: 3.14, -2.5, 0.0
+    Float(f64),
+
+    /// Variable reference: x, y, foo
+    Var(String),
+
+    /// Binary operation: e1 + e2, e1 * e2, etc.
+    BinOp(BinOp, Box<Expr>, Box<Expr>),
+
+    /// If-then-else: if e1 then e2 else e3
+    If(Box<Expr>, Box<Expr>, Box<Expr>),
+
+    /// Let binding: let x = e1 in e2
+    /// Optional type annotation for the variable
+    Let(String, Option<TypeAnnotation>, Box<Expr>, Box<Expr>),
+
+    /// Function definition: fun x -> e
+    /// Optional type annotation for the parameter
+    Fun(String, Option<TypeAnnotation>, Box<Expr>),
+
+    /// Function application: f e
+    App(Box<Expr>, Box<Expr>),
+
+    /// Load expression: load "filepath" in e
+    Load(String, Box<Expr>),
+
+    /// Recursive function definition: rec name -> body
+    /// The function can reference itself by name within its body
+    Rec(String, Box<Expr>),
+
+    /// Pattern matching: match e with | p1 -> e1 | p2 -> e2 | ...
+    /// (scrutinee expression, vector of (pattern, result expression) arms)
+    Match(Box<Expr>, Vec<(Pattern, Expr)>),
+
+    /// Tuple construction: (e1, e2, e3, ...)
+    Tuple(Vec<Expr>),
+
+    /// Tuple projection: e.0, e.1, e.2, ...
+    TupleProj(Box<Expr>, usize),
+
+    /// Type alias definition: `type Name = TypeExpr in body`
+    /// Defines a type alias that can be used in the body expression
+    TypeAlias(String, TypeExpr, Box<Expr>),
+
+    /// Record construction: { field1: expr1, field2: expr2, ... }
+    /// Vec maintains insertion order for display purposes
+    Record(Vec<(String, Expr)>),
+
+    /// Field access: expr.field
+    /// Accesses a named field from a record
+    FieldAccess(Box<Expr>, String),
+
+    /// Data type definition: data Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
+    /// Introduces a new algebraic data type with constructors
+    TypeDef {
+        /// Type name (e.g., "Option", "Either", "List")
+        name: String,
+        /// Type parameters (e.g., `["a", "b"]` for polymorphic types)
+        type_params: Vec<String>,
+        /// Constructors: (name, payload types)
+        /// e.g., `[("Some", vec![TypeAnnotation::Var("a")]), ("None", vec![])]`
+        constructors: Vec<(String, Vec<TypeAnnotation>)>,
+        /// Body expression where this type is in scope
+        body: Box<Expr>,
+    },
+
+    /// Constructor application: Some 42, Cons 1 rest, Left x
+    Constructor(String, Vec<Expr>),
 }
 ```
 
@@ -568,7 +636,8 @@ graph TD
 
 ## Display Trait Implementation
 
-The `Expr` and `BinOp` types implement the `Display` trait for human-readable output:
+The `Expr` and `BinOp` types implement the `Display` trait for human-readable output.
+This abbreviated snippet shows eight arms; the real implementation covers all 20 variants.
 
 ```rust
 impl fmt::Display for Expr {
@@ -717,6 +786,8 @@ match expr {
 ```
 
 ### Recursive Traversal
+
+This is abbreviated illustrative pseudocode.
 
 ```rust
 fn count_nodes(expr: &Expr) -> usize {
