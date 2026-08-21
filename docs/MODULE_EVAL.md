@@ -55,10 +55,24 @@ The `Value` enum represents all possible runtime values in ParLang:
 ```rust
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-    Int(i64),                                          // Integer value
-    Bool(bool),                                        // Boolean value
-    Closure(String, Expr, Environment),                // Function closure
-    RecClosure(String, String, Expr, Environment),     // Recursive function closure
+    Int(i64),
+    Bool(bool),
+    Char(char),
+    Float(f64),
+    Closure(String, Expr, Environment),
+    /// Recursive closure: function name, parameter name, body, environment
+    RecClosure(String, String, Expr, Environment),
+    /// Tuple of values
+    Tuple(Vec<Value>),
+    /// Record value: field name -> value
+    /// Uses `HashMap` for O(1) field access at runtime
+    Record(HashMap<String, Value>),
+    /// Variant value (sum type instance)
+    /// Variant: (`constructor_name`, `payload_values`)
+    /// e.g., Some(42) -> Variant("Some", vec![Int(42)])
+    ///       None -> Variant("None", vec![])
+    ///       Cons(1, rest) -> Variant("Cons", vec![Int(1), <list>])
+    Variant(String, Vec<Value>),
 }
 ```
 
@@ -321,9 +335,23 @@ graph LR
 ```rust
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalError {
-    UnboundVariable(String),    // Variable not found
-    TypeError(String),          // Type mismatch
-    DivisionByZero,            // Division by zero
+    UnboundVariable(String),
+    TypeError(String),
+    DivisionByZero,
+    LoadError(String),
+    IndexOutOfBounds(String),
+    /// Field not found in record: field name, available fields
+    FieldNotFound(String, Vec<String>),
+    /// Expected record but got a different type
+    RecordExpected(String),
+    /// Unknown constructor
+    UnknownConstructor(String),
+    /// Constructor arity mismatch: name, expected, got
+    ConstructorArityMismatch(String, usize, usize),
+    /// Pattern match is non-exhaustive
+    PatternMatchNonExhaustive,
+    /// Evaluation exceeded the non-tail recursion policy limit.
+    RecursionLimit,
 }
 ```
 
@@ -716,7 +744,10 @@ graph TD
 #### Addition (`BinOp::Add`)
 
 ```rust
-(BinOp::Add, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a + b))
+(BinOp::Add, Value::Int(a), Value::Int(b)) => a
+    .checked_add(b)
+    .map(Value::Int)
+    .ok_or_else(|| EvalError::TypeError("Integer overflow in addition".to_string()))
 ```
 
 **Type**: `Int → Int → Int`
@@ -726,7 +757,10 @@ graph TD
 #### Subtraction (`BinOp::Sub`)
 
 ```rust
-(BinOp::Sub, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a - b))
+(BinOp::Sub, Value::Int(a), Value::Int(b)) => a
+    .checked_sub(b)
+    .map(Value::Int)
+    .ok_or_else(|| EvalError::TypeError("Integer overflow in subtraction".to_string()))
 ```
 
 **Type**: `Int → Int → Int`
@@ -736,7 +770,10 @@ graph TD
 #### Multiplication (`BinOp::Mul`)
 
 ```rust
-(BinOp::Mul, Value::Int(a), Value::Int(b)) => Ok(Value::Int(a * b))
+(BinOp::Mul, Value::Int(a), Value::Int(b)) => a
+    .checked_mul(b)
+    .map(Value::Int)
+    .ok_or_else(|| EvalError::TypeError("Integer overflow in multiplication".to_string()))
 ```
 
 **Type**: `Int → Int → Int`
@@ -1335,9 +1372,10 @@ fn test_eval_complex_nested() {
 - Body expression (varies)
 - Full environment (potentially large)
 
-**Call Stack Depth**: Recursive evaluation limited by system stack size.
-- **Typical limit**: ~1000-10000 nested calls
-- **Mitigation**: Not implemented (would require trampolining)
+**Call Stack Depth**:
+- **Deep non-tail recursion**: bounded by a `RecursionLimit` policy — exceeding it yields
+  `EvalError::RecursionLimit` (`eval.rs:400`) rather than a native stack overflow.
+- **Direct tail self-calls**: trampolined by the TCO loop and run in constant evaluator depth.
 
 ## Design Decisions
 
@@ -1389,13 +1427,11 @@ a `[1_000, 10_000, 100_000]` ramp).
 direct self-calls are); infinite tail loops spin forever rather than hitting the
 depth guard, consistent with the pre-existing `if`-tail behaviour.
 
-### 5. Integer-Only Arithmetic
+### 5. Multiple Value Types
 
-Only `i64` integers, no floats or other numeric types.
-
-**Rationale**: Simplicity for educational language
-
-**Extension Point**: Could add `Value::Float(f64)` variant
+The runtime value domain is `Int`, `Bool`, `Char`, `Float`, `Closure`, `RecClosure`,
+`Tuple`, `Record`, and `Variant`. Integer arithmetic is checked; overflow yields
+`EvalError::TypeError` rather than wrapping.
 
 ### 6. Pattern Matching for Operations
 
@@ -1464,18 +1500,12 @@ impl Environment {
 
 ### 4. Pattern Matching
 
-```rust
-Expr::Match(scrutinee, arms) => {
-    let val = eval(scrutinee, env)?;
-    for (pattern, body) in arms {
-        if let Some(bindings) = match_pattern(pattern, val) {
-            let new_env = env.extend_many(bindings);
-            return eval(body, &new_env);
-        }
-    }
-    Err(EvalError::NoMatchingPattern)
-}
-```
+Pattern matching is implemented by `Expr::Match` and evaluated by `eval_match`.
+An exhaustiveness-analysis extension could broaden coverage analysis: it runs at
+evaluation time only, prints a warning to stderr, never becomes a hard error,
+and is never run by the typechecker. It analyses only booleans and sum-type
+constructors; integer, tuple, and record patterns fall back to a catch-all rule,
+and char literals are not analysed.
 
 ## Integration with Other Modules
 
