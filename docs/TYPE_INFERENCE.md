@@ -345,12 +345,9 @@ rec factorial -> fun n ->
 # Inferred type: Int -> Int
 ```
 
-**Workaround**: Use Y-combinator or implement fixpoint typing.
-
-**Future**: Add support through:
-- Explicit type annotations
-- Equi-recursive types
-- Or special handling of recursive let-bindings
+**Future**: Polymorphic recursion (letting the recursive name be generalized
+and used at multiple types within its own body) could be added through
+explicit type annotations on the recursive binding.
 
 ### 2. Pattern Matching
 

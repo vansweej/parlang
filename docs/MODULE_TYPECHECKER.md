@@ -388,7 +388,6 @@ The type checker provides clear, actionable error messages:
 Unbound variable: x
 Cannot unify types: Int and Bool
 Occurs check failed: t0 occurs in t0 -> Int
-Recursive functions require type annotations
 ```
 
 ## Related Modules
