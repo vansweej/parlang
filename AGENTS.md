@@ -67,7 +67,7 @@ integration tests.
 | File | Role |
 |------|------|
 | `ast.rs` | Expression AST (`Expr`, `BinOp`) |
-| `parser.rs` | `combine`-based parser; entrypoint `parse()` |
+| `parser.rs` | `combine`-based parser; entrypoints `parse_expr()` / `parse_program()` |
 | `types.rs` | Type representations (`Type`, `TypeScheme`, `TypeVar`) |
 | `typechecker.rs` | Algorithm W inference; entrypoint `typecheck()` |
 | `exhaustiveness.rs` | Pattern-match exhaustiveness checker (`check_exhaustiveness`) |
@@ -94,7 +94,7 @@ integration tests.
 ## Style (from CONTRIBUTING.md)
 
 - **No `unwrap()`/`panic!` in library code.** Use dedicated error variants
-  (`EvalError`, `ParseError`, `TypeError`). Panics are acceptable only in tests,
+  (`EvalError`, `TypeError`). Panics are acceptable only in tests,
   CLI code, or at invariant assertions (comment why).
 - Use **checked arithmetic** (`checked_add`, etc.) for any user-provided values.
 - Use `attempt()` in parsers sparingly — it disables the `combine` fast path.

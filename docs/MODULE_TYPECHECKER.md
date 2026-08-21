@@ -76,9 +76,9 @@ pub fn typecheck(expr: &Expr) -> Result<Type, TypeError>
 
 **Example:**
 ```rust
-use parlang::{parse, typecheck};
+use parlang::{parse_expr, typecheck};
 
-let expr = parse("fun x -> x + 1").unwrap();
+let expr = parse_expr("fun x -> x + 1").unwrap();
 let ty = typecheck(&expr).unwrap();
 println!("{}", ty); // "Int -> Int"
 ```
@@ -261,14 +261,14 @@ This allows the type checker to correctly handle self-references in recursive fu
 ### Basic Type Inference
 
 ```rust
-use parlang::{parse, typecheck, Type};
+use parlang::{parse_expr, typecheck, Type};
 
 // Integer literal
-let expr = parse("42").unwrap();
+let expr = parse_expr("42").unwrap();
 assert_eq!(typecheck(&expr).unwrap(), Type::Int);
 
 // Function
-let expr = parse("fun x -> x + 1").unwrap();
+let expr = parse_expr("fun x -> x + 1").unwrap();
 let ty = typecheck(&expr).unwrap();
 // ty is Int -> Int
 ```
@@ -277,15 +277,15 @@ let ty = typecheck(&expr).unwrap();
 
 ```rust
 // Identity function
-let expr = parse("fun x -> x").unwrap();
+let expr = parse_expr("fun x -> x").unwrap();
 let ty = typecheck(&expr).unwrap();
 // ty is t0 -> t0 (polymorphic)
 
 // Using polymorphic function at different types
-let expr = parse("let id = fun x -> x in id 42").unwrap();
+let expr = parse_expr("let id = fun x -> x in id 42").unwrap();
 assert_eq!(typecheck(&expr).unwrap(), Type::Int);
 
-let expr = parse("let id = fun x -> x in id true").unwrap();
+let expr = parse_expr("let id = fun x -> x in id true").unwrap();
 assert_eq!(typecheck(&expr).unwrap(), Type::Bool);
 ```
 
@@ -293,11 +293,11 @@ assert_eq!(typecheck(&expr).unwrap(), Type::Bool);
 
 ```rust
 // Type mismatch
-let expr = parse("1 + true").unwrap();
+let expr = parse_expr("1 + true").unwrap();
 assert!(typecheck(&expr).is_err());
 
 // Unbound variable
-let expr = parse("x + 1").unwrap();
+let expr = parse_expr("x + 1").unwrap();
 assert!(typecheck(&expr).is_err());
 ```
 
@@ -305,7 +305,7 @@ assert!(typecheck(&expr).is_err());
 
 ```rust
 // Function composition
-let expr = parse("fun f -> fun g -> fun x -> f (g x)").unwrap();
+let expr = parse_expr("fun f -> fun g -> fun x -> f (g x)").unwrap();
 let ty = typecheck(&expr).unwrap();
 // ty is (t2 -> t3) -> (t1 -> t2) -> t1 -> t3
 ```
@@ -314,21 +314,21 @@ let ty = typecheck(&expr).unwrap();
 
 ```rust
 // Factorial function
-let expr = parse("rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)").unwrap();
+let expr = parse_expr("rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)").unwrap();
 let ty = typecheck(&expr).unwrap();
 assert_eq!(ty, Type::Fun(Box::new(Type::Int), Box::new(Type::Int)));
 
 // Fibonacci function
-let expr = parse("rec fib -> fun n -> if n == 0 then 0 else if n == 1 then 1 else fib (n - 1) + fib (n - 2)").unwrap();
+let expr = parse_expr("rec fib -> fun n -> if n == 0 then 0 else if n == 1 then 1 else fib (n - 1) + fib (n - 2)").unwrap();
 let ty = typecheck(&expr).unwrap();
 // ty is Int -> Int
 
 // Using recursive function in let binding
-let expr = parse("let fact = rec f -> fun n -> if n == 0 then 1 else n * f (n - 1) in fact 5").unwrap();
+let expr = parse_expr("let fact = rec f -> fun n -> if n == 0 then 1 else n * f (n - 1) in fact 5").unwrap();
 assert_eq!(typecheck(&expr).unwrap(), Type::Int);
 
 // Type error: wrong argument type in recursive call
-let expr = parse("rec f -> fun n -> if n == 0 then 1 else f true").unwrap();
+let expr = parse_expr("rec f -> fun n -> if n == 0 then 1 else f true").unwrap();
 assert!(typecheck(&expr).is_err());  // f expects Int but gets Bool
 ```
 

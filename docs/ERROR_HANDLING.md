@@ -17,15 +17,13 @@ ParLang has three main categories of errors:
 
 ### 1. Parse Errors
 
-Errors that occur during parsing of source code:
+Errors that occur during parsing of source code. There is no dedicated
+parse-error type: the parser returns a plain `String` error describing
+the failure, from either entry point:
 
 ```rust
-pub enum ParseError {
-    UnexpectedToken,
-    UnexpectedEOF,
-    IntegerOverflow,
-    InvalidSyntax(String),
-}
+pub fn parse_program(input: &str) -> Result<Program, String>
+pub fn parse_expr(input: &str) -> Result<Expr, String>
 ```
 
 **Common causes:**
@@ -46,12 +44,17 @@ Errors that occur during type checking (which now runs on every program):
 
 ```rust
 pub enum TypeError {
-    UnificationError(Type, Type),
     UnboundVariable(String),
-    InfiniteType(TypeVar, Type),
-    OccursCheck(TypeVar, Type),
+    UnificationError(Box<Type>, Box<Type>),
+    OccursCheckFailed(TypeVar, Type),
     RecursionRequiresAnnotation,
+    FieldNotFound(String, Vec<String>),
+    RecordExpected(String),
+    RecordFieldMismatch,
     ConstructorArityMismatch(String, usize, usize),
+    TypeAliasCycle(Vec<String>),
+    DuplicateTypeName(String),
+    DuplicateConstructor(String),
 }
 ```
 
@@ -84,6 +87,7 @@ pub enum EvalError {
     UnknownConstructor(String),
     ConstructorArityMismatch(String, usize, usize),
     PatternMatchNonExhaustive,
+    RecursionLimit,
 }
 ```
 
@@ -105,7 +109,7 @@ pub enum EvalError {
 
 ```rust
 let code = "1 + 2";
-match parse(code) {
+match parse_expr(code) {
     Ok(expr) => println!("Parsed successfully: {:?}", expr),
     Err(e) => eprintln!("Parse error: {}", e),
 }
@@ -113,7 +117,7 @@ match parse(code) {
 
 **Handling specific errors:**
 ```rust
-match parse(code) {
+match parse_expr(code) {
     Ok(expr) => { /* success */ },
     Err(e) if e.contains("overflow") => {
         eprintln!("Integer too large: {}", e);
@@ -191,7 +195,7 @@ let number = many1(digit()).and_then(|s: String| {
 
 ```rust
 fn parse_with_context(code: &str, filename: &str) -> Result<Expr, String> {
-    parse(code).map_err(|e| {
+    parse_expr(code).map_err(|e| {
         format!("Error in {}: {}", filename, e)
     })
 }
@@ -416,7 +420,7 @@ Err(EvalError::TypeError("pattern match failed".to_string()))
 
 ```rust
 fn evaluate_program(code: &str) -> Result<Value, String> {
-    let expr = parse(code)?;
+    let expr = parse_expr(code)?;
     eval(&expr, &Environment::new()).map_err(|e| e.to_string())
 }
 ```
@@ -457,7 +461,7 @@ When errors indicate limitations, document them:
 #[test]
 fn test_i64_min_literal() {
     let code = "-9223372036854775808";
-    assert!(parse(code).is_err());
+    assert!(parse_expr(code).is_err());
 }
 ```
 

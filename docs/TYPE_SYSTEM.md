@@ -696,10 +696,10 @@ Type: Int -> Int
 Use the `typecheck` function from the library:
 
 ```rust
-use parlang::{parse, typecheck};
+use parlang::{parse_expr, typecheck};
 
 let program = "fun x -> x + 1";
-let expr = parse(program).expect("Parse error");
+let expr = parse_expr(program).expect("Parse error");
 let ty = typecheck(&expr).expect("Type error");
 println!("Type: {}", ty); // prints "Type: Int -> Int"
 ```

@@ -5,7 +5,7 @@
 The `parser.rs` module implements a parser for the ParLang language using the `combine` parser combinator library. It transforms source code text into an Abstract Syntax Tree (AST).
 
 **Location**: `crates/parlang/src/parser.rs`  
-**Key Exports**: `parse()` function  
+**Key Exports**: `parse_expr()` and `parse_program()` functions
 **External Dependencies**: `combine` crate (v4.6)
 
 ## Purpose
@@ -107,12 +107,12 @@ where [Input: Stream<Token = char>]
 - Skips trailing whitespace
 - Returns the parsed `Expr`
 
-#### `parse(input: &str)`
+#### `parse_expr(input: &str)`
 
 Public API function that wraps `program()` and handles errors.
 
 ```rust
-pub fn parse(input: &str) -> Result<Expr, String>
+pub fn parse_expr(input: &str) -> Result<Expr, String>
 ```
 
 **Parameters**:
@@ -124,7 +124,7 @@ pub fn parse(input: &str) -> Result<Expr, String>
 
 **Example**:
 ```rust
-let result = parse("1 + 2");
+let result = parse_expr("1 + 2");
 assert_eq!(result, Ok(Expr::BinOp(
     BinOp::Add,
     Box::new(Expr::Int(1)),
@@ -660,7 +660,7 @@ graph TD
 The parser returns descriptive error messages:
 
 ```rust
-pub fn parse(input: &str) -> Result<Expr, String> {
+pub fn parse_program(input: &str) -> Result<Program, String> {
     match program().easy_parse(input) {
         Ok((expr, rest)) => {
             if rest.is_empty() {
@@ -691,15 +691,15 @@ The parser is flexible with whitespace:
 
 ```rust
 // All equivalent:
-parse("1+2")
-parse("1 + 2")
-parse("  1  +  2  ")
-parse("1    +    2")
+parse_expr("1+2")
+parse_expr("1 + 2")
+parse_expr("  1  +  2  ")
+parse_expr("1    +    2")
 
 // All equivalent:
-parse("let x=42 in x")
-parse("let x = 42 in x")
-parse("let  x  =  42  in  x")
+parse_expr("let x=42 in x")
+parse_expr("let x = 42 in x")
+parse_expr("let  x  =  42  in  x")
 ```
 
 **Implementation**: Each parser calls `spaces()` to skip whitespace where appropriate.
@@ -735,7 +735,7 @@ fn test_precedence_mul_before_add() {
             Box::new(Expr::Int(3)),
         )),
     );
-    assert_eq!(parse("1 + 2 * 3"), Ok(expected));
+    assert_eq!(parse_expr("1 + 2 * 3"), Ok(expected));
 }
 ```
 

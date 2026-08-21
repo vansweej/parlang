@@ -92,7 +92,7 @@ Documents the Abstract Syntax Tree data structures:
 **Mermaid Diagrams**: Expression tree visualizations, type hierarchies
 
 ### [Parser Module](MODULE_PARSER.md)
-**Lines**: ~718 | **Exports**: `parse()` function
+**Lines**: ~718 | **Exports**: `parse_expr()` and `parse_program()` functions
 
 Documents the parser implementation:
 - Parser combinator approach

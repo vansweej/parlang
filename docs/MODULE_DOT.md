@@ -85,10 +85,10 @@ pub fn ast_to_dot(expr: &Expr) -> String
 
 **Example**:
 ```rust
-use parlang::{parse, dot::ast_to_dot};
+use parlang::{parse_expr, dot::ast_to_dot};
 
 let source = "let x = 42 in x + 1";
-let expr = parse(source).unwrap();
+let expr = parse_expr(source).unwrap();
 let dot_output = ast_to_dot(&expr);
 println!("{}", dot_output);
 ```
@@ -121,10 +121,10 @@ pub fn write_ast_to_dot_file(expr: &Expr, path: &str) -> io::Result<()>
 
 **Example**:
 ```rust
-use parlang::{parse, dot::write_ast_to_dot_file};
+use parlang::{parse_expr, dot::write_ast_to_dot_file};
 
 let source = "if x > 0 then x else 0";
-let expr = parse(source).unwrap();
+let expr = parse_expr(source).unwrap();
 write_ast_to_dot_file(&expr, "ast.dot")?;
 ```
 

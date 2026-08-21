@@ -70,7 +70,7 @@ let number = s.parse::<i64>().unwrap();
 **✅ Good**:
 ```rust
 let number = s.parse::<i64>()
-    .map_err(|_| ParseError::IntegerOverflow)?;
+    .map_err(|_| "integer overflow".to_string())?;
 ```
 
 **Exception**: Using `unwrap()` or `expect()` is acceptable in:
@@ -222,18 +222,19 @@ mod tests {
 
     #[test]
     fn test_integer_parsing_positive() {
-        assert_eq!(parse("42"), Ok(Expr::Int(42)));
+        assert_eq!(parse_expr("42"), Ok(Expr::Int(42)));
     }
 
     #[test]
     fn test_integer_parsing_negative() {
-        assert_eq!(parse("-42"), Ok(Expr::Int(-42)));
+        assert_eq!(parse_expr("-42"), Ok(Expr::Int(-42)));
     }
 
     #[test]
     fn test_integer_overflow_error() {
         let huge = "99999999999999999999";
-        assert!(matches!(parse(huge), Err(ParseError::IntegerOverflow)));
+        let err = parse_expr(huge).unwrap_err();
+        assert!(err.contains("overflow"));
     }
 }
 ```

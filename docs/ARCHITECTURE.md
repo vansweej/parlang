@@ -115,13 +115,13 @@ sequenceDiagram
     participant Environment
     
     User->>Main: Enter expression
-    Main->>Parser: parse(source)
-    Parser->>AST: Build Expr tree
-    AST-->>Parser: Return Expr
-    Parser-->>Main: Return Result<Expr>
+    Main->>Parser: parse_program(source)
+    Parser->>AST: Build Program (decls + body)
+    AST-->>Parser: Return Program
+    Parser-->>Main: Return Result<Program>
     
     Main->>Environment: Create new env
-    Main->>Evaluator: eval(expr, env)
+    Main->>Evaluator: eval_program(program, env)
     
     loop For each node in AST
         Evaluator->>Environment: Lookup variables

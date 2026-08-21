@@ -837,7 +837,7 @@ When the function body is a direct tail call to itself (i.e., the last operation
 
 ```
 file_contents(filepath) = source
-parse(source) = lib_expr
+parse_program(source) = lib_expr
 ∅ ⊢ lib_expr ⇓ _
 extract_bindings(lib_expr) = Γ_lib
 Γ ∪ Γ_lib ⊢ e ⇓ v

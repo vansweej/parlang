@@ -54,7 +54,7 @@ Test the complete pipeline from parsing to evaluation:
 
 ```rust
 fn parse_and_eval(input: &str) -> Result<Value, String> {
-    let expr = parse(input)?;
+    let expr = parse_expr(input)?;
     eval(&expr, &Environment::new()).map_err(|e| e.to_string())
 }
 
@@ -259,7 +259,7 @@ fn test_parse_i64_min_literal() {
     // i64::MIN cannot be parsed as a literal because it's parsed as -(9223372036854775808)
     // and 9223372036854775808 exceeds i64::MAX (known limitation)
     let code = "-9223372036854775808";
-    let result = parse(code);
+    let result = parse_expr(code);
     assert!(result.is_err());
 }
 ```
