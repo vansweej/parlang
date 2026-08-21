@@ -5,7 +5,7 @@
 The `parser.rs` module implements a parser for the ParLang language using the `combine` parser combinator library. It transforms source code text into an Abstract Syntax Tree (AST).
 
 **Location**: `crates/parlang/src/parser.rs`  
-**Key Exports**: `parse_expr()` and `parse_program()` functions
+**Key Exports**: `parse_expr()` and `parse_program()` functions  
 **External Dependencies**: `combine` crate (v4.6)
 
 ## Purpose
@@ -109,7 +109,7 @@ where [Input: Stream<Token = char>]
 
 #### `parse_expr(input: &str)`
 
-Public API function that wraps `program()` and handles errors.
+Public API function that wraps `parse_program()` and rejects declarations.
 
 ```rust
 pub fn parse_expr(input: &str) -> Result<Expr, String>
