@@ -635,7 +635,7 @@ The type system supports:
 
 ### Recursive Functions
 
-Recursive functions (using `rec`) are now fully supported by the type checker:
+Recursive functions (using `rec`) are supported by the type checker, though without polymorphic recursion (the recursive name is bound to a single monomorphic type during inference):
 
 ```parlang
 > rec factorial -> fun n -> if n == 0 then 1 else n * factorial (n - 1)
