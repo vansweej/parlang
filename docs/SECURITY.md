@@ -218,15 +218,12 @@ let f = fun a -> fun b -> fun c -> fun d -> fun e -> fun f -> ...
 #### Memory Usage
 
 1. **AST Storage**: O(n) where n is expression size
-   - Each node is a Rust enum (typically 48-80 bytes)
-   - Nested expressions use Box pointers (8 bytes per box)
+   - Each node is a Rust enum; nested expressions are boxed
 
 2. **Environment**: O(v) where v is number of variables in scope
    - Each binding stores variable name and value
-   - HashMap overhead: ~32 bytes per entry + key/value size
 
 3. **Type Information**: O(t) where t is number of type variables
-   - Type representations: 24-48 bytes each
    - Substitution maps: HashMap overhead
 
 4. **Call Stack**: O(d) where d is recursion depth
