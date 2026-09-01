@@ -80,7 +80,7 @@ Complete API documentation including:
 ## 🔧 Module Documentation
 
 ### [AST Module](MODULE_AST.md)
-**Lines**: ~365 | **Exports**: `Expr`, `BinOp`
+**Exports**: `Expr`, `BinOp`
 
 Documents the Abstract Syntax Tree data structures:
 - Expression types and variants
@@ -92,7 +92,7 @@ Documents the Abstract Syntax Tree data structures:
 **Mermaid Diagrams**: Expression tree visualizations, type hierarchies
 
 ### [Parser Module](MODULE_PARSER.md)
-**Lines**: ~718 | **Exports**: `parse_expr()` and `parse_program()` functions
+**Exports**: `parse_expr()` and `parse_program()` functions
 
 Documents the parser implementation:
 - Parser combinator approach
@@ -105,7 +105,7 @@ Documents the parser implementation:
 **Mermaid Diagrams**: Parser architecture, parsing pipeline, precedence hierarchy
 
 ### [Evaluator Module](MODULE_EVAL.md)
-**Lines**: ~856 | **Exports**: `eval()`, `Value`, `Environment`, `EvalError`
+**Exports**: `eval()`, `Value`, `Environment`, `EvalError`
 
 Documents the interpreter/evaluator:
 - Runtime values and types
@@ -118,7 +118,7 @@ Documents the interpreter/evaluator:
 **Mermaid Diagrams**: Evaluation flows, closure handling, environment structure
 
 ### [Main Module](MODULE_MAIN.md)
-**Lines**: ~86 | **Exports**: Binary executable
+**Exports**: Binary executable
 
 Documents the CLI/REPL interface:
 - REPL mode (interactive)

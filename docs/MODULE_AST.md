@@ -5,7 +5,6 @@
 The `ast.rs` module defines the Abstract Syntax Tree (AST) data structures for ParLang. The AST represents the structure of ParLang programs in a tree format that can be traversed and evaluated.
 
 **Location**: `crates/parlang/src/ast.rs`  
-**Lines of Code**: ~365  
 **Key Exports**: `Expr`, `BinOp`
 
 ## Purpose

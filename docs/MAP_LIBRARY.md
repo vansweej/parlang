@@ -27,7 +27,7 @@ ParLang provides Map (key-value dictionary) implementations as **library code**,
 - Learning and understanding map implementations
 
 **Pros**:
-- ✅ Simplest implementation (~110 lines)
+- ✅ Simplest implementation
 - ✅ Easy to understand and debug
 - ✅ Preserves insertion order
 - ✅ No balancing or complex logic
