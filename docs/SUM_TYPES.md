@@ -279,7 +279,7 @@ For detailed information about exhaustiveness checking, including examples and b
 Current implementation:
 - Basic type inference for sum types
 - Constructor arity checking at runtime
-- **Complete exhaustiveness checking with warnings**
+- **Partial exhaustiveness checking with warnings** — constructor coverage only; Int/Char literals, tuples, and records without a catch-all are reported non-exhaustive, and nested constructors are not analysed per-position (see [Limitations](EXHAUSTIVENESS_CHECKING.md#limitations))
 
 Potential future enhancements:
 - Better type error messages
