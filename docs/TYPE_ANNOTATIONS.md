@@ -282,6 +282,6 @@ cargo test type_annotation_tests
 
 ## Conclusion
 
-Explicit type annotations provide a powerful way to document code and catch type errors early. While there are some current limitations (particularly with function parameter annotations), the feature integrates seamlessly with ParLang's existing type inference system.
+Explicit type annotations provide a useful way to document code and catch type errors early. There are some current limitations, particularly with function parameter annotations, but the feature integrates with ParLang's existing type inference system.
 
 Type annotations are completely optional - you can continue using ParLang without annotations and rely entirely on type inference. Add annotations where they improve code clarity or help catch bugs.

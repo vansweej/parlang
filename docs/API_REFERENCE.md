@@ -22,7 +22,7 @@ Complete API documentation for using ParLang as a library in Rust applications.
 
 ## Overview
 
-ParLang is a library crate that provides a complete implementation of a small ML-alike functional language. The library exposes:
+ParLang is a library crate that provides an implementation of a small ML-alike functional language. The library exposes:
 
 - **Abstract Syntax Tree (AST)** definitions for representing programs
 - **Parser** using the `combine` parser combinator library
