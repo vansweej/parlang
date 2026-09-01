@@ -284,17 +284,7 @@ sum  # 60
 
 ## Performance Comparison
 
-Benchmark results for 1000 entries:
-
-| Operation | AssocMap | TreeMap | HashMap (future) |
-|-----------|----------|---------|------------------|
-| Insert (total) | ~500ms | ~50ms | ~10ms (est.) |
-| Lookup (avg) | ~0.5ms | ~0.05ms | ~0.01ms (est.) |
-| Delete (avg) | ~0.5ms | ~0.05ms | ~0.01ms (est.) |
-| Iterate all | ~1ms | ~2ms | ~5ms (est.) |
-| Sorted keys | O(n log n) | O(n) | O(n log n) |
-
-*Note: Benchmarks are approximate and depend on key distribution*
+AssocMap stores entries in a list and scans them linearly; TreeMap keeps its keys ordered in a balanced structure. Producing sorted keys is O(n log n) for AssocMap and O(n) for TreeMap, which already holds its keys in order.
 
 ## Examples
 
@@ -482,10 +472,10 @@ Test files are in `tests/map_assoc_test.par` and `tests/map_tree_test.par` and d
 
 Run tests:
 ```bash
-cargo run examples/stdlib/map.par       # Outputs: 146
-cargo run examples/stdlib/treemap.par   # Outputs: 400
-cargo run tests/map_assoc_test.par      # Outputs: 1 (all tests pass)
-cargo run tests/map_tree_test.par       # Outputs: 1 (all tests pass)
+cargo run examples/stdlib/map.par
+cargo run examples/stdlib/treemap.par
+cargo run tests/map_assoc_test.par
+cargo run tests/map_tree_test.par
 ```
 
 ## Related Documentation
