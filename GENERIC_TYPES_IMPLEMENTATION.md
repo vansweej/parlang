@@ -1,5 +1,7 @@
 # Generic Types Implementation Summary
 
+> Historical record of the generic types work introduced in commit 8ad6a4c. It describes what that change did; the figures it once quoted have been removed rather than maintained.
+
 ## Overview
 Successfully implemented full generic types support for the ParLang compiler, enabling type-safe parameterized data structures like `Option<T>`, `List<T>`, and `Either<A, B>`.
 
@@ -42,7 +44,7 @@ Successfully implemented full generic types support for the ParLang compiler, en
 - Reports clear errors when constructors are applied with wrong number of arguments
 - Improved error messages for better debugging
 
-### 4. Testing (19 New Tests)
+### 4. Testing
 All tests in `tests/generic_types_tests.rs`:
 - ✓ Basic generic types (Option, Either, List, Result, Tree)
 - ✓ Type inference for constructors
@@ -54,7 +56,7 @@ All tests in `tests/generic_types_tests.rs`:
 - ✓ Polymorphic functions with generics
 
 ### 5. Documentation
-- **docs/GENERIC_TYPES.md**: Comprehensive 8,600+ character guide covering:
+- **docs/GENERIC_TYPES.md**: Guide covering:
   - Overview of generic types
   - Type parameters and instantiation
   - Usage examples and patterns
@@ -134,17 +136,14 @@ Some (Cons 1 (Cons 2 Nil))
 ## Files Modified
 1. `src/types.rs`: Added SumType variant and tests
 2. `src/typechecker.rs`: Implemented generic type checking
-3. `tests/generic_types_tests.rs`: 19 comprehensive tests (NEW)
+3. `tests/generic_types_tests.rs`: generic type tests (NEW)
 4. `docs/GENERIC_TYPES.md`: Complete documentation (NEW)
 5. `README.md`: Updated with generic types feature
 6. `examples/generic_*.par`: 4 example files (NEW)
 
 ## Impact
-- **Backward Compatible**: All existing tests pass (369 unit tests)
-- **Type Safe**: Maintains all type system guarantees
-- **Well Tested**: 19 new tests covering all aspects
-- **Well Documented**: 8,600+ character documentation guide
-- **Production Ready**: Error handling, security reviewed
+- **Backward Compatible**: Introduced no breaking changes to existing public APIs
+- **Type Safe**: Generic types are inferred by the same Algorithm W implementation as all other types
 
 ## Future Enhancements
 - Higher-kinded types
