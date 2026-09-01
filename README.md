@@ -9,7 +9,7 @@ ParLang is a simple functional programming language with:
 - **Basic Types**: Integers, booleans, characters, and floating point numbers
 - **Type Inference**: Hindley-Milner type system with automatic type inference (mandatory, runs before evaluation)
 - **Type Aliases**: Define alternative names for types for better code documentation
-- **Generic Types**: Full support for parameterized types (Option Int, List Bool, Either A B)
+- **Generic Types**: Parameterized types with type inference and unification (Option Int, List Bool, Either A B)
 - **Sum Types**: Algebraic data types with constructors and pattern matching (Option, Either, List, etc.)
 - **Records**: Product types with named fields for structured data
 - **Tuples**: Heterogeneous tuples with projection and pattern matching
@@ -374,7 +374,7 @@ See [docs/SUM_TYPES.md](docs/SUM_TYPES.md) for comprehensive documentation and e
 
 ### Generic Types
 
-ParLang now has **full support for generic types** with proper type inference and type checking. Generic types allow you to write type-safe polymorphic data structures.
+ParLang supports **generic types** with type inference and type checking. Generic types allow you to write type-safe polymorphic data structures.
 
 **Type inference for generic types:**
 ```

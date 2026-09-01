@@ -4,7 +4,7 @@ ParLang now supports **generic types** (also known as parameterized types) in it
 
 ## Overview
 
-Generic types enable you to write type-safe code that works with multiple types without sacrificing type checking. The type checker now fully supports:
+Generic types enable you to write type-safe code that works with multiple types without sacrificing type checking. The type checker supports:
 
 - **Type parameters** (e.g., `a`, `b` in `Option a`)
 - **Type instantiation** (e.g., `Option Int`, `List Bool`)
