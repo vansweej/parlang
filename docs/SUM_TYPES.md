@@ -248,7 +248,7 @@ The type checker provides basic support for sum types. Type definitions are tran
 
 ## Exhaustiveness Checking
 
-**New in this version:** ParLang now includes **complete exhaustiveness checking** for pattern matching!
+ParLang includes exhaustiveness checking for pattern matching, with known limitations -- see [Exhaustiveness Checking](EXHAUSTIVENESS_CHECKING.md).
 
 The exhaustiveness checker automatically warns you when a `match` expression doesn't cover all possible cases, helping prevent runtime errors.
 
