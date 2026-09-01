@@ -4,7 +4,7 @@ The Type Checker module implements Hindley-Milner type inference for ParLang.
 
 ## Overview
 
-This module provides a complete implementation of Algorithm W, the classic type inference algorithm for functional languages. It automatically infers types for all expressions without requiring type annotations, supports polymorphic types through let-polymorphism, and catches type errors before runtime.
+This module implements Algorithm W, the classic type inference algorithm for functional languages. It infers types for most expressions without requiring type annotations and supports polymorphic types through let-polymorphism; tuples, tuple projection, pattern matching, and module loading currently receive a fresh type variable and are not type-checked (see the note later in this document). Inferred type errors are caught before runtime.
 
 ## Core Components
 
@@ -350,7 +350,7 @@ assert!(typecheck(&expr).is_err());  // f expects Int but gets Bool
 
 ### Tuples and Pattern Matching
 
-Tuples and pattern matching currently receive type variables but are not fully type-checked. Full support would require:
+Tuples and pattern matching currently receive a fresh type variable and are not type-checked. Full support would require:
 - Tuple types (e.g., `(Int, Bool)`)
 - Pattern type checking
 
