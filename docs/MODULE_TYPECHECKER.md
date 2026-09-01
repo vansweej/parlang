@@ -35,9 +35,16 @@ Represents different kinds of type errors:
 ```rust
 pub enum TypeError {
     UnboundVariable(String),
-    UnificationError(Type, Type),
+    UnificationError(Box<Type>, Box<Type>),
     OccursCheckFailed(TypeVar, Type),
     RecursionRequiresAnnotation,
+    FieldNotFound(String, Vec<String>),
+    RecordExpected(String),
+    RecordFieldMismatch,
+    ConstructorArityMismatch(String, usize, usize),
+    TypeAliasCycle(Vec<String>),
+    DuplicateTypeName(String),
+    DuplicateConstructor(String),
 }
 ```
 
@@ -46,6 +53,13 @@ pub enum TypeError {
 - `UnificationError(t1, t2)`: Cannot make types t1 and t2 equal
 - `OccursCheckFailed(var, ty)`: Type variable occurs in the type it's being unified with (would create infinite type)
 - `RecursionRequiresAnnotation`: Reserved for future use (recursive functions are now supported)
+- `FieldNotFound(field, available)`: Field not found in record type; carries the field name and the available fields
+- `RecordExpected(found)`: Expected a record type but got something else
+- `RecordFieldMismatch`: Record type field mismatch during unification
+- `ConstructorArityMismatch(name, expected, actual)`: Constructor applied with the wrong number of arguments
+- `TypeAliasCycle(names)`: A cycle was found while resolving top-level type aliases
+- `DuplicateTypeName(name)`: A top-level data type or type alias was declared more than once
+- `DuplicateConstructor(name)`: A top-level constructor name was declared more than once
 
 ### `Substitution` Type
 
