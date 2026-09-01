@@ -275,21 +275,36 @@ graph LR
 ### Code Organization
 
 ```
-parlang/
-├── src/
-│   ├── lib.rs          # Library root, public API exports
-│   ├── ast.rs          # AST definitions, ~365 lines
-│   ├── parser.rs       # Parser implementation, ~718 lines
-│   ├── eval.rs         # Evaluator implementation, ~856 lines
-│   └── main.rs         # CLI interface, ~86 lines
-├── examples/           # Example .par programs
-│   ├── simple.par      # Basic let and function application
-│   ├── conditional.par # If-then-else examples
-│   └── currying.par    # Currying and partial application
-├── tests/              # Integration tests
-│   └── integration_tests.rs
-├── docs/              # Documentation (this directory)
-└── Cargo.toml         # Package configuration
+parlang/                          # Cargo workspace root
+├── crates/
+│   ├── parlang/                  # Surface language: parser, typechecker, evaluator, CLI
+│   │   ├── src/
+│   │   │   ├── lib.rs            # Library root, public API exports
+│   │   │   ├── ast.rs            # AST definitions
+│   │   │   ├── parser.rs         # combine-based parser
+│   │   │   ├── types.rs          # Type representations
+│   │   │   ├── typechecker.rs    # Hindley-Milner inference
+│   │   │   ├── exhaustiveness.rs # Pattern-match exhaustiveness checking
+│   │   │   ├── eval.rs           # Tree-walking evaluator
+│   │   │   ├── dot.rs            # AST -> Graphviz DOT
+│   │   │   └── main.rs           # CLI interface
+│   │   ├── examples/             # Example .par programs
+│   │   └── tests/                # Integration tests
+│   ├── parlang-core/             # Core IR and its evaluator
+│   │   └── src/
+│   │       ├── lib.rs            # Crate root
+│   │       ├── base_type.rs      # Core base types
+│   │       ├── term.rs           # Core Term IR
+│   │       ├── builder.rs        # Smart constructors
+│   │       ├── eval.rs           # Core evaluator
+│   │       ├── prelude.rs        # Core prelude environment
+│   │       ├── display.rs        # Text dump
+│   │       ├── dot.rs            # Core -> Graphviz DOT
+│   │       └── error.rs          # Build errors
+│   └── parlang-driver/           # Runner binary
+│       └── src/main.rs
+├── docs/                         # Documentation (this directory)
+└── Cargo.toml                    # Workspace manifest
 ```
 
 ## Key Design Decisions
