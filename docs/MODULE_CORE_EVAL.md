@@ -35,7 +35,7 @@ A persistent, clone-and-extend environment mapping names to values:
 
 ### `EvalError`
 
-All evaluation error variants and their `Display` messages:
+All evaluation error variants:
 
 - `UnboundVar` — a variable was referenced but not found in the environment.
 - `NotAFunction` — application was attempted on a non-function value.
