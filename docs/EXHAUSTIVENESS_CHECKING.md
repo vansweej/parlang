@@ -1,6 +1,6 @@
 # Pattern Matching Exhaustiveness Checking
 
-ParLang now includes **complete exhaustiveness checking** for pattern matching expressions. This feature helps catch bugs early by warning you when a `match` expression doesn't cover all possible cases.
+ParLang includes exhaustiveness checking for pattern matching expressions. This feature helps catch bugs early by warning you when a `match` expression doesn't cover all possible cases. Coverage is partial -- see the Limitations section below for the specific cases that are not analyzed.
 
 ## Table of Contents
 
