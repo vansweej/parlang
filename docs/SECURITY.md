@@ -280,17 +280,6 @@ hyperfine --warmup 3 'parlang script.par'
 cargo bench
 ```
 
-**Example Performance Numbers** (on typical hardware):
-
-| Operation | Time | Notes |
-|-----------|------|-------|
-| Parse simple expression | ~10μs | `42 + 10` |
-| Parse complex expression | ~100μs | Nested let/if/match |
-| Type inference simple | ~50μs | Integer arithmetic |
-| Type inference complex | ~500μs | Polymorphic functions |
-| Evaluate factorial(20) | ~5μs | With TCO |
-| Load small library | ~200μs | Parsing + evaluation |
-
 ### Performance Best Practices
 
 #### 1. Use Tail Recursion
