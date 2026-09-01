@@ -463,7 +463,7 @@ When these features are available, we can add:
 
 ## Testing
 
-Test files are in `tests/map_assoc_test.par` and `tests/map_tree_test.par` and demonstrate:
+Test files are in `crates/parlang/tests/map_assoc_test.par` and `crates/parlang/tests/map_tree_test.par` and demonstrate:
 - ✅ Basic operations (insert, lookup, delete)
 - ✅ Edge cases (empty map, single entry, many entries)
 - ✅ Higher-order operations (map, filter, fold)
@@ -472,10 +472,10 @@ Test files are in `tests/map_assoc_test.par` and `tests/map_tree_test.par` and d
 
 Run tests:
 ```bash
-cargo run examples/stdlib/map.par
-cargo run examples/stdlib/treemap.par
-cargo run tests/map_assoc_test.par
-cargo run tests/map_tree_test.par
+cargo run -- crates/parlang/examples/stdlib/map.par
+cargo run -- crates/parlang/examples/stdlib/treemap.par
+cargo run -- crates/parlang/tests/map_assoc_test.par
+cargo run -- crates/parlang/tests/map_tree_test.par
 ```
 
 ## Related Documentation
