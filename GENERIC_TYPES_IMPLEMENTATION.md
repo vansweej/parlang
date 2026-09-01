@@ -89,20 +89,6 @@ Four working example files:
 - ✓ Type system maintains soundness guarantees
 - ✓ No data races or memory safety issues
 
-### Test Results
-```
-Total tests: 675 (all passing)
-- Unit tests: 369 passed
-- Generic types tests: 19 passed
-- Integration tests: 139 passed
-- Sum type tests: 27 passed
-- Type inference tests: 34 passed
-- Record tests: 28 passed
-- Type alias tests: 24 passed
-- CLI tests: 8 passed
-- Other tests: 27 passed
-```
-
 ## Technical Highlights
 
 ### Type Inference Algorithm
