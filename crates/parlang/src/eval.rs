@@ -13,7 +13,11 @@ use std::rc::Rc;
 /// Stack reserved for evaluation workers.
 ///
 /// At the policy limit, 4,000 × 30,608 B is about 117 MiB, leaving roughly 2.19× capacity in a
-/// 256 MiB worker stack.
+/// 256 MiB worker stack. The 30,608 B/increment figure was recorded on 2026-08-20; it is not
+/// asserted anywhere. Its measurement procedure is reproduced (the value is printed rather than
+/// pinned) by the test `measures_stack_bytes_per_eval_depth_increment_in_test_profile`, which
+/// runs under a smaller 4 MiB test-profile stack and a depth limit of 128, not the 256 MiB
+/// production worker.
 pub const EVALUATOR_STACK_SIZE: usize = 256 * 1024 * 1024;
 
 /// Failure while starting or joining an evaluator worker.
@@ -77,8 +81,10 @@ where
 
 /// Policy limit for non-tail evaluator recursion.
 ///
-/// A depth of 4,000 commits about 117 MiB at the measured 30,608 B per increment; the 256 MiB
-/// evaluator worker stack therefore provides roughly 2.19× capacity. Curried multi-argument
+/// A depth of 4,000 commits about 117 MiB at the 30,608 B per increment recorded on 2026-08-20;
+/// the 256 MiB evaluator worker stack therefore provides roughly 2.19× capacity. That figure is
+/// not asserted; its measurement procedure is reproduced by
+/// `measures_stack_bytes_per_eval_depth_increment_in_test_profile`. Curried multi-argument
 /// tail loops remain flat across their ramps, as verified by
 /// `curried_if_tail_rec_stays_flat_across_ramp`,
 /// `curried_match_tail_rec_stays_flat_across_ramp`, and

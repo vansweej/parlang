@@ -235,8 +235,9 @@ fn test_arithmetic_overflow_in_recursive_function() {
 
 #[test]
 fn non_tail_recursion_obeys_the_policy_limit_on_the_evaluator_stack() {
-    // A depth-4_000 worker commits about 117 MiB at the measured 30,608 B per increment
-    // (see measures_stack_bytes_per_eval_depth_increment_in_test_profile). The deep commit is
+    // A depth-4_000 worker commits about 117 MiB at the 30,608 B per increment recorded on
+    // 2026-08-20; the figure is not asserted, but its measurement procedure is reproduced by
+    // measures_stack_bytes_per_eval_depth_increment_in_test_profile. The deep commit is
     // confined to this test; the only other worker in this file recurses only about 21 levels
     // before `factorial` overflows an `i64`.
     let completes_below_limit = run_on_evaluator_stack(|| {
