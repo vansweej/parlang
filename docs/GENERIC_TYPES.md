@@ -1,6 +1,6 @@
 # Generic Types
 
-ParLang now supports **generic types** (also known as parameterized types) in its type system. This allows you to define and use type-safe generic data structures like `Option<T>`, `List<T>`, and `Either<A, B>`.
+ParLang supports **generic types** (also known as parameterized types) in its type system. This lets you define and use type-safe generic data structures such as `Option a`, `List a`, and `Either a b`.
 
 ## Overview
 
