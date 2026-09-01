@@ -1,33 +1,41 @@
 # parlang-core
 
 A small, GHC-style **Core intermediate representation** for ParLang, distinct
-from the surface `parlang::ast::Expr`. Built in Arc B ("Core data model").
+from the surface `parlang::ast::Expr`.
 
-## Scope (Arc B)
+## Scope
 
-- **B1** — System-F-*shaped* but **monomorphic** Core term AST
+- System-F-*shaped* but **monomorphic** Core term AST
   (`Term`: `Var` / `Lam` / `App` / `Let` / `LetRec` / `Lit` / `Con`).
-- **B2** — Core-owned base types (`BaseType`: `Int` / `Bool` / `Float` /
+- Core-owned base types (`BaseType`: `Int` / `Bool` / `Float` /
   `Unit` / `String`), used to annotate lambda binders and classify literals.
-- **B3** — DOT dumper (`core_to_dot`, header `digraph Core`) and a text dump
+- DOT dumper (`core_to_dot`, header `digraph Core`) and a text dump
   (`Term::to_text` / `Display`), mirroring the surface dumpers.
-- **B4** — a tiny, dependency-free builder (`builder` module, smart
+- A tiny, dependency-free builder (`builder` module, smart
   constructors) for hand-writing Core in tests.
+- A strict, call-by-value, environment-based evaluator (`eval`, `Value`,
+  `Environment`, `EvalError`) over `Term`, with reserved primitives
+  (`if`, `+`, `-`, `*`, `/`, `<`, `eq`, `strlen`, `strcat`), recursion via
+  `LetRec` / `Value::RecClosure`, and checked arithmetic.
+- A small `prelude()` environment (`not`, `isEmpty`, `nonEmpty`) built on
+  those primitives.
 
-Elaboration (surface -> Core) is **Arc F** and is out of scope here; Core is
-exercised only by hand-written terms in this crate's own tests.
+Elaboration (surface -> Core) is not implemented; Core is exercised only by
+hand-written terms in this crate's own tests.
 
 ## ADR outcomes
 
 - **Named vs De Bruijn:** Core uses a **named** representation — TAPL Section 6
   ("Nameless Representation of Terms", p.97) *option (1)*: symbolic names with
-  explicit, capture-avoiding renaming on the fly. Its Arc B consumers (the
+  explicit, capture-avoiding renaming on the fly. Its original consumers (the
   builder and the dumpers) benefit far more from hand-writability and
   dump-readability than from De Bruijn's capture-safe substitution, whose
-  payoff only arrives with substitution-heavy passes (Arc C+). This is
-  **revisitable at Arc C**: once the evaluator performs beta-reduction it will
-  incur the on-the-fly renaming cost TAPL describes for option (1), and the
-  canonical exit is TAPL option (3), a De Bruijn representation using the
+  payoff only arrives with substitution-heavy passes. This remains
+  **revisitable**: the evaluator performs beta-reduction with
+  environment-capturing closures rather than substitution, so the on-the-fly
+  renaming cost TAPL describes for option (1) has not been incurred. Should a
+  substitution-based pass ever be added, the canonical exit is TAPL option (3),
+  a De Bruijn representation using the
   shifting/substitution operations of TAPL Section 6.2-6.3 (p.80-81).
   References: SPJ, *Implementation of Functional Programming Languages*
   (1987), ch.3-6 (enriched lambda calculus, explicit `let`/`letrec`); TAPL
@@ -40,6 +48,6 @@ exercised only by hand-written terms in this crate's own tests.
   application are **deferred** to a later sub-step; the `BaseType` binder
   annotation and module notes mark the seam.
 - **`String` base type:** Core carries a `String` base type with **no surface
-  counterpart yet**. When Arc F elaboration lands, the elaborator must treat
+  counterpart yet**. When elaboration lands, the elaborator must treat
   Core `String` as having no surface source — a partiality to handle
   deliberately.
