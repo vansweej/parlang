@@ -671,7 +671,7 @@ Type error: Cannot unify types: Bool and Int
 
 ### Tuples and Pattern Matching
 
-The type checker currently assigns type variables to tuples and pattern matching expressions but doesn't fully check them. This is left for future enhancement.
+The type checker does not yet check tuples or pattern matching: tuple construction, tuple projection, match expressions, and record loads each return a fresh, unconstrained type variable, so a match expression is not type-checked at all. Real inference for these arms is deferred (see "Tracked Type-Inference Debt").
 
 ## Usage
 
