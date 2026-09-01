@@ -37,7 +37,7 @@ Comprehensive overview of ParLang's architecture including:
 - Performance characteristics
 - Extension points
 
-**Mermaid Diagrams**: 8 diagrams covering system architecture, data flow, testing strategy, and more
+**Mermaid Diagrams**: system architecture, data flow, testing strategy, and more
 
 ### [Language Specification](LANGUAGE_SPEC.md)
 **For**: Language users, implementers, researchers
@@ -51,7 +51,7 @@ Formal specification of the ParLang language including:
 - Scoping rules and evaluation order
 - Comparison with other functional languages
 
-**Mermaid Diagrams**: 13 diagrams including syntax railroad diagrams, type hierarchy, and evaluation flows
+**Mermaid Diagrams**: syntax railroad diagrams, type hierarchy, and evaluation flows
 
 ### [Examples Guide](EXAMPLES.md)
 **For**: New users, learners, developers
@@ -127,20 +127,6 @@ Documents the CLI/REPL interface:
 
 **Mermaid Diagrams**: CLI flows, REPL loop, error handling
 
-## 📊 Documentation Statistics
-
-| Document | Lines | Size | Diagrams | Topics |
-|----------|-------|------|----------|--------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 385 | 12KB | 8 | System design |
-| [LANGUAGE_SPEC.md](LANGUAGE_SPEC.md) | 1,621 | 37KB | 13 | Language reference |
-| [EXAMPLES.md](EXAMPLES.md) | 1,226 | 20KB | 0 | 80+ examples |
-| [API_REFERENCE.md](API_REFERENCE.md) | 1,299 | 28KB | 0 | Complete API |
-| [MODULE_AST.md](MODULE_AST.md) | 639 | 16KB | 5 | AST structures |
-| [MODULE_PARSER.md](MODULE_PARSER.md) | 782 | 18KB | 5 | Parser implementation |
-| [MODULE_EVAL.md](MODULE_EVAL.md) | ~650 | ~15KB | 9 | Evaluator/runtime |
-| [MODULE_MAIN.md](MODULE_MAIN.md) | ~600 | ~12KB | 5 | CLI/REPL |
-| **Total** | **~7,200** | **~158KB** | **45+** | Comprehensive |
-
 ## 🎯 Quick Navigation
 
 ### I want to...
@@ -174,7 +160,7 @@ Documents the CLI/REPL interface:
 
 ## 🔍 Mermaid Diagram Index
 
-The documentation includes 45+ Mermaid diagrams visualizing:
+The documentation includes Mermaid diagrams visualizing:
 
 **Architecture & System Design** (ARCHITECTURE.md)
 - System architecture diagram
