@@ -804,7 +804,7 @@ let op = choice((
 
 The parser module provides:
 
-✅ **Complete language support** for all ParLang constructs  
+✅ **Language support** across ParLang's core constructs  
 ✅ **Correct operator precedence** through parser hierarchy  
 ✅ **Flexible whitespace handling** for user convenience  
 ✅ **Keyword protection** preventing misuse as identifiers  

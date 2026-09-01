@@ -808,7 +808,7 @@ fn count_nodes(expr: &Expr) -> usize {
 The AST module provides:
 
 ✅ **Type-safe representation** of ParLang programs  
-✅ **Comprehensive expression types** covering all language features  
+✅ **Expression types** for ParLang's core language features  
 ✅ **Pattern matching support** for easy manipulation  
 ✅ **Display formatting** for debugging  
 ✅ **Immutable design** for safety  

@@ -335,7 +335,7 @@ ParLang's string support provides:
 ✅ Clean syntax with string literals
 ✅ Full Unicode support
 ✅ Type-safe through List Char
-✅ Comprehensive standard library
+✅ Standard library string operations
 ✅ Pattern matching support
 ✅ Functional and immutable
 ✅ Easy to extend

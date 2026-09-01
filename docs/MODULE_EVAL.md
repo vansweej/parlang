@@ -1540,7 +1540,7 @@ graph TB
 
 The evaluator module provides:
 
-✅ **Complete language execution** for all ParLang constructs  
+✅ **Language execution** across ParLang's core constructs  
 ✅ **Lexical scoping** with proper closure semantics  
 ✅ **Type-safe operations** with comprehensive error checking  
 ✅ **Environment management** supporting nested scopes and shadowing  
