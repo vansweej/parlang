@@ -395,7 +395,7 @@ Left(true)
 
 **Key features:**
 - Type parameters are properly tracked and instantiated
-- Full type unification for generic types
+- Type unification for generic types (sum-type constructors and instantiation; not tuples or pattern matches)
 - Support for nested generics (e.g., `Option (List Int)`)
 - Type inference applies to constructor applications
 
