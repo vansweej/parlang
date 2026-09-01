@@ -845,8 +845,6 @@ systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapM
 Tarpaulin recompiles the suite with instrumentation and can re-trigger the
 integration-test fan-out memory spike, so always run it through the contained wrapper.
 
-The project currently achieves over 84% code coverage across all modules.
-
 ## License
 
 MIT

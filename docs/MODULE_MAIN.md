@@ -1269,11 +1269,6 @@ let x = 10 in x + 5  // x only exists in `x + 5`
 
 After evaluation, `x` is not bound in the outer environment.
 
-**Future Enhancement**: To support persistent bindings, the REPL would need:
-1. Top-level `let` statements (not expressions)
-2. Mutate/extend the environment after each evaluation
-3. Special syntax for bindings vs. expressions
-
 ### Error Output Consistency
 
 The error formatting differs slightly between modes for clarity:

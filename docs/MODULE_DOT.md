@@ -526,7 +526,7 @@ Adding support for new AST nodes requires:
    - Show scope boundaries visually
 
 3. **Type Annotations**:
-   - Show inferred types on nodes (if type system added)
+   - Show inferred types on nodes
    - Display type errors visually
 
 4. **Source Positions**:

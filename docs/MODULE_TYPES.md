@@ -127,15 +127,16 @@ TypeScheme { vars: vec![TypeVar(0), TypeVar(1)],
 
 ### Trait Implementations
 
-All types implement these standard traits:
+`Type`, `TypeVar` and `TypeScheme` all derive:
 - `Debug`: For debugging output
 - `Clone`: For creating copies
-- `PartialEq`, `Eq`: For equality comparison
-- `Hash`: For use in hash-based collections
-- `Display`: For human-readable formatting
+- `PartialEq`: For equality comparison
 
-`TypeVar` additionally implements:
-- `PartialOrd`, `Ord`: For ordering (used in generalization)
+Beyond that the derivations differ:
+- `Eq`: derived for `Type` and `TypeVar`, but not `TypeScheme`
+- `Hash`: derived for `TypeVar` only
+- `PartialOrd`, `Ord`: derived for `TypeVar` only (used in generalization)
+- `Display`: implemented for `Type` and `TypeScheme`, but not `TypeVar`
 
 ## Usage Examples
 

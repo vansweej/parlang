@@ -22,13 +22,13 @@ Records are created using curly brace syntax with field-value pairs:
 
 ```parlang
 # Simple record with two fields
-let person = { name: 42, age: 30 }
+let person = { name: 42, age: 30 };
 
 # Record with boolean fields
-let config = { active: true, verbose: false }
+let config = { active: true, verbose: false };
 
 # Empty record
-let empty = {}
+let empty = {};
 ```
 
 ### Nested Records

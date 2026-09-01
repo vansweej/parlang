@@ -435,7 +435,7 @@ size grouped  # 3 groups
 
 ### Current Limitations
 
-**Note about Keys and Values**: Currently, ParLang map implementations work best with integer keys and values. String support is limited in the current parser.
+**Note about Keys and Values**: Currently, ParLang map implementations work best with integer keys and values. Ordering comparisons are defined only for `Int`, `Float` and `Char` (with `Bool` supporting equality only); strings, which are lists of `Char`, have no comparison arm at all, so a string cannot be used as a map key.
 
 **Example with integers**:
 ```parlang
