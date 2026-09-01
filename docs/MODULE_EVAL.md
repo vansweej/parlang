@@ -1239,22 +1239,22 @@ eval(&Expr::BinOp(
 
 ## Testing
 
-The evaluator module includes comprehensive unit tests (73 tests):
+The evaluator module includes comprehensive unit tests:
 
 ### Test Categories
 
-1. **Basic Evaluation** (5 tests): Literals, simple expressions
-2. **Arithmetic Operations** (5 tests): All arithmetic operators
-3. **Comparison Operations** (12 tests): Integer and boolean comparisons
-4. **Conditional Expressions** (4 tests): If-then-else, condition checking
-5. **Let Bindings** (4 tests): Simple, nested, shadowing
-6. **Functions and Closures** (9 tests): Creation, application, currying, capture
-7. **Type Errors** (3 tests): Invalid operations
-8. **Environment Tests** (7 tests): Operations on environments
-9. **Display Tests** (3 tests): Value and error formatting
-10. **Value Tests** (2 tests): Cloning and equality
-11. **Complex Scenarios** (3 tests): Real-world programs
-12. **Error Display** (3 tests): Error message formatting
+1. **Basic Evaluation**: Literals, simple expressions
+2. **Arithmetic Operations**: All arithmetic operators
+3. **Comparison Operations**: Integer and boolean comparisons
+4. **Conditional Expressions**: If-then-else, condition checking
+5. **Let Bindings**: Simple, nested, shadowing
+6. **Functions and Closures**: Creation, application, currying, capture
+7. **Type Errors**: Invalid operations
+8. **Environment Tests**: Operations on environments
+9. **Display Tests**: Value and error formatting
+10. **Value Tests**: Cloning and equality
+11. **Complex Scenarios**: Real-world programs
+12. **Error Display**: Error message formatting
 
 ### Example Tests
 
@@ -1545,7 +1545,7 @@ The evaluator module provides:
 ✅ **Type-safe operations** with comprehensive error checking  
 ✅ **Environment management** supporting nested scopes and shadowing  
 ✅ **Strict evaluation** with left-to-right operand evaluation  
-✅ **Comprehensive testing** with 73 unit tests  
+✅ **Comprehensive testing**  
 ✅ **Clear error messages** for debugging  
 ✅ **Extensible design** for future language features  
 

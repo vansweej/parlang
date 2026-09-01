@@ -706,19 +706,19 @@ parse_expr("let  x  =  42  in  x")
 
 ## Testing
 
-The parser module includes 67 unit tests covering:
+The parser module includes unit tests covering:
 
 ### Test Categories
 
-1. **Basic Parsing** (10 tests): Literals, variables, simple expressions
-2. **Operator Tests** (10 tests): All arithmetic and comparison operators
-3. **Precedence Tests** (5 tests): Operator precedence and parentheses
-4. **Keyword Tests** (6 tests): Keyword rejection
-5. **Whitespace Tests** (3 tests): Flexible whitespace handling
-6. **Function Tests** (8 tests): Functions, currying, application
-7. **Complex Expressions** (7 tests): Nested and realistic programs
-8. **Error Cases** (8 tests): Invalid syntax detection
-9. **Edge Cases** (10 tests): Negative numbers, comparison chaining, etc.
+1. **Basic Parsing**: Literals, variables, simple expressions
+2. **Operator Tests**: All arithmetic and comparison operators
+3. **Precedence Tests**: Operator precedence and parentheses
+4. **Keyword Tests**: Keyword rejection
+5. **Whitespace Tests**: Flexible whitespace handling
+6. **Function Tests**: Functions, currying, application
+7. **Complex Expressions**: Nested and realistic programs
+8. **Error Cases**: Invalid syntax detection
+9. **Edge Cases**: Negative numbers, comparison chaining, etc.
 
 ### Example Test
 
@@ -809,7 +809,7 @@ The parser module provides:
 ✅ **Flexible whitespace handling** for user convenience  
 ✅ **Keyword protection** preventing misuse as identifiers  
 ✅ **Comprehensive error handling** with descriptive messages  
-✅ **Well-tested** with 67 unit tests  
+✅ **Well-tested**  
 ✅ **Extensible design** for future language features  
 
 The parser successfully transforms textual source code into a typed AST suitable for evaluation, forming the critical bridge between user input and program execution.

@@ -100,7 +100,6 @@ Documents the parser implementation:
 - Operator precedence handling
 - Error handling
 - Testing strategy
-- 67 unit tests
 
 **Mermaid Diagrams**: Parser architecture, parsing pipeline, precedence hierarchy
 
@@ -113,7 +112,6 @@ Documents the interpreter/evaluator:
 - Evaluation algorithm
 - Closure semantics
 - Error handling
-- 73 unit tests
 
 **Mermaid Diagrams**: Evaluation flows, closure handling, environment structure
 

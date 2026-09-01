@@ -414,8 +414,8 @@ graph TB
     style EXAMPLES fill:#ffe1e1
 ```
 
-- **Unit Tests**: Test individual functions and types (142 tests total)
-- **Integration Tests**: Test the complete parse-eval pipeline (45 tests)
+- **Unit Tests**: Test individual functions and types
+- **Integration Tests**: Test the complete parse-eval pipeline
 - **Example Programs**: Manual verification of real-world usage
 
 ## Conclusion

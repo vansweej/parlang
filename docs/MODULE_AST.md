@@ -729,7 +729,7 @@ The AST is designed to be immutable:
 
 ## Testing
 
-The AST module includes comprehensive unit tests (86 tests):
+The AST module includes comprehensive unit tests:
 
 ### Test Categories
 
@@ -812,6 +812,6 @@ The AST module provides:
 ✅ **Pattern matching support** for easy manipulation  
 ✅ **Display formatting** for debugging  
 ✅ **Immutable design** for safety  
-✅ **Well-tested** with 86 unit tests  
+✅ **Well-tested**  
 
 The AST serves as the foundation for both parsing (parser produces AST) and evaluation (evaluator consumes AST), making it the central data structure of the ParLang interpreter.
