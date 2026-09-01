@@ -1367,7 +1367,7 @@ fn test_eval_complex_nested() {
 - **Alternative**: Reference-counted environments (not implemented)
 
 **Closure Size**: Each closure stores:
-- Parameter name (~24 bytes)
+- Parameter name
 - Body expression (varies)
 - Full environment (potentially large)
 
