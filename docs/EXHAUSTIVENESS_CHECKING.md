@@ -19,7 +19,7 @@ Exhaustiveness checking analyzes your pattern matching expressions to determine 
 ### Benefits
 
 - **Catch bugs early**: Find missing cases before runtime
-- **Better code quality**: Ensures all cases are handled
+- **Better code quality**: Warns when a match may miss cases among the pattern kinds the checker analyzes
 - **Documentation**: Patterns serve as documentation of possible values
 - **Refactoring safety**: Adding new constructors will trigger warnings in existing matches
 
