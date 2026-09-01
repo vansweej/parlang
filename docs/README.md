@@ -13,7 +13,7 @@ Welcome to the comprehensive documentation for ParLang, a small ML-alike functio
 - [Architecture Guide](ARCHITECTURE.md) - System architecture and design
 - [Type System](TYPE_SYSTEM.md) - Hindley-Milner type inference
 - [Sum Types](SUM_TYPES.md) - Algebraic data types and pattern matching
-- [Exhaustiveness Checking](EXHAUSTIVENESS_CHECKING.md) - Complete pattern match verification
+- [Exhaustiveness Checking](EXHAUSTIVENESS_CHECKING.md) - Pattern-match checking (partial: sum types and Bool only)
 - [Generic Types](GENERIC_TYPES.md) - Parameterized types and type inference
 - [Records](RECORDS.md) - Product types with named fields
 - [API Reference](API_REFERENCE.md) - Complete API documentation for library users
