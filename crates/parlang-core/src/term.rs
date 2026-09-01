@@ -26,9 +26,13 @@
 //! ## Exit criteria
 //!
 //! This choice is revisitable and is inherited by Arc C. Arc B performs no
-//! substitution, so the renaming cost is latent. Once Arc C's evaluator
-//! performs beta-reduction / substitution it will incur exactly the
-//! on-the-fly capture-avoiding renaming cost TAPL describes for option (1).
+//! substitution, so the renaming cost is latent. Arc C settled the question
+//! by shipping an environment-based evaluator: `Term::Lam` builds a closure
+//! capturing its environment and `Term::App` extends that captured
+//! environment rather than substituting into the term body, so no term-level
+//! substitution occurs and the on-the-fly capture-avoiding renaming cost TAPL
+//! describes for option (1) is therefore not incurred, as recorded in
+//! `docs/adr/0001-arc-c-eval-model.md`.
 //! The canonical exit is TAPL Section 6 *option (3)*, a nameless (De Bruijn)
 //! representation requiring no renaming, using the shifting and substitution
 //! operations of TAPL Section 6.2 (p.80) and the beta-reduction-with-shift
