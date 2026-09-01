@@ -397,7 +397,7 @@ Left(true)
 - Type parameters are properly tracked and instantiated
 - Full type unification for generic types
 - Support for nested generics (e.g., `Option (List Int)`)
-- Type inference works seamlessly with constructors
+- Type inference applies to constructor applications
 
 **Example with type checking:**
 ```parlang
