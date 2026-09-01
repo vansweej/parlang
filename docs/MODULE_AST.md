@@ -812,6 +812,6 @@ The AST module provides:
 ✅ **Pattern matching support** for easy manipulation  
 ✅ **Display formatting** for debugging  
 ✅ **Immutable design** for safety  
-✅ **Well-tested**  
+✅ **Unit-tested**  
 
 The AST serves as the foundation for both parsing (parser produces AST) and evaluation (evaluator consumes AST), making it the central data structure of the ParLang interpreter.
