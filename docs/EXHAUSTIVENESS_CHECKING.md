@@ -385,9 +385,11 @@ The exhaustiveness checker is designed to be fast:
 Current limitations (potential future enhancements):
 
 1. **Integer patterns**: Considered non-exhaustive without a catch-all (integers are infinite)
-2. **Tuple exhaustiveness**: Basic check only; doesn't analyze all possible tuple combinations
-3. **Record exhaustiveness**: Basic check only; doesn't analyze all field combinations
-4. **Guard patterns**: Not yet supported (planned for future versions)
+2. **Tuple patterns**: Reported non-exhaustive unless a catch-all pattern is present; individual tuple-component combinations are not analyzed
+3. **Record patterns**: Reported non-exhaustive unless a catch-all pattern is present; individual field-value combinations are not analyzed
+4. **Guard patterns**: Not supported
+5. **Character patterns**: Character literal patterns are not checked for exhaustiveness
+6. **Nested constructor patterns**: Constructor payloads are flattened into a shared set rather than analyzed positionally, so nested coverage is not decided precisely
 
 ## See Also
 
