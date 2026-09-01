@@ -3,7 +3,7 @@
 > Historical record of the generic types work introduced in commit 8ad6a4c. It describes what that change did; the figures it once quoted have been removed rather than maintained.
 
 ## Overview
-Successfully implemented full generic types support for the ParLang compiler, enabling type-safe parameterized data structures like `Option<T>`, `List<T>`, and `Either<A, B>`.
+Implemented generic types support for the ParLang compiler, enabling type-safe parameterized data structures such as `Option<T>`, `List<T>`, and `Either<A, B>`.
 
 ## What Was Implemented
 
@@ -152,9 +152,9 @@ Some (Cons 1 (Cons 2 Nil))
 - Standard library with built-in generic types
 
 ## Conclusion
-Successfully implemented a complete, production-ready generic types system for ParLang that:
+This change added a generic types system to ParLang that:
 - Maintains type safety and soundness
 - Provides excellent error messages
-- Is thoroughly tested and documented
+- Is tested and documented
 - Follows Rust best practices
 - Is backward compatible with all existing code
