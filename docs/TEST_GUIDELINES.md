@@ -310,13 +310,13 @@ cargo test -- --test-threads=4
 
 ### Minimum Coverage Standards
 
-| Component | Target Coverage | Current Status |
-|-----------|----------------|----------------|
-| Parser | 90% | ✅ 95% |
-| Type Checker | 95% | ✅ 97% |
-| Evaluator | 90% | ✅ 93% |
-| Overflow Handling | 100% | ✅ 100% |
-| Error Paths | 85% | ✅ 88% |
+| Component | Target Coverage |
+|-----------|----------------|
+| Parser | 90% |
+| Type Checker | 95% |
+| Evaluator | 90% |
+| Overflow Handling | 100% |
+| Error Paths | 85% |
 
 ### Critical Path Coverage
 
