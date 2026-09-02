@@ -45,7 +45,7 @@ match myOption with
 
 ## Pattern Types
 
-The exhaustiveness checker handles all pattern types in ParLang:
+The exhaustiveness checker treats each pattern kind in ParLang differently. It fully analyzes flat sum-type constructors and Boolean literals; other kinds receive coarser or no analysis, as noted per-kind below and summarized in Limitations:
 
 ### 1. Literal Patterns
 
