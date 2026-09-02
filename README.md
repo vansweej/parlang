@@ -162,8 +162,6 @@ Pattern matching evaluates patterns from top to bottom and executes the first ma
 
 ### Exhaustiveness Checking
 
-**New Feature:** ParLang now includes automatic exhaustiveness checking for pattern matching!
-
 The exhaustiveness checker warns you when a `match` expression doesn't cover all possible cases:
 
 ```
