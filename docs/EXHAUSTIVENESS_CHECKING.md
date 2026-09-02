@@ -351,12 +351,12 @@ match status with
 
 ### Algorithm
 
-The exhaustiveness checker uses a matrix-based algorithm inspired by "Warnings for pattern matching" by Luc Maranget (2007). It:
+The exhaustiveness checker collects a flat bag of pattern-head symbols and then applies a fixed decision cascade. It:
 
-1. Collects all patterns from the match arms
-2. Analyzes each pattern type (literal, constructor, tuple, etc.)
-3. Checks if all possible values are covered
-4. Reports missing cases if any
+1. Returns exhaustive immediately if any top-level pattern is a wildcard or variable
+2. Walks every pattern node once, recording covered data constructors, whether `true` and `false` appear, seen integer literals, and whether any tuple or record pattern appears — all into shared flat accumulators, with no positional or per-column tracking
+3. Applies a fixed cascade: check sum-type constructor coverage against the environment, then require both Boolean cases, then treat any integer literal, or any tuple or record pattern, as non-exhaustive (a top-level catch-all would already have short-circuited in step 1)
+4. Reports the missing cases: constructor names for sum types, or a placeholder witness (`true`/`false`, `<other integers>`, or `_`) for the other kinds
 
 ### Constructor Coverage
 
@@ -368,10 +368,11 @@ For sum types, the checker:
 
 ### Nested Pattern Analysis
 
-The checker recursively analyzes nested patterns:
-- Tracks constructors at all nesting levels
-- Ensures inner patterns are exhaustive (for their type)
-- Reports the outermost missing cases
+The checker descends into constructor payloads, but does not track position. Nested handling is deliberately imprecise:
+
+- Constructor names from every nesting depth are inserted into a single shared set, so inner positions are not distinguished from outer ones
+- A nested gap can be masked by outer coverage: for `Some (Some n)` and `None` over `Option`, the flattened set `{Some, None}` is judged complete even though `Some None` matches no arm and fails at runtime
+- The type examined for constructor coverage is an arbitrary element of that shared set, so when constructors of two types are mixed only one type is checked, and which one is not deterministic
 
 ### Performance
 
