@@ -1,6 +1,6 @@
 # ParLang API Reference
 
-Complete API documentation for using ParLang as a library in Rust applications.
+API documentation for using ParLang as a library in Rust applications. This reference covers the AST, parser, and evaluator modules and error handling; the typechecker, types, exhaustiveness, and dot modules, and the separate parlang-core crate, are not documented here.
 
 ---
 
