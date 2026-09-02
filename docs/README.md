@@ -16,7 +16,7 @@ Welcome to the comprehensive documentation for ParLang, a small ML-alike functio
 - [Exhaustiveness Checking](EXHAUSTIVENESS_CHECKING.md) - Pattern-match checking (partial: sum types and Bool only)
 - [Generic Types](GENERIC_TYPES.md) - Parameterized types and type inference
 - [Records](RECORDS.md) - Product types with named fields
-- [API Reference](API_REFERENCE.md) - Complete API documentation for library users
+- [API Reference](API_REFERENCE.md) - API documentation for library users (partial coverage; see the reference for scope)
 
 ### Module Documentation
 - [AST Module](MODULE_AST.md) - Abstract syntax tree data structures
@@ -68,10 +68,10 @@ Tutorial-style guide with 80+ examples covering:
 ### [API Reference](API_REFERENCE.md)
 **For**: Library users, integrators
 
-Complete API documentation including:
+API documentation for the AST, parser, and evaluator modules and error handling (the typechecker, types, exhaustiveness, and dot modules, and the parlang-core crate, are not covered), including:
 - Public API exports
-- All types with examples
-- Function documentation
+- Selected types with examples
+- Documentation for selected functions
 - Usage patterns
 - Error handling guide
 - Integration examples
