@@ -14,18 +14,18 @@ ParLang includes exhaustiveness checking for pattern matching expressions. This 
 
 ## What is Exhaustiveness Checking?
 
-Exhaustiveness checking analyzes your pattern matching expressions to determine if they handle all possible values. When a `match` expression is **non-exhaustive** (doesn't cover all cases), the checker warns you before the code runs, helping prevent runtime errors.
+Exhaustiveness checking analyzes your pattern matching expressions to determine if they handle all possible values. It is an approximate, best-effort check and is unsound: it can report a match as exhaustive when it is not. When a `match` expression is **non-exhaustive** (doesn't cover all cases), the checker prints a warning to stderr as the match is evaluated; execution then continues regardless.
 
 ### Benefits
 
-- **Catch bugs early**: Find missing cases before runtime
+- **Catch bugs sooner**: Many missing cases are reported as a warning when the match is evaluated (the check is best-effort and can miss some)
 - **Better code quality**: Warns when a match may miss cases among the pattern kinds the checker analyzes
 - **Documentation**: Patterns serve as documentation of possible values
 - **Refactoring safety**: Adding new constructors will trigger warnings in existing matches
 
 ## How It Works
 
-The exhaustiveness checker runs automatically before evaluating any `match` expression. It analyzes the patterns to ensure they cover all possible values of the scrutinee (the value being matched).
+The exhaustiveness checker is not a separate static pass run ahead of execution: it is called only from `eval_match`, so it re-runs on every evaluation of a given `match` node. It performs an approximate, best-effort analysis of the patterns and is unsound (it can report a match as exhaustive when it is not); on a non-exhaustive verdict it only prints a warning to stderr, after which execution continues regardless.
 
 ```parlang
 data Option a = Some a | None in
