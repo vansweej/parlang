@@ -783,7 +783,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Type Annotations](docs/TYPE_ANNOTATIONS.md)** - Explicit type annotations for better documentation and error detection
 - **[Generic Types](docs/GENERIC_TYPES.md)** - Parameterized types and type inference for generic data structures
 - **[Sum Types](docs/SUM_TYPES.md)** - Algebraic data types with pattern matching
-- **[Exhaustiveness Checking](docs/EXHAUSTIVENESS_CHECKING.md)** - Automatic checking for complete pattern matches
+- **[Exhaustiveness Checking](docs/EXHAUSTIVENESS_CHECKING.md)** - Warnings for non-exhaustive sum-type and Bool matches
 - **[Examples Guide](docs/EXAMPLES.md)** - Tutorial-style examples from basic to advanced
 - **[Security & Performance](docs/SECURITY.md)** - Security considerations and performance best practices
 - **[Error Handling](docs/ERROR_HANDLING.md)** - Error types, patterns, and debugging strategies
