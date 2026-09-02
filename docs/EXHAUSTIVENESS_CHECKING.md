@@ -361,7 +361,7 @@ The exhaustiveness checker collects a flat bag of pattern-head symbols and then 
 ### Constructor Coverage
 
 For sum types, the checker:
-- Identifies the type from the first constructor used
+- Identifies the type from an arbitrary one of the covered constructors, so only one type is ever checked
 - Retrieves all constructors for that type from the environment
 - Checks if all constructors appear in the patterns
 - Reports any missing constructors
@@ -373,13 +373,6 @@ The checker descends into constructor payloads, but does not track position. Nes
 - Constructor names from every nesting depth are inserted into a single shared set, so inner positions are not distinguished from outer ones
 - A nested gap can be masked by outer coverage: for `Some (Some n)` and `None` over `Option`, the flattened set `{Some, None}` is judged complete even though `Some None` matches no arm and fails at runtime
 - The type examined for constructor coverage is an arbitrary element of that shared set, so when constructors of two types are mixed only one type is checked, and which one is not deterministic
-
-### Performance
-
-The exhaustiveness checker is designed to be fast:
-- Runs in O(n × m) where n is number of patterns and m is number of constructors
-- Uses hash sets for efficient constructor lookup
-- Minimal overhead before evaluation
 
 ### Limitations
 
