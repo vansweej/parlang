@@ -170,7 +170,7 @@ match person with
 
 ### 6. Nested Patterns
 
-The checker analyzes nested constructors properly:
+The checker descends into nested constructors, but flattens them without tracking position -- see Nested Pattern Analysis below for the gaps this leaves:
 
 ```parlang
 data Option a = Some a | None in
