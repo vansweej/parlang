@@ -1,14 +1,25 @@
 //! Exhaustiveness checking for pattern matching
 //!
-//! This module implements an algorithm to check if a set of patterns in a match expression
-//! covers all possible values of the scrutinee type. This helps catch bugs at "compile time"
-//! (before evaluation) by ensuring that all cases are handled.
+//! This module implements an approximate, best-effort check that reports whether a
+//! match expression's arms appear to cover all values of the scrutinee type. It is
+//! unsound: it can report a match as exhaustive when it is not.
 //!
 //! # Algorithm
 //!
-//! The exhaustiveness checker works by building a "usefulness" matrix that tracks which
-//! patterns cover which values. The algorithm is based on the principles described in
-//! "Warnings for pattern matching" by Luc Maranget (2007).
+//! This is not a separate static pass run ahead of execution: it is called only
+//! from `eval_match` in `eval.rs`, so it re-runs on every evaluation of a given
+//! match node and only prints a warning to stderr on a non-exhaustive verdict,
+//! after which execution continues regardless.
+//!
+//! First, if any top-level pattern is a wildcard or a variable, the match is
+//! reported exhaustive immediately. Otherwise it collects a flat bag of
+//! pattern-head symbols into shared accumulators, with no positional tracking,
+//! descending into constructor payloads, tuples and records; it walks the pattern
+//! nodes linearly, then applies a fixed decision cascade that inspects the
+//! accumulated state once rather than traversing the bag. Because the accumulators
+//! are shared, nested gaps can be masked by outer coverage, so the nested case is
+//! checked only approximately. Only one sum type is ever checked: it is derived
+//! from an arbitrary element of that shared set, so the choice is not deterministic.
 //!
 //! # Example
 //!
