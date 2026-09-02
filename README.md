@@ -798,7 +798,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[DOT Module](docs/MODULE_DOT.md)** - AST visualization in Graphviz DOT format
 
 ### 📖 API Reference
-- **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation for using ParLang as a library
+- **[API Reference](docs/API_REFERENCE.md)** - API documentation for using ParLang as a library (partial coverage)
 
 ## Architecture
 
