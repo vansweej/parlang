@@ -269,6 +269,7 @@ Represents anonymous function (lambda) definitions.
 // fun x -> x + 1
 Expr::Fun(
     "x".to_string(),
+    None,
     Box::new(Expr::BinOp(
         BinOp::Add,
         Box::new(Expr::Var("x".to_string())),
@@ -279,8 +280,10 @@ Expr::Fun(
 // fun x -> fun y -> x + y (curried)
 Expr::Fun(
     "x".to_string(),
+    None,
     Box::new(Expr::Fun(
         "y".to_string(),
+        None,
         Box::new(Expr::BinOp(
             BinOp::Add,
             Box::new(Expr::Var("x".to_string())),
@@ -404,6 +407,7 @@ Expr::Rec(
     "factorial".to_string(),
     Box::new(Expr::Fun(
         "n".to_string(),
+        None,
         Box::new(Expr::If(
             Box::new(Expr::BinOp(
                 BinOp::Eq,
@@ -553,6 +557,7 @@ let ast = Expr::BinOp(
 // Source: let x = 42 in x + 1
 let ast = Expr::Let(
     "x".to_string(),
+    None,
     Box::new(Expr::Int(42)),
     Box::new(Expr::BinOp(
         BinOp::Add,
