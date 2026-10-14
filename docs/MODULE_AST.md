@@ -242,6 +242,7 @@ Represents local variable binding.
 // let x = 42 in x + 1
 Expr::Let(
     "x".to_string(),
+    None,
     Box::new(Expr::Int(42)),
     Box::new(Expr::BinOp(
         BinOp::Add,
@@ -257,7 +258,7 @@ Expr::Let(
 - **Third**: Value expression
 - **Fourth**: Body expression (where the variable is in scope)
 
-##### 7. `Fun(String, Box<Expr>)` - Function Definition
+##### 7. `Fun(String, Option<TypeAnnotation>, Box<Expr>)` - Function Definition
 
 Represents anonymous function (lambda) definitions.
 
@@ -291,7 +292,8 @@ Expr::Fun(
 
 **Structure**:
 - **First**: Parameter name (String)
-- **Second**: Function body expression
+- **Second**: Optional type annotation (`Option<TypeAnnotation>`, `None` when unannotated)
+- **Third**: Function body expression
 
 **Notes**:
 - Functions take exactly one parameter
