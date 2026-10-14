@@ -150,6 +150,164 @@ fn collect_par_files(root: &Path) -> Vec<PathBuf> {
     files
 }
 
+fn query_captures(file: &Path) -> Vec<(String, String)> {
+    let output = ts_command(&[
+        std::ffi::OsStr::new("query"),
+        std::ffi::OsStr::new("queries/highlights.scm"),
+        file.as_os_str(),
+    ]);
+
+    if !output.status.success() {
+        let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
+        combined.push_str(&String::from_utf8_lossy(&output.stderr));
+        panic!("tree-sitter query failed:\n{combined}");
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut pairs = Vec::new();
+
+    for line in stdout.lines() {
+        let Some(capture_part) = line.split("capture: ").nth(1) else {
+            continue;
+        };
+        // Strip an optional leading "<digits> - " prefix.
+        let capture_part = capture_part.trim_start();
+        let after_index = if let Some(dash_pos) = capture_part.find(" - ") {
+            let (prefix, rest) = capture_part.split_at(dash_pos);
+            if prefix.chars().all(|c| c.is_ascii_digit()) && !prefix.is_empty() {
+                &rest[3..]
+            } else {
+                capture_part
+            }
+        } else {
+            capture_part
+        };
+
+        let name = after_index
+            .split(',')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+
+        let Some(text_start) = line.find("text: `") else {
+            continue;
+        };
+        let after_text = &line[text_start + "text: `".len()..];
+        let Some(last_backtick) = after_text.rfind('`') else {
+            continue;
+        };
+        let text = after_text[..last_backtick].to_string();
+
+        pairs.push((text, name));
+    }
+
+    assert!(
+        !pairs.is_empty(),
+        "expected at least one capture from tree-sitter query, got none. stdout was:\n{stdout}"
+    );
+
+    pairs
+}
+
+#[test]
+fn tree_sitter_highlight_captures() {
+    require_cli("tree-sitter");
+    require_cli("node");
+
+    let sample = workspace_root().join("editors/samples/highlight_sample.par");
+    let captures = query_captures(&sample);
+
+    let expected: Vec<(&str, &str)> = vec![
+        ("data", "keyword"),
+        ("match", "keyword.conditional"),
+        ("rec", "keyword.function"),
+        ("Circle", "constructor"),
+        ("Shape", "type.definition"),
+        ("fact", "function"),
+        (
+            "-- | Highlight sample for the ParLang editor grammars.",
+            "comment.documentation",
+        ),
+        ("-- A plain line comment.", "comment"),
+        ("\\n", "string.escape"),
+        ("-7", "number"),
+        ("2.5", "number.float"),
+        ("x", "property"),
+        ("true", "boolean"),
+        ("<=", "operator"),
+    ];
+
+    let mut missing = Vec::new();
+    for (text, name) in &expected {
+        let found = captures
+            .iter()
+            .any(|(ctext, cname)| ctext == text && cname == name);
+        if !found {
+            missing.push(format!("({text:?}, {name:?})"));
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "missing expected captures: {}\nall captures: {:?}",
+        missing.join(", "),
+        captures
+    );
+}
+
+#[test]
+fn tree_sitter_keyword_sync() {
+    require_cli("tree-sitter");
+    require_cli("node");
+
+    let mut content = String::new();
+    for keyword in parlang::parser::KEYWORDS {
+        let line = match *keyword {
+            "let" => "let x".to_string(),
+            "fun" => "fun x".to_string(),
+            "rec" => "rec x".to_string(),
+            "data" => "data T =".to_string(),
+            "type" => "type T".to_string(),
+            other => other.to_string(),
+        };
+        content.push_str(&line);
+        content.push('\n');
+    }
+
+    let root = ts_workspace();
+    let keywords_file = root.join("keywords.par");
+    fs::write(&keywords_file, &content).expect("failed to write keywords.par");
+
+    let captures = query_captures(&keywords_file);
+
+    let mut mismatches = Vec::new();
+    for keyword in parlang::parser::KEYWORDS {
+        let found = captures.iter().find(|(text, _)| text == keyword);
+        match found {
+            Some((_, name)) => {
+                let ok = if *keyword == "true" || *keyword == "false" {
+                    name == "boolean"
+                } else {
+                    name.starts_with("keyword")
+                };
+                if !ok {
+                    mismatches.push(format!("{keyword:?}: got capture {name:?}"));
+                }
+            }
+            None => {
+                mismatches.push(format!("{keyword:?}: no capture found"));
+            }
+        }
+    }
+
+    assert!(
+        mismatches.is_empty(),
+        "keyword capture mismatches: {}",
+        mismatches.join("; ")
+    );
+}
+
 #[test]
 fn tree_sitter_generates_and_parses_corpus() {
     require_cli("tree-sitter");
