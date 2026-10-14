@@ -311,12 +311,13 @@ let expr = Expr::If(
 assert_eq!(format!("{}", expr), "(if true then 1 else 2)");
 ```
 
-#### `Expr::Let(String, Box<Expr>, Box<Expr>)`
+#### `Expr::Let(String, Option<TypeAnnotation>, Box<Expr>, Box<Expr>)`
 
 Let binding.
 
 **Parameters:**
 - `String`: Variable name
+- `Option<TypeAnnotation>`: Optional type annotation on the bound variable (`None` when unannotated)
 - First `Box<Expr>`: Value to bind
 - Second `Box<Expr>`: Body expression
 
@@ -324,18 +325,20 @@ Let binding.
 ```rust
 let expr = Expr::Let(
     "x".to_string(),
+    None,
     Box::new(Expr::Int(42)),
     Box::new(Expr::Var("x".to_string())),
 );
 assert_eq!(format!("{}", expr), "(let x = 42 in x)");
 ```
 
-#### `Expr::Fun(String, Box<Expr>)`
+#### `Expr::Fun(String, Option<TypeAnnotation>, Box<Expr>)`
 
 Function definition.
 
 **Parameters:**
 - `String`: Parameter name
+- `Option<TypeAnnotation>`: Optional type annotation on the parameter (`None` when unannotated)
 - `Box<Expr>`: Function body
 
 **Example:**
