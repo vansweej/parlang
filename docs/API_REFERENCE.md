@@ -345,6 +345,7 @@ Function definition.
 ```rust
 let expr = Expr::Fun(
     "x".to_string(),
+    None,
     Box::new(Expr::Var("x".to_string())),
 );
 assert_eq!(format!("{}", expr), "(fun x -> x)");
@@ -539,6 +540,7 @@ assert_eq!(
     expr,
     Expr::Let(
         "x".to_string(),
+        None,
         Box::new(Expr::Int(42)),
         Box::new(Expr::Var("x".to_string()))
     )
@@ -553,6 +555,7 @@ assert_eq!(
     expr,
     Expr::Fun(
         "x".to_string(),
+        None,
         Box::new(Expr::BinOp(
             BinOp::Add,
             Box::new(Expr::Var("x".to_string())),
