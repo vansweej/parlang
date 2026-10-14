@@ -1028,9 +1028,11 @@ eval(&expr, &env)
 
 let expr = Expr::Let(
     "x".to_string(),
+    None,
     Box::new(Expr::Int(1)),
     Box::new(Expr::Let(
         "x".to_string(),
+        None,
         Box::new(Expr::BinOp(
             BinOp::Add,
             Box::new(Expr::Var("x".to_string())),
@@ -1062,10 +1064,12 @@ eval(&expr, env0=[])
 
 let expr = Expr::Let(
     "x".to_string(),
+    None,
     Box::new(Expr::Int(10)),
     Box::new(Expr::App(
         Box::new(Expr::Fun(
             "y".to_string(),
+            None,
             Box::new(Expr::BinOp(
                 BinOp::Add,
                 Box::new(Expr::Var("x".to_string())),
@@ -1103,8 +1107,10 @@ let expr = Expr::App(
     Box::new(Expr::App(
         Box::new(Expr::Fun(
             "x".to_string(),
+            None,
             Box::new(Expr::Fun(
                 "y".to_string(),
+                None,
                 Box::new(Expr::BinOp(
                     BinOp::Add,
                     Box::new(Expr::Var("x".to_string())),
