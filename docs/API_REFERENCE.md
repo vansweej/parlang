@@ -1039,6 +1039,7 @@ fn main() {
     // Build AST for: let x = 10 in x * 2
     let expr = Expr::Let(
         "x".to_string(),
+        None,
         Box::new(Expr::Int(10)),
         Box::new(Expr::BinOp(
             BinOp::Mul,
@@ -1268,7 +1269,7 @@ impl ExprBuilder {
     }
     
     fn let_in(name: &str, value: Expr, body: Expr) -> Expr {
-        Expr::Let(name.to_string(), Box::new(value), Box::new(body))
+        Expr::Let(name.to_string(), None, Box::new(value), Box::new(body))
     }
 }
 
@@ -1312,12 +1313,12 @@ trait ExprVisitor {
                 self.visit_expr(else_br);
                 self.visit_if()
             }
-            Expr::Let(name, value, body) => {
+            Expr::Let(name, _, value, body) => {
                 self.visit_expr(value);
                 self.visit_expr(body);
                 self.visit_let(name)
             }
-            Expr::Fun(param, body) => {
+            Expr::Fun(param, _, body) => {
                 self.visit_expr(body);
                 self.visit_fun(param)
             }
