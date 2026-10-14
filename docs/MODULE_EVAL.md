@@ -569,6 +569,7 @@ Expr::Let(name, value, body) => {
 // let x = 42 in x + 1
 let expr = Expr::Let(
     "x".to_string(),
+    None,
     Box::new(Expr::Int(42)),
     Box::new(Expr::BinOp(
         BinOp::Add,
@@ -605,6 +606,7 @@ Expr::Fun(param, body) => Ok(Value::Closure(
 // fun x -> x + 1
 let expr = Expr::Fun(
     "x".to_string(),
+    None,
     Box::new(Expr::BinOp(
         BinOp::Add,
         Box::new(Expr::Var("x".to_string())),
@@ -651,6 +653,7 @@ Expr::App(func, arg) => {
 let expr = Expr::App(
     Box::new(Expr::Fun(
         "x".to_string(),
+        None,
         Box::new(Expr::BinOp(
             BinOp::Add,
             Box::new(Expr::Var("x".to_string())),
