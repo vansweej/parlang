@@ -1277,6 +1277,7 @@ fn test_eval_fun_and_app() {
     let expr = Expr::App(
         Box::new(Expr::Fun(
             "x".to_string(),
+            None,
             Box::new(Expr::BinOp(
                 BinOp::Add,
                 Box::new(Expr::Var("x".to_string())),
@@ -1298,10 +1299,12 @@ fn test_eval_closure_captures_environment() {
     // let x = 10 in (fun y -> x + y) 32
     let expr = Expr::Let(
         "x".to_string(),
+        None,
         Box::new(Expr::Int(10)),
         Box::new(Expr::App(
             Box::new(Expr::Fun(
                 "y".to_string(),
+                None,
                 Box::new(Expr::BinOp(
                     BinOp::Add,
                     Box::new(Expr::Var("x".to_string())),
@@ -1339,8 +1342,10 @@ fn test_eval_complex_nested() {
     // let double = fun x -> x + x in double 21
     let expr = Expr::Let(
         "double".to_string(),
+        None,
         Box::new(Expr::Fun(
             "x".to_string(),
+            None,
             Box::new(Expr::BinOp(
                 BinOp::Add,
                 Box::new(Expr::Var("x".to_string())),
