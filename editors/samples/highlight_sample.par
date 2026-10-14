@@ -1,0 +1,31 @@
+-- | Highlight sample for the ParLang editor grammars.
+-- ^ It exercises every token class that the grammar tests check.
+-- A plain line comment.
+{- outer {- inner -} outer -}
+data Shape a = Circle a | Square a a | Empty;
+type IntFn = Int -> Int;
+let answer : Int = 42;
+let ratio = 2.5;
+let neg = -7;
+let newline = '\n';
+let greeting = "hi\tthere";
+let point = {x: 1, y: 2};
+let px = point.x;
+let pair = (answer, true);
+let first = pair.0;
+let local = let t = 1 in t + 1;
+let half = fun n -> n / 2;
+let small = fun n -> n <= 10;
+let other = fun n -> n != 3;
+let positive = fun n -> if n > 0 then true else false;
+let classify = fun c ->
+    match c with
+    | '\n' -> 0
+    | _ -> 1;
+let area = fun s ->
+    match s with
+    | Circle r -> r * 3
+    | Square w h -> w * h
+    | Empty -> -1;
+let fact = rec fact -> fun n -> if n == 0 then 1 else n * fact (n - 1);
+area (Square 3 4)

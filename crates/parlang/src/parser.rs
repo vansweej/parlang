@@ -277,8 +277,8 @@ where
         .skip(combine::not_followed_by(alpha_num().or(token('_'))))
 }
 
-/// Reserved keywords that cannot be used as identifiers
-const KEYWORDS: &[&str] = &[
+/// Reserved keywords that cannot be used as identifiers; also consumed by the editor-grammar tests.
+pub const KEYWORDS: &[&str] = &[
     "let", "in", "if", "then", "else", "fun", "true", "false", "load", "rec", "match", "with",
     "type", "data",
 ];
