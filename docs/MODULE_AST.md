@@ -791,8 +791,8 @@ match expr {
     Expr::Var(name) => { /* handle variable */ }
     Expr::BinOp(op, left, right) => { /* handle operation */ }
     Expr::If(cond, then_br, else_br) => { /* handle conditional */ }
-    Expr::Let(name, value, body) => { /* handle let binding */ }
-    Expr::Fun(param, body) => { /* handle function */ }
+    Expr::Let(name, _, value, body) => { /* handle let binding */ }
+    Expr::Fun(param, _, body) => { /* handle function */ }
     Expr::App(func, arg) => { /* handle application */ }
 }
 ```
@@ -809,8 +809,8 @@ fn count_nodes(expr: &Expr) -> usize {
         Expr::If(cond, then_br, else_br) => {
             1 + count_nodes(cond) + count_nodes(then_br) + count_nodes(else_br)
         }
-        Expr::Let(_, value, body) => 1 + count_nodes(value) + count_nodes(body),
-        Expr::Fun(_, body) => 1 + count_nodes(body),
+        Expr::Let(_, _, value, body) => 1 + count_nodes(value) + count_nodes(body),
+        Expr::Fun(_, _, body) => 1 + count_nodes(body),
         Expr::App(func, arg) => 1 + count_nodes(func) + count_nodes(arg),
     }
 }
