@@ -812,6 +812,7 @@ Let expressions create new bindings:
 ```rust
 let expr = Expr::Let(
     "x".to_string(),
+    None,
     Box::new(Expr::Int(42)),
     Box::new(Expr::Var("x".to_string())),
 );
@@ -825,6 +826,7 @@ Functions evaluate to closures:
 ```rust
 let expr = Expr::Fun(
     "x".to_string(),
+    None,
     Box::new(Expr::Var("x".to_string())),
 );
 let result = eval(&expr, &env);
@@ -839,6 +841,7 @@ Application evaluates function and argument, then applies:
 let expr = Expr::App(
     Box::new(Expr::Fun(
         "x".to_string(),
+        None,
         Box::new(Expr::BinOp(
             BinOp::Add,
             Box::new(Expr::Var("x".to_string())),
