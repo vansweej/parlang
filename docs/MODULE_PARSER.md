@@ -600,6 +600,7 @@ Expr::BinOp(
 ```rust
 Expr::Let(
     "x".to_string(),
+    None,
     Box::new(Expr::Int(42)),
     Box::new(Expr::BinOp(
         BinOp::Add,
