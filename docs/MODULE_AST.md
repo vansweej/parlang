@@ -116,8 +116,8 @@ classDiagram
         Var(String)
         BinOp(BinOp, Box~Expr~, Box~Expr~)
         If(Box~Expr~, Box~Expr~, Box~Expr~)
-        Let(String, Box~Expr~, Box~Expr~)
-        Fun(String, Box~Expr~)
+        Let(String, Option~TypeAnnotation~, Box~Expr~, Box~Expr~)
+        Fun(String, Option~TypeAnnotation~, Box~Expr~)
         App(Box~Expr~, Box~Expr~)
     }
     
@@ -231,7 +231,7 @@ Expr::If(
 - **Second**: Then-branch expression
 - **Third**: Else-branch expression
 
-##### 6. `Let(String, Box<Expr>, Box<Expr>)` - Let Binding
+##### 6. `Let(String, Option<TypeAnnotation>, Box<Expr>, Box<Expr>)` - Let Binding
 
 Represents local variable binding.
 
@@ -253,8 +253,9 @@ Expr::Let(
 
 **Structure**:
 - **First**: Variable name (String)
-- **Second**: Value expression
-- **Third**: Body expression (where the variable is in scope)
+- **Second**: Optional type annotation (`Option<TypeAnnotation>`, `None` when unannotated)
+- **Third**: Value expression
+- **Fourth**: Body expression (where the variable is in scope)
 
 ##### 7. `Fun(String, Box<Expr>)` - Function Definition
 
