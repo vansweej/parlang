@@ -1498,8 +1498,8 @@ Expr ::= Int(i64)
        | Var(String)
        | BinOp(BinOp, Box<Expr>, Box<Expr>)
        | If(Box<Expr>, Box<Expr>, Box<Expr>)
-       | Let(String, Box<Expr>, Box<Expr>)
-       | Fun(String, Box<Expr>)
+       | Let(String, Option<TypeAnnotation>, Box<Expr>, Box<Expr>)
+       | Fun(String, Option<TypeAnnotation>, Box<Expr>)
        | App(Box<Expr>, Box<Expr>)
 
 BinOp ::= Add | Sub | Mul | Div
