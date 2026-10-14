@@ -574,6 +574,7 @@ let ast = Expr::Let(
 let ast = Expr::App(
     Box::new(Expr::Fun(
         "x".to_string(),
+        None,
         Box::new(Expr::BinOp(
             BinOp::Add,
             Box::new(Expr::Var("x".to_string())),
@@ -590,8 +591,10 @@ let ast = Expr::App(
 // Source: let double = fun x -> x + x in double 21
 let ast = Expr::Let(
     "double".to_string(),
+    None,
     Box::new(Expr::Fun(
         "x".to_string(),
+        None,
         Box::new(Expr::BinOp(
             BinOp::Add,
             Box::new(Expr::Var("x".to_string())),
@@ -755,8 +758,10 @@ fn test_complex_nested_expr() {
     // let f = fun x -> x + 1 in f 41
     let expr = Expr::Let(
         "f".to_string(),
+        None,
         Box::new(Expr::Fun(
             "x".to_string(),
+            None,
             Box::new(Expr::BinOp(
                 BinOp::Add,
                 Box::new(Expr::Var("x".to_string())),
