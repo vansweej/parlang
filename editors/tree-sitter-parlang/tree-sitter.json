@@ -1,0 +1,20 @@
+{
+  "grammars": [
+    {
+      "name": "parlang",
+      "camelcase": "ParLang",
+      "scope": "source.parlang",
+      "path": ".",
+      "file-types": ["par"],
+      "highlights": "queries/highlights.scm"
+    }
+  ],
+  "metadata": {
+    "version": "0.2.0",
+    "license": "MIT",
+    "description": "ParLang grammar for tree-sitter (highlighting)",
+    "links": {
+      "repository": "https://github.com/vansweej/parlang"
+    }
+  }
+}

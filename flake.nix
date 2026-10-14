@@ -60,9 +60,11 @@
               pkgs.cargo-update
               pkgs.git
               pkgs.nixpkgs-fmt
+              pkgs.nodejs
               pkgs.openssl
               pkgs.pkg-config
               pkgs.rust-analyzer
+              pkgs.tree-sitter
             ];
 
             env = {
