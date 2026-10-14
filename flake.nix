@@ -52,6 +52,7 @@
           devShells.default = pkgs.mkShell {
             packages = [
               rustToolchain
+              pkgs.bat
               pkgs.cargo-deny
               pkgs.cargo-edit
               pkgs.cargo-tarpaulin

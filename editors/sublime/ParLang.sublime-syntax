@@ -1,0 +1,48 @@
+%YAML 1.2
+---
+name: ParLang
+file_extensions: [par]
+scope: source.parlang
+contexts:
+  main:
+    - match: '--[ \t]*[|^].*$'
+      scope: comment.line.documentation.parlang
+    - match: '--.*$'
+      scope: comment.line.double-dash.parlang
+    - match: '\{-'
+      scope: punctuation.definition.comment.begin.parlang
+      push: block-comment
+    - match: '"'
+      push: string
+    - match: "'"
+      push: char
+    - match: '(?<![\w.])-?\d+\.\d+'
+      scope: constant.numeric.float.parlang
+    - match: '(?<![\w.])-?\d+'
+      scope: constant.numeric.integer.parlang
+    - match: '\b(let|in|if|then|else|fun|load|rec|match|with|type|data)\b'
+      scope: keyword.control.parlang
+    - match: '\b(true|false)\b'
+      scope: constant.language.boolean.parlang
+    - match: '\b[A-Z][A-Za-z0-9_]*\b'
+      scope: entity.name.type.parlang
+    - match: '==|!=|<=|>=|->|[-+*/<>=|]'
+      scope: keyword.operator.parlang
+  block-comment:
+    - meta_scope: comment.block.parlang
+    - match: '\{-'
+      push: block-comment
+    - match: '-\}'
+      pop: true
+  string:
+    - meta_scope: string.quoted.double.parlang
+    - match: '\\[ntr\\"''0]'
+      scope: constant.character.escape.parlang
+    - match: '"'
+      pop: true
+  char:
+    - meta_scope: string.quoted.single.parlang
+    - match: '\\[ntr\\"''0]'
+      scope: constant.character.escape.parlang
+    - match: "'"
+      pop: true

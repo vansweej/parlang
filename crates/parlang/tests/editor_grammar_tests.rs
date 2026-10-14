@@ -5,6 +5,134 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
+static BAT_CACHE: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+
+fn bat_dir() -> &'static Path {
+    let result = BAT_CACHE.get_or_init(|| {
+        let dir = env::temp_dir().join(format!("parlang-bat-{}", std::process::id()));
+        if dir.exists() {
+            fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+        }
+        let syntaxes_dir = dir.join("syntaxes");
+        let themes_dir = dir.join("themes");
+        fs::create_dir_all(&syntaxes_dir).map_err(|e| e.to_string())?;
+        fs::create_dir_all(&themes_dir).map_err(|e| e.to_string())?;
+
+        let root = workspace_root();
+        fs::copy(
+            root.join("editors/sublime/ParLang.sublime-syntax"),
+            syntaxes_dir.join("ParLang.sublime-syntax"),
+        )
+        .map_err(|e| e.to_string())?;
+        fs::copy(
+            root.join("editors/sublime/test/ParLangScopes.tmTheme"),
+            themes_dir.join("ParLangScopes.tmTheme"),
+        )
+        .map_err(|e| e.to_string())?;
+
+        let target = dir.join("bat-cache");
+        let output = Command::new("bat")
+            .arg("cache")
+            .arg("--build")
+            .arg("--blank")
+            .arg("--source")
+            .arg(&dir)
+            .arg("--target")
+            .arg(&target)
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        if !output.status.success() {
+            let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
+            combined.push_str(&String::from_utf8_lossy(&output.stderr));
+            return Err(combined);
+        }
+
+        Ok(dir)
+    });
+
+    match result {
+        Ok(path) => path.as_path(),
+        Err(error) => panic!("failed to build bat cache: {error}"),
+    }
+}
+
+fn bat_render(file: &Path) -> std::process::Output {
+    let dir = bat_dir();
+    let target = dir.join("bat-cache");
+    Command::new("bat")
+        .arg("--no-config")
+        .arg("--color=always")
+        .arg("--style=plain")
+        .arg("--paging=never")
+        .arg("--theme=ParLangScopes")
+        .arg(file)
+        .current_dir(dir)
+        .env("BAT_CACHE_PATH", &target)
+        .env("COLORTERM", "truecolor")
+        .output()
+        .expect("bat command should run")
+}
+
+fn color_runs(ansi: &str) -> Vec<(Option<String>, String)> {
+    let mut runs: Vec<(Option<String>, String)> = Vec::new();
+    let mut current_color: Option<String> = None;
+    let mut current_text = String::new();
+    let mut chars = ansi.chars().peekable();
+
+    let flush = |runs: &mut Vec<(Option<String>, String)>,
+                 current_color: &Option<String>,
+                 current_text: &mut String| {
+        if !current_text.is_empty() {
+            runs.push((current_color.clone(), std::mem::take(current_text)));
+        }
+    };
+
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            let mut params = String::new();
+            for next in chars.by_ref() {
+                if next == 'm' {
+                    break;
+                }
+                params.push(next);
+            }
+            flush(&mut runs, &current_color, &mut current_text);
+            if params.is_empty() || params == "0" {
+                current_color = None;
+            } else {
+                let parts: Vec<&str> = params.split(';').collect();
+                if parts.len() == 5 && parts[0] == "38" && parts[1] == "2" {
+                    let r = parts[2].parse::<u8>().ok();
+                    let g = parts[3].parse::<u8>().ok();
+                    let b = parts[4].parse::<u8>().ok();
+                    if let (Some(r), Some(g), Some(b)) = (r, g, b) {
+                        current_color = Some(format!("#{r:02X}{g:02X}{b:02X}"));
+                    }
+                }
+                // other params leave color unchanged
+            }
+        } else if c == '\n' {
+            flush(&mut runs, &current_color, &mut current_text);
+            current_text.push('\n');
+            flush(&mut runs, &current_color, &mut current_text);
+        } else {
+            current_text.push(c);
+        }
+    }
+    flush(&mut runs, &current_color, &mut current_text);
+
+    runs
+}
+
+fn colour_of(runs: &[(Option<String>, String)], needle: &str) -> Option<String> {
+    runs.iter()
+        .find(|(_, text)| text.contains(needle))
+        .and_then(|(colour, _)| colour.clone())
+}
+
 fn require_cli(name: &str) {
     let result = Command::new(name).arg("--version").output();
     let ok = matches!(result, Ok(output) if output.status.success());
@@ -331,6 +459,124 @@ fn tree_sitter_generates_and_parses_corpus() {
         failures.is_empty(),
         "some corpus files failed tree-sitter parsing:\n{}",
         failures.join("\n\n")
+    );
+}
+
+#[test]
+fn sublime_bat_colors() {
+    require_cli("bat");
+
+    let sample = workspace_root().join("editors/samples/highlight_sample.par");
+    let output = bat_render(&sample);
+    assert!(
+        output.status.success(),
+        "bat render failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let runs = color_runs(&stdout);
+
+    let expectations: Vec<(&str, &str)> = vec![
+        ("data", "#FF0101"),
+        ("true", "#FF0202"),
+        ("2.5", "#FF0303"),
+        ("-7", "#FF0303"),
+        ("\\t", "#FF0505"),
+        ("-- | Highlight", "#FF0707"),
+        ("-- A plain", "#FF0606"),
+        ("inner", "#FF0606"),
+        ("Circle", "#FF0808"),
+        ("<=", "#FF0909"),
+    ];
+
+    let mut mismatches = Vec::new();
+    for (needle, expected) in &expectations {
+        let found = colour_of(&runs, needle);
+        if found.as_deref() != Some(*expected) {
+            mismatches.push(format!("{needle:?}: expected {expected:?}, got {found:?}"));
+        }
+    }
+
+    assert!(
+        mismatches.is_empty(),
+        "bat colour mismatches: {}",
+        mismatches.join("; ")
+    );
+}
+
+#[test]
+fn sublime_keyword_sync() {
+    require_cli("bat");
+
+    let dir = bat_dir();
+    let keywords_file = dir.join("keywords.par");
+    let mut content = String::new();
+    for keyword in parlang::parser::KEYWORDS {
+        content.push_str(keyword);
+        content.push('\n');
+    }
+    fs::write(&keywords_file, &content).expect("failed to write keywords.par");
+
+    let output = bat_render(&keywords_file);
+    assert!(
+        output.status.success(),
+        "bat render failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let runs = color_runs(&stdout);
+
+    let mut mismatches = Vec::new();
+    for keyword in parlang::parser::KEYWORDS {
+        let found = runs
+            .iter()
+            .find(|(_, text)| text.trim() == *keyword)
+            .map(|(colour, _)| colour.clone());
+        let expected = if *keyword == "true" || *keyword == "false" {
+            "#FF0202"
+        } else {
+            "#FF0101"
+        };
+        match found {
+            Some(Some(colour)) if colour == expected => {}
+            other => mismatches.push(format!("{keyword:?}: got {other:?}, expected {expected:?}")),
+        }
+    }
+
+    assert!(
+        mismatches.is_empty(),
+        "keyword colour mismatches: {}",
+        mismatches.join("; ")
+    );
+}
+
+#[test]
+fn sublime_bat_corpus_runs() {
+    require_cli("bat");
+
+    let root = workspace_root();
+    let files = collect_par_files(&root);
+
+    let mut failures = Vec::new();
+    for path in &files {
+        let output = bat_render(path);
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        if !output.status.success() || !stderr.is_empty() {
+            failures.push(format!(
+                "{}: status={:?} stderr={}",
+                path.display(),
+                output.status,
+                stderr
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "bat failed to render some corpus files:\n{}",
+        failures.join("\n")
     );
 }
 
