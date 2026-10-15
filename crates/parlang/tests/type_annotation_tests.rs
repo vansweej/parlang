@@ -208,7 +208,7 @@ fn test_display_fun_with_annotation() {
         Some(TypeAnnotation::Concrete("Int".to_string())),
         Box::new(Expr::Var("x".to_string())),
     );
-    assert_eq!(format!("{expr}"), "(fun x : Int -> x)");
+    assert_eq!(format!("{expr}"), "(fun (x : Int) -> x)");
 }
 
 #[test]
@@ -306,4 +306,33 @@ fn test_parse_unannotated_fun_still_works() {
         other => panic!("expected unannotated Fun, got {other:?}"),
     }
     assert!(parse_expr("let f = fun x -> x in f").is_ok());
+}
+
+#[test]
+fn test_display_round_trips_annotated_fun() {
+    let sources = [
+        "fun (x : Int) -> x + 1",
+        "fun (f : Int -> Int) -> f 1",
+        "fun (x : a) -> x",
+        "fun (b : Bool) -> fun (n : Int) -> if b then n else 0",
+    ];
+    for src in sources {
+        let parsed = parse_expr(src).unwrap();
+        let printed = format!("{parsed}");
+        let reparsed = parse_expr(&printed).unwrap();
+        assert_eq!(
+            parsed, reparsed,
+            "round-trip mismatch for {src:?}: printed as {printed:?}",
+        );
+    }
+
+    // Exact printed forms for the two simplest cases.
+    assert_eq!(
+        format!("{}", parse_expr("fun (x : Int) -> x + 1").unwrap()),
+        "(fun (x : Int) -> (x + 1))",
+    );
+    assert_eq!(
+        format!("{}", parse_expr("fun (f : Int -> Int) -> f 1").unwrap()),
+        "(fun (f : (Int -> Int)) -> (f 1))",
+    );
 }

@@ -334,7 +334,7 @@ impl fmt::Display for Expr {
             }
             Expr::Fun(param, ty_ann, body) => {
                 if let Some(ty) = ty_ann {
-                    write!(f, "(fun {param} : {ty} -> {body})")
+                    write!(f, "(fun ({param} : {ty}) -> {body})")
                 } else {
                     write!(f, "(fun {param} -> {body})")
                 }
