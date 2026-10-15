@@ -23,6 +23,7 @@ pub enum Type {
     Var(TypeVar),               // Type variable for polymorphism
     Record(HashMap<String, Type>), // Record type
     SumType(String, Vec<Type>), // Generic sum type
+    Tuple(Vec<Type>),           // Tuple type: (T1, T2, ...)
 }
 ```
 
@@ -36,6 +37,7 @@ pub enum Type {
 - `Var(TypeVar)`: Represents a type variable used during type inference
 - `Record(fields)`: Represents record types with named fields
 - `SumType(name, args)`: Represents generic algebraic data types
+- `Tuple(elements)`: Represents tuple types of arity two or more, displayed as `(Int, Bool)`; the empty tuple is `Unit`
 
 **Examples:**
 ```rust

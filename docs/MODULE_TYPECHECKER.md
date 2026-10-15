@@ -4,7 +4,7 @@ The Type Checker module implements Hindley-Milner type inference for ParLang.
 
 ## Overview
 
-This module implements Algorithm W, the classic type inference algorithm for functional languages. It infers types for most expressions without requiring type annotations and supports polymorphic types through let-polymorphism; tuples, tuple projection, pattern matching, and module loading currently receive a fresh type variable and are not type-checked (see the note later in this document). Inferred type errors are caught before runtime.
+This module implements Algorithm W, the classic type inference algorithm for functional languages. It infers types for most expressions without requiring type annotations and supports polymorphic types through let-polymorphism. Tuples (`Type::Tuple`), strict tuple projection, and match expressions are now type-checked: patterns are typed against the scrutinee and arm bodies are unified. Module loading (`load`) still receives a fresh type variable and is not type-checked; constructors used without a `data` declaration (including the `Cons`/`Nil` that string literals desugar to) are typed leniently with a fresh type variable; exhaustiveness is still checked at evaluation time only. Inferred type errors are caught before runtime.
 
 ## Core Components
 
@@ -45,6 +45,8 @@ pub enum TypeError {
     TypeAliasCycle(Vec<String>),
     DuplicateTypeName(String),
     DuplicateConstructor(String),
+    TupleIndexOutOfBounds(usize, usize),
+    TupleExpected(String),
 }
 ```
 
@@ -60,6 +62,8 @@ pub enum TypeError {
 - `TypeAliasCycle(names)`: A cycle was found while resolving top-level type aliases
 - `DuplicateTypeName(name)`: A top-level data type or type alias was declared more than once
 - `DuplicateConstructor(name)`: A top-level constructor name was declared more than once
+- `TupleIndexOutOfBounds(index, arity)`: Tuple projection index was out of range for the tuple's arity
+- `TupleExpected(found)`: Expected a tuple type but got something else (e.g. an unresolved type variable)
 
 ### `Substitution` Type
 
@@ -350,9 +354,7 @@ assert!(typecheck(&expr).is_err());  // f expects Int but gets Bool
 
 ### Tuples and Pattern Matching
 
-Tuples and pattern matching currently receive a fresh type variable and are not type-checked. Full support would require:
-- Tuple types (e.g., `(Int, Bool)`)
-- Pattern type checking
+Tuples, tuple projection, and match expressions are type-checked. Patterns are typed against the scrutinee and arm bodies are unified into one result type. Remaining leniencies: constructors without a `data` declaration are typed with a fresh type variable; a record pattern requires an already-known record type; tuple projection requires an already-known tuple type (use a tuple pattern otherwise); and `load` is not type-checked.
 
 Exhaustiveness is not a type-checker concern: it is analysed at evaluation
 time in `check_exhaustiveness` (called from `eval_match`), which prints a
@@ -419,6 +421,6 @@ Occurs check failed: t0 occurs in t0 -> Int
 ## Future Enhancements
 
 Potential improvements:
-1. **Tuple Types**: Full type checking for tuples
+1. **Module Typing**: Type-check `load`ed files instead of assigning a fresh type variable
 2. **Better Error Messages**: More context in error messages
 3. **Type Classes**: Support for ad-hoc polymorphism

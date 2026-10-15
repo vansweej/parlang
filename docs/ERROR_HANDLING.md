@@ -55,6 +55,8 @@ pub enum TypeError {
     TypeAliasCycle(Vec<String>),
     DuplicateTypeName(String),
     DuplicateConstructor(String),
+    TupleIndexOutOfBounds(usize, usize),
+    TupleExpected(String),
 }
 ```
 
