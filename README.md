@@ -107,10 +107,11 @@ fun x -> x + 1                         # Anonymous function
 
 ### Type Annotations
 
-ParLang supports **explicit type annotations** for variables to improve code documentation and enable early error detection:
+ParLang supports **explicit type annotations** for variables and lambda parameters to improve code documentation and enable early error detection:
 
 ```
 let x : Int = 42 in x + 1              -- Type annotation on variable
+fun (n : Int) -> n + 1                 -- Type annotation on a lambda parameter
 let active : Bool = true;              -- Top-level declaration with annotation
 let count : Int = 100;                 -- Multiple annotated bindings
 ```

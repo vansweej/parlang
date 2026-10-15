@@ -825,15 +825,15 @@ let p = { age: 30 } in p.age
 
 This means a function expecting `{age: Int}` won't accept `{age: Int, name: String}`.
 
-### 4. No Type Annotations
+### 4. Type Annotations Are Limited
 
-Users cannot explicitly specify types:
+Value-level type annotations are optional and supported only on `let` bindings (the expression form `let x : Int = 42 in ...` and the top-level form `let x : Int = 42;`) and on parenthesised lambda parameters (`fun (x : Int) -> x + 1`). Applied types such as `Option Int` are accepted in annotations by the parser but rejected by the type checker. See [TYPE_ANNOTATIONS.md](TYPE_ANNOTATIONS.md).
 
 ```parlang
 # These are not supported:
-(42 : Int)                    # Type annotation on expression
-fun (x : Int) -> x + 1        # Type annotation on parameter
-let (f : Int -> Int) = ...    # Type annotation on binding
+(42 : Int)                    # annotation on an arbitrary expression
+fun x : Int -> x + 1          # unparenthesised parameter annotation
+let (f : Int -> Int) = ...    # parenthesised let binder
 ```
 
 **Benefits of Type Annotations**:
@@ -842,7 +842,7 @@ let (f : Int -> Int) = ...    # Type annotation on binding
 - Early error detection
 - Can guide inference in ambiguous cases
 
-**Future Plans**: Add syntax for optional type annotations.
+**Future Plans**: Allow annotations on arbitrary expressions and support applied types in annotations.
 
 ### 5. Performance Considerations
 

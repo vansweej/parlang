@@ -378,19 +378,20 @@ let p = { age: 30 } in p.age
 
 ### 4. Type Annotations
 
-Type annotations are supported on `let` bindings:
+Type annotations are supported on `let` bindings and on parenthesised lambda parameters:
 ```parlang
 let x : Int = 42        # Supported
+fun (x : Int) -> x + 1  # Supported (the parameter must be parenthesised)
 ```
 
 The following are not supported:
 ```parlang
 (42 : Int)              # Standalone expression annotations: not supported
 let o : Option Int = …  # Applied-type annotations: not supported
-fun (x : Int) -> x + 1  # Parameter annotations: `->` precedence limitation
+fun x : Int -> x + 1    # Unparenthesised parameter annotations: not supported
 ```
 
-**Future**: Add syntax for type annotations to:
+**Future**: Extend annotation syntax (expression annotations, applied types) to:
 - Improve error messages
 - Allow early error detection
 - Document code better
@@ -420,9 +421,9 @@ let b = id true in
 (a, b)
 ```
 
-### 3. Annotate Complex Types (When Supported)
+### 3. Annotate Complex Types
 
-Once type annotations are supported, use them for:
+Use type annotations (on `let` bindings and parenthesised lambda parameters) for:
 - Public function interfaces
 - Complex recursive functions
 - Documentation purposes

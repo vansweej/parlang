@@ -341,7 +341,7 @@ tuple_pattern ::= '(' ')'                                 (* empty tuple pattern
 
 rec_expr ::= "rec" identifier "->" expression
 
-fun_expr ::= "fun" identifier "->" expression
+fun_expr ::= "fun" ( identifier | '(' identifier ':' type_expr ')' ) "->" expression
 
 type_alias_expr ::= "type" identifier '=' type_expr "in" expression
 
