@@ -286,11 +286,22 @@ fn test_recursion_supported() {
 
 #[test]
 fn test_tuple_type_inference() {
-    // Tuples currently return type variables (simplified implementation)
-    let expr = parse("(1, 2)").unwrap();
-    let result = typecheck(&expr);
-    // Should succeed even if it's a simplified type
-    assert!(result.is_ok());
+    assert_eq!(
+        typecheck(&parse("(1, 2)").unwrap()).unwrap(),
+        Type::Tuple(vec![Type::Int, Type::Int])
+    );
+    assert_eq!(
+        typecheck(&parse("((1, true), 'c')").unwrap()).unwrap(),
+        Type::Tuple(vec![Type::Tuple(vec![Type::Int, Type::Bool]), Type::Char,])
+    );
+    assert_eq!(
+        typecheck(&parse("let id = fun x -> x in (id 1, id true)").unwrap()).unwrap(),
+        Type::Tuple(vec![Type::Int, Type::Bool])
+    );
+    assert_eq!(
+        typecheck(&parse("(fun p -> p) (1, 2)").unwrap()).unwrap(),
+        Type::Tuple(vec![Type::Int, Type::Int])
+    );
 }
 
 #[test]

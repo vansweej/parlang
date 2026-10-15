@@ -26,6 +26,10 @@ pub enum Type {
     /// E.g., Option Int, List Bool, Either Int Bool
     /// First element is the type constructor name, second is the list of type arguments
     SumType(String, Vec<Type>),
+    /// Tuple type: (T1, T2, ...) of arity two or more.
+    /// The empty tuple is represented by `Unit`; the parser cannot produce
+    /// one-element tuples.
+    Tuple(Vec<Type>),
 }
 
 /// Type variable identifier
@@ -79,6 +83,16 @@ impl fmt::Display for Type {
                     }
                 }
                 Ok(())
+            }
+            Type::Tuple(elements) => {
+                write!(f, "(")?;
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{elem}")?;
+                }
+                write!(f, ")")
             }
         }
     }
@@ -444,5 +458,11 @@ mod tests {
         assert_eq!(ty1, ty2);
         assert_ne!(ty1, ty3); // Different type argument
         assert_ne!(ty1, ty4); // Different type constructor
+    }
+
+    #[test]
+    fn test_display_tuple_two_elements() {
+        let ty = Type::Tuple(vec![Type::Int, Type::Bool]);
+        assert_eq!(format!("{ty}"), "(Int, Bool)");
     }
 }

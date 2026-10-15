@@ -194,6 +194,12 @@ fn apply_subst_with_visited(
                 .collect();
             Type::SumType(name.clone(), new_args)
         }
+        Type::Tuple(elements) => Type::Tuple(
+            elements
+                .iter()
+                .map(|elem| apply_subst_with_visited(subst, elem, visited))
+                .collect(),
+        ),
     }
 }
 
@@ -237,6 +243,13 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
             let mut set = HashSet::new();
             for arg in args {
                 set.extend(free_type_vars(arg));
+            }
+            set
+        }
+        Type::Tuple(elements) => {
+            let mut set = HashSet::new();
+            for elem in elements {
+                set.extend(free_type_vars(elem));
             }
             set
         }
@@ -426,6 +439,23 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
                 subst = compose_subst(&s, &subst);
             }
 
+            Ok(subst)
+        }
+
+        (Type::Tuple(left), Type::Tuple(right)) => {
+            if left.len() != right.len() {
+                return Err(TypeError::UnificationError(
+                    Box::new(t1.clone()),
+                    Box::new(t2.clone()),
+                ));
+            }
+            let mut subst = HashMap::new();
+            for (left_elem, right_elem) in left.iter().zip(right.iter()) {
+                let left_elem = apply_subst(&subst, left_elem);
+                let right_elem = apply_subst(&subst, right_elem);
+                let s = unify(&left_elem, &right_elem)?;
+                subst = compose_subst(&s, &subst);
+            }
             Ok(subst)
         }
 
@@ -841,6 +871,35 @@ fn infer_constructor(
     }
 }
 
+/// Type inference for a tuple expression `(e1, e2, ...)`. The empty tuple is
+/// the `Unit` type; otherwise each element is inferred left to right,
+/// threading the accumulated substitution, and the result is `Type::Tuple`.
+fn infer_tuple(elements: &[Expr], env: &mut TypeEnv) -> Result<(Type, Substitution), TypeError> {
+    if elements.is_empty() {
+        return Ok((Type::Unit, HashMap::new()));
+    }
+
+    let mut subst = HashMap::new();
+    let mut element_types = Vec::with_capacity(elements.len());
+
+    for element in elements {
+        let mut element_env = env.clone();
+        apply_subst_env(&subst, &mut element_env);
+        let (element_ty, element_subst) = infer(element, &mut element_env)?;
+        advance_next_var_from_inference(&mut element_env, &element_ty, &element_subst);
+        env.next_var = env.next_var.max(element_env.next_var);
+        subst = compose_subst(&element_subst, &subst);
+        element_types.push(element_ty);
+    }
+
+    let resolved: Vec<Type> = element_types
+        .iter()
+        .map(|element_ty| apply_subst(&subst, element_ty))
+        .collect();
+
+    Ok((Type::Tuple(resolved), subst))
+}
+
 /// Type inference for `if cond then then_br else else_br` (extracted from
 /// `infer` to keep its line count down).
 fn infer_if(
@@ -1004,15 +1063,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
 
         Expr::Rec(name, body) => infer_rec(name, body, env),
 
-        Expr::Tuple(elements) => {
-            // Empty tuple is the unit type ()
-            if elements.is_empty() {
-                return Ok((Type::Unit, HashMap::new()));
-            }
-            // For non-empty tuples, return a type variable for now
-            // (full tuple type implementation is planned)
-            Ok((env.fresh_var(), HashMap::new()))
-        }
+        Expr::Tuple(elements) => infer_tuple(elements, env),
 
         Expr::TupleProj(_, _) => {
             // For now, return a type variable for tuple projection
