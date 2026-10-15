@@ -214,7 +214,6 @@ graph TD
     F1 -->|parent| F0[frame: empty]
 ```
 
-
 #### Environment Operations
 
 ##### `new()` - Create Empty Environment
@@ -315,7 +314,6 @@ graph TD
     FX2[frame: x → 20] -->|parent| FY[frame: y → 10]
     FY -->|parent| FX1[frame: x → 5]
 ```
-
 
 ### Evaluation Errors (`EvalError`)
 
