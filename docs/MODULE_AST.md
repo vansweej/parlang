@@ -235,7 +235,7 @@ Expr::If(
 
 Represents local variable binding.
 
-**Syntax**: `let <name> = <value> in <body>`
+**Syntax**: `let <name> [: <type>] = <value> in <body>`
 
 **Example AST**:
 ```rust
@@ -262,7 +262,7 @@ Expr::Let(
 
 Represents anonymous function (lambda) definitions.
 
-**Syntax**: `fun <param> -> <body>`
+**Syntax**: `fun <param> -> <body>` or `fun (<param> : <type>) -> <body>`
 
 **Example AST**:
 ```rust
@@ -647,26 +647,13 @@ graph TD
 ## Display Trait Implementation
 
 The `Expr` and `BinOp` types implement the `Display` trait for human-readable output.
-This abbreviated snippet shows eight arms; the real implementation covers all 20 variants.
+Each arm prints its expression in source-like syntax, and most compound expressions (binary operations, conditionals, `let`, `fun`, application) are wrapped in parentheses. The annotated-lambda arm, for example, writes the parameter in the parenthesised binder form that the parser accepts:
 
 ```rust
-impl fmt::Display for Expr {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Expr::Int(n) => write!(f, "{}", n),
-            Expr::Bool(b) => write!(f, "{}", b),
-            Expr::Var(name) => write!(f, "{}", name),
-            Expr::BinOp(op, left, right) => write!(f, "({} {} {})", left, op, right),
-            Expr::If(cond, then_br, else_br) => 
-                write!(f, "(if {} then {} else {})", cond, then_br, else_br),
-            Expr::Let(name, value, body) => 
-                write!(f, "(let {} = {} in {})", name, value, body),
-            Expr::Fun(param, body) => write!(f, "(fun {} -> {})", param, body),
-            Expr::App(func, arg) => write!(f, "({} {})", func, arg),
-        }
-    }
-}
+write!(f, "(fun ({param} : {ty}) -> {body})")
 ```
+
+Unannotated lambdas and `let` bindings use the same shapes without the `: type` part (`(fun x -> x)`, `(let x = 42 in x)`), and an annotated `let` prints as `(let x : Int = 42 in x)`. Integer, boolean and float literals and variables print bare. The impl has one arm per `Expr` variant (20 in total); char literals, records and type definitions are delegated to the helpers `fmt_char_literal`, `fmt_record` and `fmt_type_def`. See `impl fmt::Display for Expr` in `crates/parlang/src/ast.rs`.
 
 ### Display Examples
 
