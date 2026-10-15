@@ -331,10 +331,100 @@ fn test_tuple_proj_type_inference() {
 
 #[test]
 fn test_match_type_inference() {
-    // Match expressions currently return type variables
-    let expr = parse("match 1 with | 1 -> true | _ -> false").unwrap();
-    let result = typecheck(&expr);
-    assert!(result.is_ok());
+    // Simple literal match returning Bool.
+    assert_eq!(
+        typecheck(&parse("match 1 with | 1 -> true | _ -> false").unwrap()).unwrap(),
+        Type::Bool
+    );
+
+    // Arm result types must agree.
+    assert!(matches!(
+        typecheck(&parse("match 1 with | 0 -> 1 | _ -> true").unwrap()),
+        Err(TypeError::UnificationError(_, _))
+    ));
+
+    // Pattern must agree with the scrutinee type.
+    assert!(typecheck(&parse("match 1 with | true -> 1 | _ -> 2").unwrap()).is_err());
+}
+
+#[test]
+fn test_match_tuple_patterns() {
+    // Tuple pattern binds its components.
+    assert_eq!(
+        typecheck(&parse("match (1, true) with | (n, b) -> if b then n else 0").unwrap()).unwrap(),
+        Type::Int
+    );
+
+    // A function over a tuple pattern swaps the components.
+    let swap_ty = typecheck(&parse("fun p -> match p with | (a, b) -> (b, a)").unwrap()).unwrap();
+    let Type::Fun(arg, ret) = swap_ty else {
+        panic!("expected a function type");
+    };
+    let (Type::Tuple(arg_elems), Type::Tuple(ret_elems)) = (*arg, *ret) else {
+        panic!("expected tuple -> tuple");
+    };
+    assert_eq!(arg_elems.len(), 2);
+    assert_eq!(ret_elems.len(), 2);
+    assert_eq!(arg_elems[0], ret_elems[1]);
+    assert_eq!(arg_elems[1], ret_elems[0]);
+}
+
+#[test]
+fn test_match_constructor_patterns() {
+    // Registered constructor pattern.
+    let option_src =
+        "data Option a = Some a | None ;\nmatch Some 42 with | Some n -> n + 1 | None -> 0";
+    assert_eq!(
+        typecheck_program(&parse_program(option_src).unwrap()).unwrap(),
+        Type::Int
+    );
+
+    // Constructor arity mismatch in a pattern.
+    let arity_src = "data Option a = Some a | None ;\nmatch Some 42 with | Some -> 0 | None -> 1";
+    assert!(matches!(
+        typecheck_program(&parse_program(arity_src).unwrap()),
+        Err(TypeError::ConstructorArityMismatch(_, _, _))
+    ));
+
+    // Constructor of the wrong sum type.
+    let wrong_src = "data Color = Red | Green ;\ndata Option a = Some a | None ;\nmatch Some 42 with | Red -> 0 | Some n -> n";
+    assert!(typecheck_program(&parse_program(wrong_src).unwrap()).is_err());
+}
+
+#[test]
+fn test_match_record_patterns() {
+    // Record subset pattern.
+    assert_eq!(
+        typecheck(&parse("let r = {name: 42, age: 30} in match r with | {name: n} -> n").unwrap())
+            .unwrap(),
+        Type::Int
+    );
+
+    // Record pattern with an unknown field.
+    assert!(matches!(
+        typecheck(&parse("let r = {name: 42, age: 30} in match r with | {nope: n} -> n").unwrap()),
+        Err(TypeError::FieldNotFound(_, _))
+    ));
+
+    // Record pattern against an unresolved scrutinee.
+    assert!(matches!(
+        typecheck(&parse("fun r -> match r with | {name: n} -> n").unwrap()),
+        Err(TypeError::RecordExpected(_))
+    ));
+}
+
+#[test]
+fn test_match_lenient_constructors() {
+    // Unregistered constructor pattern is lenient.
+    assert_eq!(
+        typecheck(&parse("match 1 with | Foo x -> x | _ -> 0").unwrap()).unwrap(),
+        Type::Int
+    );
+
+    // Strings still typecheck via the lenient constructor path.
+    assert!(
+        typecheck(&parse("match \"ab\" with | Cons c rest -> c | Nil -> 'z'").unwrap()).is_ok()
+    );
 }
 
 #[test]

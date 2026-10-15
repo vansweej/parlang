@@ -1,5 +1,5 @@
 /// Hindley-Milner type inference implementation
-use crate::ast::{BinOp, Decl, Expr, Program};
+use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
 use crate::types::{Type, TypeScheme, TypeVar};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -910,6 +910,168 @@ fn infer_constructor(
     }
 }
 
+/// Type a record pattern `{ f1: p1, ... }` against the scrutinee type.
+/// A subset of the record's fields is permitted (the evaluator's record
+/// pattern is partial). Any non-record scrutinee — including an unresolved
+/// type variable — is a `RecordExpected` error.
+fn infer_pattern_record(
+    fields: &[(String, Pattern)],
+    expected: &Type,
+    env: &mut TypeEnv,
+    bindings: &mut Vec<(String, Type)>,
+) -> Result<Substitution, TypeError> {
+    match expected {
+        Type::Record(map) => {
+            let mut subst = HashMap::new();
+            for (field_name, sub_pattern) in fields {
+                let Some(field_ty) = map.get(field_name) else {
+                    let mut available: Vec<String> = map.keys().cloned().collect();
+                    available.sort();
+                    return Err(TypeError::FieldNotFound(field_name.clone(), available));
+                };
+                let field_ty = apply_subst(&subst, field_ty);
+                let s = infer_pattern(sub_pattern, &field_ty, env, bindings)?;
+                subst = compose_subst(&s, &subst);
+            }
+            Ok(subst)
+        }
+        other => Err(TypeError::RecordExpected(format!("{other}"))),
+    }
+}
+
+/// Type a constructor pattern `Ctor p1 p2 ...` against the scrutinee type.
+/// Registered constructors constrain the scrutinee to their sum type and
+/// type their sub-patterns against the declared payloads. Unregistered
+/// constructors are lenient (string literals desugar to unregistered
+/// `Cons`/`Nil`): the scrutinee is left unconstrained and sub-patterns are
+/// typed against fresh variables.
+fn infer_pattern_constructor(
+    name: &str,
+    patterns: &[Pattern],
+    expected: &Type,
+    env: &mut TypeEnv,
+    bindings: &mut Vec<(String, Type)>,
+) -> Result<Substitution, TypeError> {
+    if let Some(info) = env.lookup_constructor(name).cloned() {
+        let type_args: Vec<Type> = info.type_params.iter().map(|_| env.fresh_var()).collect();
+        let type_param_map: HashMap<String, Type> = info
+            .type_params
+            .iter()
+            .cloned()
+            .zip(type_args.iter().cloned())
+            .collect();
+
+        if patterns.len() != info.payload_types.len() {
+            return Err(TypeError::ConstructorArityMismatch(
+                name.to_string(),
+                info.payload_types.len(),
+                patterns.len(),
+            ));
+        }
+
+        let mut subst = unify(
+            expected,
+            &Type::SumType(info.sum_type_name.clone(), type_args),
+        )?;
+
+        for (sub_pattern, annotation) in patterns.iter().zip(&info.payload_types) {
+            let payload = type_annotation_to_type(annotation, &type_param_map, env);
+            let payload = apply_subst(&subst, &payload);
+            let s = infer_pattern(sub_pattern, &payload, env, bindings)?;
+            subst = compose_subst(&s, &subst);
+        }
+        Ok(subst)
+    } else {
+        let mut subst = HashMap::new();
+        for sub_pattern in patterns {
+            let fresh = env.fresh_var();
+            let s = infer_pattern(sub_pattern, &fresh, env, bindings)?;
+            subst = compose_subst(&s, &subst);
+        }
+        Ok(subst)
+    }
+}
+
+/// Type a pattern against the `expected` scrutinee type, collecting variable
+/// bindings. Returns the substitution produced by unifying the pattern's
+/// shape with `expected`.
+fn infer_pattern(
+    pattern: &Pattern,
+    expected: &Type,
+    env: &mut TypeEnv,
+    bindings: &mut Vec<(String, Type)>,
+) -> Result<Substitution, TypeError> {
+    match pattern {
+        Pattern::Literal(Literal::Int(_)) => unify(expected, &Type::Int),
+        Pattern::Literal(Literal::Bool(_)) => unify(expected, &Type::Bool),
+        Pattern::Literal(Literal::Char(_)) => unify(expected, &Type::Char),
+        Pattern::Var(name) => {
+            bindings.push((name.clone(), expected.clone()));
+            Ok(HashMap::new())
+        }
+        Pattern::Wildcard => Ok(HashMap::new()),
+        Pattern::Tuple(patterns) => {
+            if patterns.is_empty() {
+                return unify(expected, &Type::Unit);
+            }
+            let fresh: Vec<Type> = patterns.iter().map(|_| env.fresh_var()).collect();
+            let mut subst = unify(expected, &Type::Tuple(fresh.clone()))?;
+            for (sub_pattern, fresh_ty) in patterns.iter().zip(&fresh) {
+                let fresh_ty = apply_subst(&subst, fresh_ty);
+                let s = infer_pattern(sub_pattern, &fresh_ty, env, bindings)?;
+                subst = compose_subst(&s, &subst);
+            }
+            Ok(subst)
+        }
+        Pattern::Record(fields) => infer_pattern_record(fields, expected, env, bindings),
+        Pattern::Constructor(name, patterns) => {
+            infer_pattern_constructor(name, patterns, expected, env, bindings)
+        }
+    }
+}
+
+/// Type inference for `match scrutinee with | p1 -> e1 | ...`. Each arm's
+/// pattern is typed against the (substituted) scrutinee type, the pattern's
+/// bindings extend a per-arm environment monomorphically, and every arm body
+/// is unified into a single result type.
+fn infer_match(
+    scrutinee: &Expr,
+    arms: &[(Pattern, Expr)],
+    env: &mut TypeEnv,
+) -> Result<(Type, Substitution), TypeError> {
+    let (scrut_ty, s0) = infer(scrutinee, env)?;
+    advance_next_var_from_inference(env, &scrut_ty, &s0);
+
+    let result_ty = env.fresh_var();
+    let mut subst = s0;
+
+    for (pattern, body) in arms {
+        let expected = apply_subst(&subst, &scrut_ty);
+        let mut bindings: Vec<(String, Type)> = Vec::new();
+        let pattern_subst = infer_pattern(pattern, &expected, env, &mut bindings)?;
+        subst = compose_subst(&pattern_subst, &subst);
+
+        let mut arm_env = env.clone();
+        apply_subst_env(&subst, &mut arm_env);
+        for (name, ty) in bindings {
+            arm_env = arm_env.extend(name, apply_subst(&subst, &ty));
+        }
+
+        let (body_ty, body_subst) = infer(body, &mut arm_env)?;
+        advance_next_var_from_inference(&mut arm_env, &body_ty, &body_subst);
+        env.next_var = env.next_var.max(arm_env.next_var);
+        subst = compose_subst(&body_subst, &subst);
+
+        let arm_subst = unify(
+            &apply_subst(&subst, &result_ty),
+            &apply_subst(&subst, &body_ty),
+        )?;
+        subst = compose_subst(&arm_subst, &subst);
+    }
+
+    Ok((apply_subst(&subst, &result_ty), subst))
+}
+
 /// Type inference for a tuple expression `(e1, e2, ...)`. The empty tuple is
 /// the `Unit` type; otherwise each element is inferred left to right,
 /// threading the accumulated substitution, and the result is `Type::Tuple`.
@@ -1106,10 +1268,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
 
         Expr::TupleProj(tuple_expr, index) => infer_tuple_proj(tuple_expr, *index, env),
 
-        Expr::Match(_, _) => {
-            // For now, return a type variable for pattern matching
-            Ok((env.fresh_var(), HashMap::new()))
-        }
+        Expr::Match(scrutinee, arms) => infer_match(scrutinee, arms, env),
 
         Expr::Load(_, _) => {
             // For now, return a type variable for load expressions
