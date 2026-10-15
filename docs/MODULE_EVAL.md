@@ -464,7 +464,7 @@ eval(&Expr::Var("x".to_string()), &env)  // => Ok(Value::Int(42))
 eval(&Expr::Var("x".to_string()), &env)  // => Err(UnboundVariable("x"))
 ```
 
-**Complexity**: O(1) average, O(n) worst case (HashMap lookup)
+**Complexity**: O(f), where f is the number of frames visited: one `HashMap` probe per frame along the parent chain and, for merged environments, the fallback chain (see `lookup`).
 
 #### 4. Binary Operation (`Expr::BinOp`)
 
@@ -607,29 +607,18 @@ eval(&expr, &env)  // => Ok(Value::Closure("x", body, env))
 #### 8. Function Application (`Expr::App`)
 
 ```rust
-Expr::App(func, arg) => {
-    let func_val = eval(func, env)?;
-    let arg_val = eval(arg, env)?;
-    
-    match func_val {
-        Value::Closure(param, body, closure_env) => {
-            let new_env = closure_env.extend(param, arg_val);
-            eval(&body, &new_env)
-        }
-        _ => Err(EvalError::TypeError(
-            "Application requires a function".to_string(),
-        )),
-    }
-}
+Expr::App(_, _) => eval_app(expr, env, depth),
 ```
 
+Application is handled by `eval_app`. See `eval_app` in `crates/parlang/src/eval.rs`.
+
 **Algorithm**:
-1. Evaluate function expression (must yield closure)
-2. Evaluate argument expression
-3. Extract closure's parameter, body, and captured environment
-4. Extend **captured environment** with parameter binding
-5. Evaluate body in extended captured environment
-6. Return result
+1. Collect the application spine: the head expression and all argument expressions (`collect_app_spine`)
+2. Evaluate the head (must yield a `Closure` or `RecClosure`)
+3. Evaluate the argument expressions left to right (`eval_spine_args`)
+4. For a `Closure`: extend its **captured environment** with the parameter binding, evaluate the body one level deeper, and use the result as the function for the next argument
+5. For a `RecClosure`: hand all remaining arguments to `apply_rec_closure`, which runs the body under the tail-call loop `eval_with_tco`
+6. Return the final result
 
 **Key Feature**: Uses closure's captured environment, not current environment.
 
@@ -651,7 +640,7 @@ let expr = Expr::App(
 eval(&expr, &env)  // => Ok(Value::Int(42))
 ```
 
-**Complexity**: O(eval(func) + eval(arg) + |closure_env| + eval(body))
+**Complexity**: O(eval(head) + Σ eval(argᵢ) + Σ (|closure frame| + eval(body))) over the spine; recursive application additionally runs the tail-call loop (see `apply_rec_closure`).
 
 ### Evaluation Flow Diagram
 
@@ -687,13 +676,15 @@ graph TD
     TYPE -->|Fun param body| FUN_CLOSE[Capture environment]
     FUN_CLOSE --> FUN_RET[Return Closure]
     
-    TYPE -->|App func arg| APP_FUNC[Eval function]
-    APP_FUNC --> APP_ARG[Eval argument]
-    APP_ARG --> APP_CHECK{Is Closure?}
-    APP_CHECK -->|Yes| APP_EXTEND[Extend closure env]
-    APP_CHECK -->|No| ERROR4[TypeError]
+    TYPE -->|App func arg| APP_HEAD[Eval head]
+    APP_HEAD --> APP_ARGS[Eval all args L→R]
+    APP_ARGS --> APP_DISPATCH{Closure / RecClosure / other?}
+    APP_DISPATCH -->|Closure| APP_EXTEND[extend closure frame]
     APP_EXTEND --> APP_BODY[Eval body]
     APP_BODY --> RETURN5[Return result]
+    APP_DISPATCH -->|RecClosure| APP_REC[apply_rec_closure + TCO loop]
+    APP_REC --> RETURN5
+    APP_DISPATCH -->|other| ERROR4[TypeError]
 ```
 
 ## Binary Operation Evaluation
@@ -852,6 +843,8 @@ Only equality operators work on booleans:
 
 ParLang implements **lexical scoping** (static scoping) where functions capture their defining environment.
 
+In the diagrams and examples below, bracket notation such as `[x → 10, y → 5]` lists the bindings *visible* from the innermost frame; each binding actually lives in its own frame of the chain described in [Environment Structure](#environment-structure).
+
 ```mermaid
 sequenceDiagram
     participant Code as Source Code
@@ -938,15 +931,15 @@ let inner_closure = Value::Closure(
 
 // Step 1: First let
 let env1 = env0.extend("x", Value::Int(1));
-// env1 = [x → 1]
+// env1 has an inner frame holding x → 1
 
 // Step 2: Second let (shadows x)
 let env2 = env1.extend("x", Value::Int(2));
-// env2 = [x → 2, x → 1]  (conceptually)
-// HashMap keeps only latest binding
+// The inner frame holds x → 2 while the parent frame still holds x → 1
 
 // Step 3: Lookup x
-// Returns 2 (most recent binding)
+// lookup("x") walks inner-to-outer and returns 2; the outer x → 1 remains live
+// (not discarded) in the ancestor frame.
 ```
 
 ## Detailed Evaluation Examples
