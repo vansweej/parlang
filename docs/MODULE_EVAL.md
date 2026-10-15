@@ -1345,28 +1345,27 @@ fn test_eval_complex_nested() {
 | Operation | Time Complexity | Space Complexity | Notes |
 |-----------|----------------|------------------|-------|
 | Literal evaluation | O(1) | O(1) | Direct value return |
-| Variable lookup | O(1) avg | O(1) | HashMap lookup |
+| Variable lookup | O(f) | O(f) | One HashMap probe per frame visited; recursive walk of the frame chain |
 | Binary operation | O(eval(left) + eval(right)) | O(call stack depth) | Recursive evaluation |
 | Conditional | O(eval(cond) + eval(branch)) | O(call stack depth) | Only one branch evaluated |
-| Let binding | O(eval(value) + \|env\| + eval(body)) | O(\|env\|) | Environment cloning |
-| Function creation | O(\|env\|) | O(\|env\|) | Environment capture |
-| Function application | O(eval(func) + eval(arg) + \|env\| + eval(body)) | O(\|env\| + call stack) | Environment extension |
+| Let binding | O(eval(value) + \|frame\| + eval(body)) | O(\|frame\|) | Pushes one new frame; ancestors shared via Rc |
+| Function creation | O(\|frame\|) | O(\|frame\|) | Captures a clone of the current frame; ancestors shared |
+| Function application | O(eval(head) + Σ eval(arg) + \|frame\| + eval(body)) | O(\|frame\| + call stack) | Extends closure frame per argument |
 
 ### Memory Considerations
 
-**Environment Cloning**: Each `let` binding and function creation clones the environment.
-- **Cost**: O(number of bindings)
-- **Trade-off**: Simplicity vs. performance
-- **Alternative**: Reference-counted environments (not implemented)
+**Environment Cloning**: Each `let` binding and function creation copies only the current innermost frame's own maps; ancestor frames are **shared** through reference-counted (`Rc`) links rather than deep-copied.
+- **Cost**: O(|frame|) in the innermost frame
+- **Trade-off**: Simplicity and structural sharing rather than deep copying
 
 **Closure Size**: Each closure stores:
 - Parameter name
 - Body expression (varies)
-- Full environment (potentially large)
+- A clone of the current frame's own maps (ancestors shared via Rc, not copied)
 
 **Call Stack Depth**:
-- **Deep non-tail recursion**: bounded by a `RecursionLimit` policy — exceeding it yields
-  `EvalError::RecursionLimit` (`eval.rs:400`) rather than a native stack overflow.
+- **Deep non-tail recursion**: bounded by a `RecursionLimit` policy — exceeding it yields `EvalError::RecursionLimit` (see `eval_inner` in `crates/parlang/src/eval.rs`) rather than a native stack overflow.
+- Evaluation runs on a dedicated worker thread with an `EVALUATOR_STACK_SIZE` (256 MiB) stack via `run_on_evaluator_stack`, used by both the `parlang` CLI/REPL and the `parlang-driver` runner.
 - **Direct tail self-calls**: trampolined by the TCO loop and run in constant evaluator depth.
 
 ## Design Decisions
@@ -1406,7 +1405,7 @@ Functions capture their **defining environment**, not their calling environment.
 - No aliasing issues
 - Easier to reason about
 
-**Trade-off**: Memory overhead from cloning
+**Trade-off**: A small per-frame clone on each extension, offset by `Rc` sharing of all ancestor frames.
 
 ### 4. Tail Call Optimization (TCO)
 

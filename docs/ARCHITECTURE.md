@@ -358,7 +358,7 @@ ParLang uses direct AST interpretation (tree-walking) rather than compilation to
 |-----------|-------------|-------|
 | AST | O(n) | Proportional to program size |
 | Environment | O(v) | One entry per variable in scope |
-| Closure | O(e) | Captures entire environment |
+| Closure | O(b) | Copies the current frame's own bindings; ancestor frames shared via Rc |
 | Call Stack | O(d) | Proportional to call depth |
 
 ## Extension Points
