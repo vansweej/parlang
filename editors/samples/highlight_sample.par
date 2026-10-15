@@ -18,6 +18,7 @@ let half = fun n -> n / 2;
 let small = fun n -> n <= 10;
 let other = fun n -> n != 3;
 let positive = fun n -> if n > 0 then true else false;
+let step_up = fun (step : Int) -> step + 1;
 let classify = fun c ->
     match c with
     | '\n' -> 0

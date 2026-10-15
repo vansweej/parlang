@@ -48,7 +48,7 @@ module.exports = grammar({
 
     let_binding: $ => seq('let', field('name', $.identifier)),
 
-    fun_binding: $ => seq('fun', field('parameter', $.identifier)),
+    fun_binding: $ => seq('fun', optional('('), field('parameter', $.identifier)),
 
     rec_binding: $ => seq('rec', field('name', $.identifier)),
 

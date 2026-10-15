@@ -364,6 +364,7 @@ fn tree_sitter_highlight_captures() {
         ("x", "property"),
         ("true", "boolean"),
         ("<=", "operator"),
+        ("step", "variable.parameter"),
     ];
 
     let mut missing = Vec::new();
