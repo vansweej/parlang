@@ -1,6 +1,6 @@
 /// Integration tests for type inference system
 /// These tests verify the complete type inference pipeline
-use parlang::{parse_expr as parse, parse_program, typecheck, typecheck_program, Type};
+use parlang::{parse_expr as parse, parse_program, typecheck, typecheck_program, Type, TypeError};
 
 #[test]
 fn test_complete_program_int() {
@@ -306,10 +306,27 @@ fn test_tuple_type_inference() {
 
 #[test]
 fn test_tuple_proj_type_inference() {
-    // Tuple projection currently returns type variables
-    let expr = parse("(1, 2).0").unwrap();
-    let result = typecheck(&expr);
-    assert!(result.is_ok());
+    assert_eq!(typecheck(&parse("(1, 2).0").unwrap()).unwrap(), Type::Int);
+    assert_eq!(
+        typecheck(&parse("(1, true).1").unwrap()).unwrap(),
+        Type::Bool
+    );
+    assert_eq!(
+        typecheck(&parse("let t = ((1, 2), 3) in t.0.1").unwrap()).unwrap(),
+        Type::Int
+    );
+    assert_eq!(
+        typecheck(&parse("(1, 2).5").unwrap()),
+        Err(TypeError::TupleIndexOutOfBounds(5, 2))
+    );
+    assert!(matches!(
+        typecheck(&parse("fun p -> p.0").unwrap()),
+        Err(TypeError::TupleExpected(_))
+    ));
+    assert!(matches!(
+        typecheck(&parse("let x = 42 in x.0").unwrap()),
+        Err(TypeError::TupleExpected(_))
+    ));
 }
 
 #[test]

@@ -320,6 +320,10 @@ pub enum TypeError {
     DuplicateTypeName(String),
     /// A top-level constructor name was declared more than once.
     DuplicateConstructor(String),
+    /// Tuple projection index was out of range: (index, arity).
+    TupleIndexOutOfBounds(usize, usize),
+    /// Expected a tuple type but got something else.
+    TupleExpected(String),
 }
 
 impl fmt::Display for TypeError {
@@ -363,6 +367,15 @@ impl fmt::Display for TypeError {
             }
             TypeError::DuplicateConstructor(name) => {
                 write!(f, "Duplicate constructor: {name}")
+            }
+            TypeError::TupleIndexOutOfBounds(index, arity) => {
+                write!(
+                    f,
+                    "Tuple index {index} out of bounds for tuple of arity {arity}"
+                )
+            }
+            TypeError::TupleExpected(got) => {
+                write!(f, "Expected tuple type, got {got}")
             }
         }
     }
@@ -813,6 +826,32 @@ fn infer_field_access(
     }
 }
 
+/// Type inference for tuple projection `tuple_expr.index`. The tuple
+/// expression is inferred and its substitution applied; a `Type::Tuple`
+/// yields the element type at `index` (or `TupleIndexOutOfBounds`), and any
+/// other type — including an unresolved type variable or `Unit` — is a
+/// `TupleExpected` error, mirroring the `RecordExpected` precedent for field
+/// access.
+fn infer_tuple_proj(
+    tuple_expr: &Expr,
+    index: usize,
+    env: &mut TypeEnv,
+) -> Result<(Type, Substitution), TypeError> {
+    let (tuple_ty, s1) = infer(tuple_expr, env)?;
+    let tuple_ty = apply_subst(&s1, &tuple_ty);
+
+    match tuple_ty {
+        Type::Tuple(elements) => {
+            if let Some(element_ty) = elements.get(index) {
+                Ok((element_ty.clone(), s1))
+            } else {
+                Err(TypeError::TupleIndexOutOfBounds(index, elements.len()))
+            }
+        }
+        other => Err(TypeError::TupleExpected(format!("{other}"))),
+    }
+}
+
 /// Type inference for a sum-type constructor application (extracted from
 /// `infer` to keep its line count down).
 fn infer_constructor(
@@ -1065,10 +1104,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
 
         Expr::Tuple(elements) => infer_tuple(elements, env),
 
-        Expr::TupleProj(_, _) => {
-            // For now, return a type variable for tuple projection
-            Ok((env.fresh_var(), HashMap::new()))
-        }
+        Expr::TupleProj(tuple_expr, index) => infer_tuple_proj(tuple_expr, *index, env),
 
         Expr::Match(_, _) => {
             // For now, return a type variable for pattern matching
