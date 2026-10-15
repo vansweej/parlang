@@ -568,16 +568,18 @@ Type checking always happens before evaluation. If type checking fails, evaluati
 
 ## Tracked Type-Inference Debt
 
-Type checking is now mandatory, but four Algorithm W inference arms are currently
-vacuous stubs: they return a fresh, unconstrained type variable instead of doing
-real inference, so programs relying solely on these constructs are accepted without
-genuine verification. Implementing them is deferred to later Arc B/F work. The guard
-test in `crates/parlang/tests/mandatory_typecheck_guard.rs` covers the well-typed
-programs that reach the binary run paths today.
+Type checking is now mandatory. Only one Algorithm W inference arm remains a
+vacuous stub: it returns a fresh, unconstrained type variable instead of doing
+real inference, so programs relying solely on it are accepted without genuine
+verification. Implementing it is deferred to later Arc B/F work. The guard
+test in `crates/parlang/tests/mandatory_typecheck_guard.rs` covers the
+well-typed programs that reach the binary run paths today.
 
-- `Match` — pattern-match inference and exhaustiveness interaction
-- `Tuple` — tuple construction inference (non-empty case)
-- `TupleProj` — tuple projection inference
+One leniency remains in otherwise-checked arms: constructors used without a
+`data` declaration (including the `Cons`/`Nil` that string literals desugar
+to) receive a fresh type variable rather than constraining the match
+scrutinee.
+
 - `Load` — `load "file.par"` module inference
 
 ## Type Errors
@@ -671,7 +673,7 @@ Type error: Cannot unify types: Bool and Int
 
 ### Tuples and Pattern Matching
 
-The type checker does not yet check tuples or pattern matching: tuple construction, tuple projection, match expressions, and record loads each return a fresh, unconstrained type variable, so a match expression is not type-checked at all. Real inference for these arms is deferred (see "Tracked Type-Inference Debt").
+Tuples, tuple projection, and match expressions are type-checked: tuple construction infers a `Type::Tuple`, projection requires an already-known tuple type, and each match arm's pattern is typed against the scrutinee while arm bodies are unified into one result type. Constructors without a `data` declaration are still typed leniently with a fresh type variable, and `load` is not type-checked.
 
 ## Usage
 
@@ -789,7 +791,7 @@ binding), which currently requires an explicit annotation elsewhere.
 ### 2. Pattern Matching Type Checking is Incomplete
 
 While pattern matching works at runtime, the type checker has limited support:
-- Pattern types are assigned fresh type variables
+- Patterns are type-checked against the scrutinee type; constructors without a `data` declaration are typed leniently
 - Exhaustiveness is checked at evaluation time only (never by the type
   checker): a warning is printed to stderr and evaluation always continues.
   Coverage is analysed only for booleans and sum-type constructors; integer
