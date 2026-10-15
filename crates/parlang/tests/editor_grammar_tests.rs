@@ -268,7 +268,7 @@ fn collect_par_files(root: &Path) -> Vec<PathBuf> {
                     continue;
                 }
                 stack.push(path);
-            } else if path.extension().and_then(|ext| ext.to_str()) == Some("par") {
+            } else if path.extension().and_then(std::ffi::OsStr::to_str) == Some("par") {
                 files.push(path);
             }
         }
