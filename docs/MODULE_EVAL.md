@@ -198,29 +198,22 @@ Value::RecClosure(
 
 #### Environment Structure
 
+The current frame stores these fields:
+
 ```rust
-#[derive(Debug, Clone, PartialEq)]
-pub struct Environment {
-    bindings: HashMap<String, Value>,
-}
+bindings: HashMap<String, Value>,
+constructors: HashMap<String, ConstructorInfo>,
+parent: Option<Rc<Environment>>,
 ```
 
-The environment maps variable names to their runtime values.
+There is also a `fallback: Option<Rc<Environment>>` field. The Environment is a chain of immutable frames. Each frame owns its own `bindings` and `constructors` maps; ancestor frames are shared via `Rc` and never mutated. A `parent` link points to the enclosing frame; a merged environment additionally carries a `fallback` parent. Because frames only point to ancestors, no `Rc` cycle can form. Two environments with identical reachable bindings but different frame shapes compare unequal. See `Environment` in `crates/parlang/src/eval.rs`.
 
 ```mermaid
 graph TD
-    subgraph "Environment Structure"
-        ENV[Environment]
-        BINDINGS[HashMap<String, Value>]
-        ENV --> BINDINGS
-    end
-    
-    subgraph "Bindings Example"
-        BINDINGS --> X[x → Int 42]
-        BINDINGS --> Y[y → Bool true]
-        BINDINGS --> F[f → Closure]
-    end
+    F2[frame: y → Bool true] -->|parent| F1[frame: x → Int 42]
+    F1 -->|parent| F0[frame: empty]
 ```
+
 
 #### Environment Operations
 
@@ -229,12 +222,10 @@ graph TD
 Creates a new environment with no bindings.
 
 ```rust
-pub fn new() -> Self {
-    Environment {
-        bindings: HashMap::new(),
-    }
-}
+bindings: HashMap::new(),
 ```
+
+`new()` also leaves `constructors` empty with `parent`/`fallback` as `None`. See `new` in `crates/parlang/src/eval.rs`.
 
 **Usage**:
 ```rust
@@ -257,17 +248,17 @@ let mut env = Environment::new();
 env.bind("x".to_string(), Value::Int(42));
 ```
 
-**Behavior**: If the variable already exists, it's shadowed (replaced).
+**Behavior**: Inserts into *this* frame's bindings only. If the same name already exists in this frame it is replaced; bindings in ancestor frames are untouched.
 
 ##### `lookup()` - Find Variable
 
 Looks up a variable's value in the environment.
 
 ```rust
-pub fn lookup(&self, name: &str) -> Option<&Value> {
-    self.bindings.get(name)
-}
+self.bindings.get(name).or_else(|| {
 ```
+
+`lookup` probes this frame's `bindings`, and on a miss recurses into `parent`, then into `fallback`. Each frame visited costs one `HashMap` probe. For a plain parent chain this is linear in the chain length; a merged environment has two links, and a miss may visit shared ancestor frames more than once, so the bound is the number of frames visited, not the chain length. See `lookup` in `crates/parlang/src/eval.rs`.
 
 **Returns**:
 - `Some(&Value)`: Variable found
@@ -286,12 +277,10 @@ match env.lookup("x") {
 Creates a new environment with an additional binding, leaving the original unchanged.
 
 ```rust
-pub fn extend(&self, name: String, value: Value) -> Self {
-    let mut new_env = self.clone();
-    new_env.bind(name, value);
-    new_env
-}
+parent: Some(Rc::new(self.clone())),
 ```
+
+`extend` builds a fresh innermost frame holding only the one new binding, with `constructors` empty and `fallback: None`, linking the current environment as `parent`. The `self.clone()` copies only the current frame's own two maps; ancestors are shared through the cloned `Rc` pointer, so the cost is O(|frame|) in the size of the innermost frame, not O(whole environment). See `extend` in `crates/parlang/src/eval.rs`.
 
 **Usage**:
 ```rust
@@ -300,34 +289,33 @@ let env2 = env1.extend("x".to_string(), Value::Int(42));
 // env1 unchanged, env2 has x binding
 ```
 
-**Key Feature**: Enables immutable environment handling for closures.
+**Key Feature**: Enables immutable environment handling for closures while sharing ancestors via `Rc` rather than copying them.
+
+##### `merge()` - Combine Two Environments (Immutable)
+
+```rust
+parent: Some(Rc::new(other.clone())),
+fallback: Some(Rc::new(self.clone())),
+```
+
+`merge` builds a fresh empty frame whose `parent` is `other` and whose `fallback` is `self`; because `parent` is searched before `fallback`, `other`'s bindings are found first and shadow `self`. It backs `load` evaluation and binding extraction, giving loaded library bindings last-writer-wins precedence. See `merge` in `crates/parlang/src/eval.rs`.
+
+```mermaid
+graph TD
+    MERGED[frame: empty] -->|parent| OTHER[other]
+    MERGED -->|fallback| SELF[self]
+```
 
 #### Environment Evolution Example
 
+For `let x = 5 in let y = 10 in let x = 20 in ...`, each `let` pushes a new frame. The outer `x → 5` is **not** overwritten — it survives in an ancestor frame and is simply shadowed, so `lookup("x")` finds `x → 20` first.
+
 ```mermaid
-graph LR
-    subgraph "Initial"
-        E1[env: empty]
-    end
-    
-    subgraph "After let x = 5"
-        E2[env: x → 5]
-    end
-    
-    subgraph "After let y = 10"
-        E3["env: x → 5<br/>y → 10"]
-    end
-    
-    subgraph "After let x = 20"
-        E4["env: x → 20<br/>y → 10"]
-    end
-    
-    E1 -->|extend x, 5| E2
-    E2 -->|extend y, 10| E3
-    E3 -->|extend x, 20| E4
-    
-    style E4 fill:#ffcccc
+graph TD
+    FX2[frame: x → 20] -->|parent| FY[frame: y → 10]
+    FY -->|parent| FX1[frame: x → 5]
 ```
+
 
 ### Evaluation Errors (`EvalError`)
 
