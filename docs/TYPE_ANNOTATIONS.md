@@ -32,14 +32,12 @@ z
 
 ### Function Parameters
 
-**Note:** Type annotations for function parameters currently have a parser limitation due to the `->` operator precedence. For now, use type inference for function parameters:
+Annotate a lambda parameter by wrapping it in parentheses: `fun (x : T) -> body`. The type `T` may be any annotation, including a function type such as `Int -> Int`, because the closing parenthesis ends the type. The bare form `fun x : Int -> ...` is a parse error: as in OCaml (`fun (x : int) ->`) and Haskell (`\(x :: Int) ->`), the parameter must be parenthesised. An unannotated lambda `fun x -> ...` is unchanged.
 
 ```parlang
-# This works (inferred types)
+fun (x : Int) -> x + 1
+fun (f : Int -> Int) -> f 1
 fun x -> x + 1
-
-# Type annotations for function params are supported in the AST
-# but may have parsing ambiguities with the -> operator
 ```
 
 ## Type Annotation Forms
@@ -58,11 +56,11 @@ let active : Bool = true;
 Function types use the `->` operator:
 
 ```parlang
-# In type annotations (future improvement)
+# On a let binding
 let f : Int -> Bool = fun x -> x > 0 in f 42
 ```
 
-**Current Limitation:** Function type annotations in parameters have precedence issues and should be avoided for now.
+Function types can also annotate a lambda parameter, for example `fun (f : Int -> Int) -> f 1`.
 
 ### Type Variables
 
@@ -168,24 +166,6 @@ cargo run -- examples/type_annotations.par
 
 ## Current Limitations
 
-### Function Parameter Annotations
-
-Due to parser precedence with the `->` operator, type annotations on function parameters have ambiguities:
-
-```parlang
-# This has parsing issues:
-fun x : Int -> x + 1
-# Parser sees: fun x : (Int -> x) + 1
-```
-
-**Workaround:** Annotate the binding rather than the parameter:
-
-```parlang
-# This works correctly:
-let f : Int -> Bool = fun x -> x > 0
-# Type: Int -> Bool
-```
-
 ### Applied Types
 
 Applied types (like `Option Int` or `List Bool`) are not yet supported in annotations:
@@ -252,11 +232,13 @@ optional(
 
 This makes type annotations optional - if the `:` token is not found, the parser continues without an annotation.
 
+Lambda parameters do not use that optional suffix. A dedicated `fun_param` parser accepts either a bare identifier or a parenthesised `(name : type)`, so the annotation is delimited by the closing `)` rather than by the `->` that the type grammar itself uses. This is why parameter annotations must be parenthesised.
+
 ## Future Improvements
 
 Potential enhancements for type annotations:
 
-1. **Fix function parameter annotation precedence** - Allow clear syntax like `fun (x : Int) -> body`
+1. **Share type variables within an annotation** - each lowercase type variable currently becomes an independent fresh type variable, so `fun (f : a -> a) -> f` does not force argument and result to the same type
 2. **Support applied types** - Enable `Option Int`, `List Bool` in annotations
 3. **Add type alias support** - Use type aliases in annotations
 4. **Bi-directional type checking** - Use annotations to guide inference
@@ -282,6 +264,6 @@ cargo test type_annotation_tests
 
 ## Conclusion
 
-Explicit type annotations provide a useful way to document code and catch type errors early. There are some current limitations, particularly with function parameter annotations, but the feature integrates with ParLang's existing type inference system.
+Explicit type annotations provide a useful way to document code and catch type errors early. There are some current limitations, notably applied types such as `Option Int` (see Current Limitations), but the feature integrates with ParLang's existing type inference system.
 
 Type annotations are completely optional - you can continue using ParLang without annotations and rely entirely on type inference. Add annotations where they improve code clarity or help catch bugs.
