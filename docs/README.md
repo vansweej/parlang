@@ -17,6 +17,7 @@ Welcome to the comprehensive documentation for ParLang, a small ML-alike functio
 - [Generic Types](GENERIC_TYPES.md) - Parameterized types and type inference
 - [Records](RECORDS.md) - Product types with named fields
 - [API Reference](API_REFERENCE.md) - API documentation for library users (partial coverage; see the reference for scope)
+- [Editor Support](EDITOR_SUPPORT.md) - Neovim (tree-sitter) and bat syntax highlighting
 
 ### Module Documentation
 - [AST Module](MODULE_AST.md) - Abstract syntax tree data structures

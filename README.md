@@ -799,6 +799,7 @@ Comprehensive documentation is available in the `docs/` directory:
 
 ### 📖 API Reference
 - **[API Reference](docs/API_REFERENCE.md)** - API documentation for using ParLang as a library (partial coverage)
+- **[Editor Support](docs/EDITOR_SUPPORT.md)** - Neovim (tree-sitter) and bat syntax highlighting
 
 ## Architecture
 
