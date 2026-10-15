@@ -45,6 +45,18 @@ pub struct TypeScheme {
     pub ty: Type,
 }
 
+impl TypeScheme {
+    /// Build a monomorphic scheme (no quantified variables).
+    pub fn mono(ty: Type) -> Self {
+        TypeScheme { vars: vec![], ty }
+    }
+
+    /// Build a polymorphic scheme quantifying `vars` over `ty`.
+    pub fn poly(vars: Vec<TypeVar>, ty: Type) -> Self {
+        TypeScheme { vars, ty }
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -152,14 +164,8 @@ mod tests {
 
     #[test]
     fn test_type_scheme_equality() {
-        let scheme1 = TypeScheme {
-            vars: vec![TypeVar(0)],
-            ty: Type::Var(TypeVar(0)),
-        };
-        let scheme2 = TypeScheme {
-            vars: vec![TypeVar(0)],
-            ty: Type::Var(TypeVar(0)),
-        };
+        let scheme1 = TypeScheme::poly(vec![TypeVar(0)], Type::Var(TypeVar(0)));
+        let scheme2 = TypeScheme::poly(vec![TypeVar(0)], Type::Var(TypeVar(0)));
         assert_eq!(scheme1, scheme2);
     }
 
@@ -252,43 +258,37 @@ mod tests {
 
     #[test]
     fn test_display_type_scheme_monomorphic() {
-        let scheme = TypeScheme {
-            vars: vec![],
-            ty: Type::Int,
-        };
+        let scheme = TypeScheme::mono(Type::Int);
         assert_eq!(format!("{scheme}"), "Int");
     }
 
     #[test]
     fn test_display_type_scheme_polymorphic() {
-        let scheme = TypeScheme {
-            vars: vec![TypeVar(0)],
-            ty: Type::Fun(
+        let scheme = TypeScheme::poly(
+            vec![TypeVar(0)],
+            Type::Fun(
                 Box::new(Type::Var(TypeVar(0))),
                 Box::new(Type::Var(TypeVar(0))),
             ),
-        };
+        );
         assert_eq!(format!("{scheme}"), "forall t0. t0 -> t0");
     }
 
     #[test]
     fn test_display_type_scheme_multiple_vars() {
-        let scheme = TypeScheme {
-            vars: vec![TypeVar(0), TypeVar(1)],
-            ty: Type::Fun(
+        let scheme = TypeScheme::poly(
+            vec![TypeVar(0), TypeVar(1)],
+            Type::Fun(
                 Box::new(Type::Var(TypeVar(0))),
                 Box::new(Type::Var(TypeVar(1))),
             ),
-        };
+        );
         assert_eq!(format!("{scheme}"), "forall t0, t1. t0 -> t1");
     }
 
     #[test]
     fn test_display_type_scheme_unit() {
-        let scheme = TypeScheme {
-            vars: vec![],
-            ty: Type::Unit,
-        };
+        let scheme = TypeScheme::mono(Type::Unit);
         assert_eq!(format!("{scheme}"), "()");
     }
 

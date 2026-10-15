@@ -62,7 +62,7 @@ impl TypeEnv {
     #[must_use]
     pub fn extend(&self, name: String, ty: Type) -> Self {
         let mut new_env = self.clone();
-        new_env.bind(name, TypeScheme { vars: vec![], ty });
+        new_env.bind(name, TypeScheme::mono(ty));
         new_env
     }
 
@@ -88,10 +88,7 @@ impl TypeEnv {
         let mut quantified: Vec<TypeVar> = free_in_type.difference(&free_in_env).cloned().collect();
         quantified.sort();
 
-        TypeScheme {
-            vars: quantified,
-            ty: ty.clone(),
-        }
+        TypeScheme::poly(quantified, ty.clone())
     }
 
     /// Get free type variables in the environment
