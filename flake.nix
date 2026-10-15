@@ -42,11 +42,32 @@
             buildInputs = [ pkgs.openssl.dev ];
             PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
           };
+
+          treeSitterParlang = pkgs.tree-sitter.buildGrammar {
+            language = "parlang";
+            version = manifest.version;
+            src = ./editors/tree-sitter-parlang;
+            generate = true;
+          };
+
+          parlangNvim = pkgs.linkFarm "parlang-nvim" [
+            { name = "parser/parlang.so"; path = "${treeSitterParlang}/parser"; }
+            { name = "queries/parlang/highlights.scm"; path = ./editors/tree-sitter-parlang/queries/highlights.scm; }
+            { name = "ftdetect/parlang.lua"; path = ./editors/nvim/ftdetect/parlang.lua; }
+            { name = "ftplugin/parlang.lua"; path = ./editors/nvim/ftplugin/parlang.lua; }
+          ];
+
+          parlangBatSyntax = pkgs.linkFarm "parlang-bat-syntax" [
+            { name = "ParLang.sublime-syntax"; path = ./editors/sublime/ParLang.sublime-syntax; }
+          ];
         in
         rec {
           packages = {
             parlang = parlang;
             default = packages.parlang;
+            tree-sitter-parlang = treeSitterParlang;
+            parlang-nvim = parlangNvim;
+            parlang-bat-syntax = parlangBatSyntax;
           };
 
           devShells.default = pkgs.mkShell {
@@ -73,6 +94,10 @@
               RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
               PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
             };
+          };
+
+          checks = {
+            inherit (packages) tree-sitter-parlang parlang-nvim parlang-bat-syntax;
           };
         }
       );
