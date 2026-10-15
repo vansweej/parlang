@@ -549,12 +549,12 @@ eval(&expr, &env)  // => Ok(Value::Int(1))
 #### 6. Let Binding (`Expr::Let`)
 
 ```rust
-Expr::Let(name, value, body) => {
-    let val = eval(value, env)?;
-    let new_env = env.extend(name.clone(), val);
-    eval(body, &new_env)
-}
+let val = eval_inner(value, env, depth + 1)?;
+let new_env = env.extend(name.clone(), val);
+eval_inner(body, &new_env, depth + 1)
 ```
+
+This is the `Expr::Let` arm of `eval_inner`. Each nested evaluation runs one level deeper, so the `depth` guard turns runaway recursion into `EvalError::RecursionLimit`. The type annotation is ignored at run time. When a recursive (`rec`) function is applied to all of its parameters, its body runs under the tail-call loop `eval_with_tco`, and a `let` reached by that loop is handled by the loop's own `Let` arm: it extends the loop's current environment and continues with the body instead of recursing, and falls back to `eval_inner` if the binding shadows the recursive function's name. See `eval_inner` and `eval_with_tco` in `crates/parlang/src/eval.rs`.
 
 **Algorithm**:
 1. Evaluate the value expression in current environment
@@ -580,18 +580,16 @@ let expr = Expr::Let(
 eval(&expr, &env)  // => Ok(Value::Int(43))
 ```
 
-**Complexity**: O(eval(value) + |env| + eval(body))
-- `|env|` for cloning environment
+**Complexity**: O(eval(value) + |frame| + eval(body))
+- `|frame|` is the size of the current (innermost) frame: `extend` creates a new single-binding frame whose parent is a copy of the current frame behind a new `Rc`, so ancestor frames are shared rather than copied
 
 #### 7. Function Definition (`Expr::Fun`)
 
 ```rust
-Expr::Fun(param, body) => Ok(Value::Closure(
-    param.clone(),
-    (**body).clone(),
-    env.clone(),
-))
+Ok(Value::Closure(param.clone(), (**body).clone(), env.clone()))
 ```
+
+This is the `Expr::Fun` arm of `eval_inner` (the recursive worker behind `eval`). It builds a closure from the parameter name, a copy of the body and a clone of the current environment. Any parameter type annotation is ignored at run time; the type checker has already used it. See `eval_inner` in `crates/parlang/src/eval.rs`.
 
 **Algorithm**:
 1. Create closure capturing parameter name
@@ -616,7 +614,7 @@ let expr = Expr::Fun(
 eval(&expr, &env)  // => Ok(Value::Closure("x", body, env))
 ```
 
-**Complexity**: O(|env|) for cloning environment
+**Complexity**: O(|frame| + |body|) - `env.clone()` copies only the current (innermost) frame's own maps and shares ancestor frames via `Rc`, and the body expression is cloned into the closure
 
 #### 8. Function Application (`Expr::App`)
 
