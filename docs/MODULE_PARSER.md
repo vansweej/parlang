@@ -271,27 +271,20 @@ Parses let bindings.
 fn let_expr[Input]()(Input) -> Expr
 ```
 
-**Syntax**: `let <name> = <value> in <body>`
+**Syntax**: `let <name> [: <type>] = <value> in <body>`
 
 **Example**:
 ```
 let x = 42 in x + 1
 ```
 
-**Implementation**:
+**Implementation**: `let_expr` reads `let`, an identifier, an optional `: type` annotation (parsed by `type_annotation`), `=`, the value, `in` and the body, and builds:
+
 ```rust
-(
-    string("let").skip(spaces()),
-    identifier().skip(spaces()),
-    token('=').skip(spaces()),
-    expr().skip(spaces()),
-    string("in").skip(spaces()),
-    expr(),
-)
-    .map(|(_, name, _, value, _, body)| {
-        Expr::Let(name, Box::new(value), Box::new(body))
-    })
+Expr::Let(name, ty_ann, Box::new(value), Box::new(body))
 ```
+
+The `=` ends the annotation, so a function type such as `let f : Int -> Int = fun x -> x + 1 in f 2` needs no parentheses. See `let_expr` in `crates/parlang/src/parser.rs`.
 
 #### `if_expr()`
 
@@ -335,23 +328,23 @@ Parses function definitions.
 fn fun_expr[Input]()(Input) -> Expr
 ```
 
-**Syntax**: `fun <param> -> <body>`
+**Syntax**: `fun <param> -> <body>` or `fun (<param> : <type>) -> <body>`
 
 **Example**:
 ```
 fun x -> x + 1
+fun (x : Int) -> x + 1
 ```
 
-**Implementation**:
+**Implementation**: `fun_expr` reads `fun`, one parameter via `fun_param`, then `->` and the body:
+
 ```rust
-(
-    string("fun").skip(spaces()),
-    identifier().skip(spaces()),
-    string("->").skip(spaces()),
-    expr(),
-)
-    .map(|(_, param, _, body)| Expr::Fun(param, Box::new(body)))
+string("fun").skip(spaces()),
+fun_param(),
+string("->").skip(spaces()),
 ```
+
+`fun_param` accepts either a bare identifier, which carries no annotation, or `(name : type)` between parentheses. The closing `)` ends the type, so `fun (f : Int -> Int) -> f 1` needs no extra parentheses. A bare parameter cannot carry an annotation: `fun x : Int -> x` is a parse error. The result is `Expr::Fun(param, ty_ann, body)`, with `ty_ann` set only for the parenthesised form. See `fun_expr` and `fun_param` in `crates/parlang/src/parser.rs`.
 
 #### `rec_expr()`
 
