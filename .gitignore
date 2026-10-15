@@ -17,7 +17,7 @@ target
 *.dot
 
 # nix build output symlink
-/result
+/result*
 
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
