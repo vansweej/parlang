@@ -416,20 +416,60 @@ parser! {
 }
 
 parser! {
+    /// Parses a single lambda parameter.
+    ///
+    /// Two shapes are accepted:
+    ///
+    /// * a bare identifier, e.g. `x`, which carries no type annotation; and
+    /// * a parenthesised, annotated parameter, e.g. `(x : Int)`.
+    ///
+    /// Only the parenthesised shape may carry a type annotation. The closing
+    /// `)` delimits the annotation, so an arrow type such as `Int -> Int`
+    /// needs no extra parentheses: `(f : Int -> Int)` parses as one parameter.
+    /// A bare parameter deliberately cannot carry an annotation, so
+    /// `fun x : T -> e` is a parse error.
+    fn fun_param[Input]()(Input) -> (String, Option<TypeAnnotation>)
+    where [Input: Stream<Token = char>]
+    {
+        choice((
+            // Parenthesised, annotated parameter: `(name : type)`.
+            // The closing paren ends the type, so arrow types are fine here.
+            // No `attempt`: `(` can never start an identifier, so the bare
+            // fallback can never succeed once `(` is consumed (AGENTS.md: use
+            // attempt() sparingly).
+            between(
+                token('(').skip(spaces()),
+                token(')').skip(spaces()),
+                (
+                    identifier().skip(spaces()),
+                    token(':').skip(spaces()),
+                    type_annotation().skip(spaces()),
+                ),
+            )
+            .map(|(name, _colon, ty)| (name, Some(ty))),
+            // Bare parameter: just an identifier, never annotated.
+            identifier().skip(spaces()).map(|name| (name, None)),
+        ))
+    }
+}
+
+parser! {
+    /// Parses a lambda: `fun <param> -> <body>`.
+    ///
+    /// `<param>` is produced by `fun_param` and may be a bare identifier or
+    /// a parenthesised annotated parameter such as `(x : Int)`.
     fn fun_expr[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
     {
         (
             string("fun").skip(spaces()),
-            identifier().skip(spaces()),
-            optional(
-                token(':').skip(spaces())
-                    .with(type_annotation().skip(spaces()))
-            ),
+            fun_param(),
             string("->").skip(spaces()),
             expr(),
         )
-            .map(|(_, param, ty_ann, _, body)| Expr::Fun(param, ty_ann, Box::new(body)))
+            .map(|(_fun, (param, ty_ann), _arrow, body)| {
+                Expr::Fun(param, ty_ann, Box::new(body))
+            })
     }
 }
 
