@@ -50,7 +50,7 @@ pub use eval::{
 pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
 pub use parser::{parse_expr, parse_program};
 pub use typechecker::{
-    typecheck, typecheck_program, typecheck_program_with_env, TypeEnv, TypeError,
+    typecheck, typecheck_program, typecheck_program_with_env, typecheck_typed, TypeEnv, TypeError,
 };
 pub use typed_ast::{TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedProgram};
 pub use types::{Constraint, Type, TypeScheme, TypeVar};

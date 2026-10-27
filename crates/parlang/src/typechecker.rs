@@ -1,5 +1,6 @@
 /// Hindley-Milner type inference implementation
 use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
+use crate::typed_ast::{TypedExpr, TypedExprKind, TypedMatchArm};
 use crate::types::{Type, TypeScheme, TypeVar};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -1276,6 +1277,25 @@ fn infer_type_alias(
     infer(body, &mut new_env)
 }
 
+/// Build a leaf typed node (literal / `Var` / resolved `Load`) with no
+/// substitution to compose.
+fn leaf(kind: TypedExprKind, ty: Type) -> (TypedExpr, Substitution) {
+    (TypedExpr { kind, ty }, HashMap::new())
+}
+
+/// Wrap an un-migrated helper's `(Type, Substitution)` result into an opaque
+/// `Pending` typed node carrying the original expression.
+fn pending(expr: &Expr, result: (Type, Substitution)) -> (TypedExpr, Substitution) {
+    let (ty, subst) = result;
+    (
+        TypedExpr {
+            kind: TypedExprKind::Pending(expr.clone()),
+            ty,
+        },
+        subst,
+    )
+}
+
 /// Type inference for expressions
 ///
 /// # Errors
@@ -1284,65 +1304,160 @@ fn infer_type_alias(
 /// mismatch that cannot be unified, an occurs-check failure, a constructor
 /// applied with the wrong number of arguments, or any other static typing
 /// violation detected during inference.
-pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), TypeError> {
+fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitution), TypeError> {
     match expr {
-        Expr::Int(_) => Ok((Type::Int, HashMap::new())),
-
-        Expr::Bool(_) => Ok((Type::Bool, HashMap::new())),
-
-        Expr::Char(_) => Ok((Type::Char, HashMap::new())),
-
-        Expr::Float(_) => Ok((Type::Float, HashMap::new())),
-
+        Expr::Int(n) => Ok(leaf(TypedExprKind::Int(*n), Type::Int)),
+        Expr::Bool(b) => Ok(leaf(TypedExprKind::Bool(*b), Type::Bool)),
+        Expr::Char(c) => Ok(leaf(TypedExprKind::Char(*c), Type::Char)),
+        Expr::Float(x) => Ok(leaf(TypedExprKind::Float(*x), Type::Float)),
         Expr::Var(name) => {
             let ty = env
                 .lookup(name)
                 .ok_or_else(|| TypeError::UnboundVariable(name.clone()))?;
-            Ok((ty, HashMap::new()))
+            Ok(leaf(TypedExprKind::Var(name.clone()), ty))
         }
-
-        Expr::BinOp(op, left, right) => infer_binop(*op, left, right, env),
-
-        Expr::If(cond, then_br, else_br) => infer_if(cond, then_br, else_br, env),
-
-        Expr::Let(name, ty_ann_opt, value, body) => {
-            infer_let(name, ty_ann_opt.as_ref(), value, body, env)
+        Expr::BinOp(op, left, right) => Ok(pending(expr, infer_binop(*op, left, right, env)?)),
+        Expr::If(cond, then_br, else_br) => {
+            Ok(pending(expr, infer_if(cond, then_br, else_br, env)?))
         }
-
-        Expr::Fun(param, ty_ann_opt, body) => infer_fun(param, ty_ann_opt.as_ref(), body, env),
-
-        Expr::App(func, arg) => infer_app(func, arg, env),
-
-        Expr::Rec(name, body) => infer_rec(name, body, env),
-
-        Expr::Tuple(elements) => infer_tuple(elements, env),
-
-        Expr::TupleProj(tuple_expr, index) => infer_tuple_proj(tuple_expr, *index, env),
-
-        Expr::Match(scrutinee, arms) => infer_match(scrutinee, arms, env),
-
-        Expr::Load(_, _) => {
-            // For now, return a type variable for load expressions
-            Ok((env.fresh_var(), HashMap::new()))
+        Expr::Let(name, ty_ann_opt, value, body) => Ok(pending(
+            expr,
+            infer_let(name, ty_ann_opt.as_ref(), value, body, env)?,
+        )),
+        Expr::Fun(param, ty_ann_opt, body) => Ok(pending(
+            expr,
+            infer_fun(param, ty_ann_opt.as_ref(), body, env)?,
+        )),
+        Expr::App(func, arg) => Ok(pending(expr, infer_app(func, arg, env)?)),
+        Expr::Rec(name, body) => Ok(pending(expr, infer_rec(name, body, env)?)),
+        Expr::Tuple(elements) => Ok(pending(expr, infer_tuple(elements, env)?)),
+        Expr::TupleProj(tuple_expr, index) => {
+            Ok(pending(expr, infer_tuple_proj(tuple_expr, *index, env)?))
         }
-
-        Expr::TypeAlias(name, ty_expr, body) => infer_type_alias(name, ty_expr, body, env),
-
-        Expr::Record(fields) => infer_record(fields, env),
-
-        Expr::FieldAccess(record_expr, field_name) => {
-            infer_field_access(record_expr, field_name, env)
+        Expr::Match(scrutinee, arms) => Ok(pending(expr, infer_match(scrutinee, arms, env)?)),
+        Expr::Load(..) => Ok(pending(expr, (env.fresh_var(), HashMap::new()))),
+        Expr::TypeAlias(name, ty_expr, body) => {
+            Ok(pending(expr, infer_type_alias(name, ty_expr, body, env)?))
         }
-
+        Expr::Record(fields) => Ok(pending(expr, infer_record(fields, env)?)),
+        Expr::FieldAccess(record_expr, field_name) => Ok(pending(
+            expr,
+            infer_field_access(record_expr, field_name, env)?,
+        )),
         Expr::TypeDef {
             name,
             type_params,
             constructors,
             body,
-        } => infer_type_def(name, type_params, constructors, body, env),
-
-        Expr::Constructor(name, args) => infer_constructor(name, args, env),
+        } => Ok(pending(
+            expr,
+            infer_type_def(name, type_params, constructors, body, env)?,
+        )),
+        Expr::Constructor(name, args) => Ok(pending(expr, infer_constructor(name, args, env)?)),
     }
+}
+
+/// Type inference for expressions (type-only wrapper over `infer_typed`).
+///
+/// # Errors
+///
+/// Returns a `TypeError` for any static typing violation; see `infer_typed`.
+pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), TypeError> {
+    infer_typed(expr, env).map(|(typed, subst)| (typed.ty, subst))
+}
+
+/// Apply `subst` to every `ty` in a typed tree (and every match-arm binding),
+/// producing a fully resolved typed AST. `Pending`/`Load` payloads are copied
+/// unchanged; only their node `ty` is resolved.
+fn resolve_typed(subst: &Substitution, typed: &TypedExpr) -> TypedExpr {
+    use TypedExprKind as K;
+    let kind = match &typed.kind {
+        K::Int(_)
+        | K::Bool(_)
+        | K::Char(_)
+        | K::Float(_)
+        | K::Var(_)
+        | K::Pending(_)
+        | K::Load(_, _) => typed.kind.clone(),
+        K::BinOp(op, l, r) => K::BinOp(
+            *op,
+            Box::new(resolve_typed(subst, l)),
+            Box::new(resolve_typed(subst, r)),
+        ),
+        K::If(c, t, e) => K::If(
+            Box::new(resolve_typed(subst, c)),
+            Box::new(resolve_typed(subst, t)),
+            Box::new(resolve_typed(subst, e)),
+        ),
+        K::Let(n, ann, v, b) => K::Let(
+            n.clone(),
+            ann.clone(),
+            Box::new(resolve_typed(subst, v)),
+            Box::new(resolve_typed(subst, b)),
+        ),
+        K::Fun(p, ann, b) => K::Fun(p.clone(), ann.clone(), Box::new(resolve_typed(subst, b))),
+        K::App(f, a) => K::App(
+            Box::new(resolve_typed(subst, f)),
+            Box::new(resolve_typed(subst, a)),
+        ),
+        K::Rec(n, b) => K::Rec(n.clone(), Box::new(resolve_typed(subst, b))),
+        K::Match(s, arms) => K::Match(
+            Box::new(resolve_typed(subst, s)),
+            arms.iter()
+                .map(|arm| TypedMatchArm {
+                    pattern: arm.pattern.clone(),
+                    bindings: arm
+                        .bindings
+                        .iter()
+                        .map(|(name, ty)| (name.clone(), apply_subst(subst, ty)))
+                        .collect(),
+                    body: resolve_typed(subst, &arm.body),
+                })
+                .collect(),
+        ),
+        K::Tuple(elems) => K::Tuple(elems.iter().map(|e| resolve_typed(subst, e)).collect()),
+        K::TupleProj(t, i) => K::TupleProj(Box::new(resolve_typed(subst, t)), *i),
+        K::TypeAlias(n, te, b) => {
+            K::TypeAlias(n.clone(), te.clone(), Box::new(resolve_typed(subst, b)))
+        }
+        K::Record(fields) => K::Record(
+            fields
+                .iter()
+                .map(|(name, e)| (name.clone(), resolve_typed(subst, e)))
+                .collect(),
+        ),
+        K::FieldAccess(r, name) => K::FieldAccess(Box::new(resolve_typed(subst, r)), name.clone()),
+        K::TypeDef {
+            name,
+            type_params,
+            constructors,
+            body,
+        } => K::TypeDef {
+            name: name.clone(),
+            type_params: type_params.clone(),
+            constructors: constructors.clone(),
+            body: Box::new(resolve_typed(subst, body)),
+        },
+        K::Constructor(name, args) => K::Constructor(
+            name.clone(),
+            args.iter().map(|a| resolve_typed(subst, a)).collect(),
+        ),
+    };
+    TypedExpr {
+        kind,
+        ty: apply_subst(subst, &typed.ty),
+    }
+}
+
+/// Type check an expression, returning the fully resolved typed AST.
+///
+/// # Errors
+///
+/// Returns a `TypeError` for any static typing violation; see [`infer`].
+pub fn typecheck_typed(expr: &Expr) -> Result<TypedExpr, TypeError> {
+    let mut env = TypeEnv::new();
+    let (typed, subst) = infer_typed(expr, &mut env)?;
+    Ok(resolve_typed(&subst, &typed))
 }
 
 /// Public API for type checking
@@ -1352,9 +1467,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
 /// Returns a `TypeError` if `expr` fails to type-check; see [`infer`] for the
 /// specific error conditions.
 pub fn typecheck(expr: &Expr) -> Result<Type, TypeError> {
-    let mut env = TypeEnv::new();
-    let (ty, subst) = infer(expr, &mut env)?;
-    Ok(apply_subst(&subst, &ty))
+    Ok(typecheck_typed(expr)?.ty)
 }
 
 /// Synchronise a cloned environment's fresh-variable counter with an inference result.
