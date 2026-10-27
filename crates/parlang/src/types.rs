@@ -36,6 +36,18 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeVar(pub usize);
 
+/// A typeclass constraint attached to a quantified type variable.
+///
+/// Reserved for forward compatibility; no constraints are produced by the
+/// current type checker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Constraint {
+    /// Typeclass name, e.g. `Eq`.
+    pub class: String,
+    /// Type arguments the class is applied to.
+    pub args: Vec<Type>,
+}
+
 /// Type scheme for polymorphic types: ∀α.τ
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeScheme {
@@ -43,17 +55,27 @@ pub struct TypeScheme {
     pub vars: Vec<TypeVar>,
     /// The type
     pub ty: Type,
+    /// Typeclass constraints. Always empty this slice (forward-compat).
+    pub constraints: Vec<Constraint>,
 }
 
 impl TypeScheme {
     /// Build a monomorphic scheme (no quantified variables).
     pub fn mono(ty: Type) -> Self {
-        TypeScheme { vars: vec![], ty }
+        TypeScheme {
+            vars: vec![],
+            ty,
+            constraints: vec![],
+        }
     }
 
     /// Build a polymorphic scheme quantifying `vars` over `ty`.
     pub fn poly(vars: Vec<TypeVar>, ty: Type) -> Self {
-        TypeScheme { vars, ty }
+        TypeScheme {
+            vars,
+            ty,
+            constraints: vec![],
+        }
     }
 }
 
@@ -124,8 +146,28 @@ impl fmt::Display for TypeScheme {
                 write!(f, "t{}", var.0)?;
                 first = false;
             }
-            write!(f, ". {}", self.ty)
+            write!(f, ". ")?;
+            if !self.constraints.is_empty() {
+                for (i, c) in self.constraints.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{c}")?;
+                }
+                write!(f, " => ")?;
+            }
+            write!(f, "{}", self.ty)
         }
+    }
+}
+
+impl fmt::Display for Constraint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.class)?;
+        for arg in &self.args {
+            write!(f, " {arg}")?;
+        }
+        Ok(())
     }
 }
 
@@ -464,5 +506,15 @@ mod tests {
     fn test_display_tuple_two_elements() {
         let ty = Type::Tuple(vec![Type::Int, Type::Bool]);
         assert_eq!(format!("{ty}"), "(Int, Bool)");
+    }
+
+    #[test]
+    fn test_display_type_scheme_with_constraint() {
+        let mut scheme = TypeScheme::poly(vec![TypeVar(0)], Type::Var(TypeVar(0)));
+        scheme.constraints.push(Constraint {
+            class: "Eq".to_string(),
+            args: vec![Type::Var(TypeVar(0))],
+        });
+        assert_eq!(format!("{scheme}"), "forall t0. Eq t0 => t0");
     }
 }

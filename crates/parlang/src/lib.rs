@@ -51,4 +51,4 @@ pub use parser::{parse_expr, parse_program};
 pub use typechecker::{
     typecheck, typecheck_program, typecheck_program_with_env, TypeEnv, TypeError,
 };
-pub use types::{Type, TypeScheme, TypeVar};
+pub use types::{Constraint, Type, TypeScheme, TypeVar};
