@@ -36,6 +36,7 @@ pub mod eval;
 pub mod exhaustiveness;
 pub mod parser;
 pub mod typechecker;
+pub mod typed_ast;
 pub mod types;
 
 // Re-export commonly used types and functions
@@ -51,4 +52,5 @@ pub use parser::{parse_expr, parse_program};
 pub use typechecker::{
     typecheck, typecheck_program, typecheck_program_with_env, TypeEnv, TypeError,
 };
+pub use typed_ast::{TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedProgram};
 pub use types::{Constraint, Type, TypeScheme, TypeVar};
