@@ -1678,6 +1678,21 @@ mod tests {
     use super::*;
     use crate::parser::parse_expr as parse;
 
+    fn check_typed(source: &str) -> Result<crate::typed_ast::TypedExpr, TypeError> {
+        let expr = parse(source).unwrap();
+        typecheck_typed(&expr)
+    }
+
+    #[test]
+    fn test_typed_literal_root() {
+        let typed = check_typed("42").unwrap();
+        assert_eq!(typed.ty, Type::Int);
+        assert!(matches!(
+            typed.kind,
+            crate::typed_ast::TypedExprKind::Int(42)
+        ));
+    }
+
     fn check(source: &str) -> Result<Type, TypeError> {
         let expr = parse(source).unwrap();
         typecheck(&expr)
