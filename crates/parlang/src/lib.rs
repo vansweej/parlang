@@ -53,5 +53,7 @@ pub use typechecker::{
     typecheck, typecheck_program, typecheck_program_typed, typecheck_program_typed_with_env,
     typecheck_program_with_env, typecheck_typed, TypeEnv, TypeError,
 };
-pub use typed_ast::{TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedProgram};
+pub use typed_ast::{
+    typed_program_to_text, TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedProgram,
+};
 pub use types::{Constraint, Type, TypeScheme, TypeVar};
