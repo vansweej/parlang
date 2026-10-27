@@ -41,7 +41,7 @@ pub mod types;
 
 // Re-export commonly used types and functions
 pub use ast::{BinOp, Decl, Expr, Program};
-pub use dot::program_to_dot;
+pub use dot::{program_to_dot, typed_program_to_dot};
 pub use eval::{
     eval, eval_program, eval_program_with_env, extend_env_with_program, extract_bindings,
     run_on_evaluator_stack, Environment, EvalError, EvaluatorStackError, Value,

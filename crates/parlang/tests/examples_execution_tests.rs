@@ -187,6 +187,52 @@ fn every_example_typed_ast_is_consistent() {
 }
 
 #[test]
+fn every_example_typed_dump_renders() {
+    let rels = example_rels();
+
+    let mut failures = Vec::new();
+    for rel in &rels {
+        let source = match example_source(rel) {
+            Ok(s) => s,
+            Err(e) => {
+                failures.push(format!("{rel}: {e}"));
+                continue;
+            }
+        };
+        let outcome = run_on_evaluator_stack(move || -> Result<(), String> {
+            let program = parse_program(&source)?;
+            let typed = parlang::typecheck_program_typed(&program).map_err(|e| e.to_string())?;
+            let text = parlang::typed_program_to_text(&typed);
+            if !text.starts_with(&format!("Program : {}\n", typed.ty)) {
+                return Err(format!("text missing header: {text}"));
+            }
+            if !text.ends_with('\n') {
+                return Err("text missing trailing newline".to_string());
+            }
+            let dot = parlang::typed_program_to_dot(&typed);
+            if !dot.starts_with("digraph TypedAST {\n") {
+                return Err("dot missing header".to_string());
+            }
+            if !dot.ends_with("}\n") {
+                return Err("dot missing footer".to_string());
+            }
+            Ok(())
+        })
+        .map_err(|e| e.to_string());
+        match outcome {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) | Err(e) => failures.push(format!("{rel}: {e}")),
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "typed dump failed for examples:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
 fn executes_stdlib_example() {
     assert_eq!(run_example("examples/stdlib.par"), Ok("Int(0)".to_string()));
 }
