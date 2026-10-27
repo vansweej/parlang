@@ -1106,26 +1106,26 @@ fn infer_if(
     then_br: &Expr,
     else_br: &Expr,
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
-    let (cond_ty, s1) = infer(cond, env)?;
-    let s2 = unify(&cond_ty, &Type::Bool)?;
-    advance_next_var_from_inference(env, &cond_ty, &s1);
+) -> Result<(TypedExpr, Substitution), TypeError> {
+    let (cond_typed, s1) = infer_typed(cond, env)?;
+    let s2 = unify(&cond_typed.ty, &Type::Bool)?;
+    advance_next_var_from_inference(env, &cond_typed.ty, &s1);
 
     let mut env1 = env.clone();
     apply_subst_env(&compose_subst(&s2, &s1), &mut env1);
 
-    let (then_ty, s3) = infer(then_br, &mut env1)?;
-    advance_next_var_from_inference(&mut env1, &then_ty, &s3);
+    let (then_typed, s3) = infer_typed(then_br, &mut env1)?;
+    advance_next_var_from_inference(&mut env1, &then_typed.ty, &s3);
 
     let mut env2 = env1.clone();
     apply_subst_env(&s3, &mut env2);
 
-    let (else_ty, s4) = infer(else_br, &mut env2)?;
-    advance_next_var_from_inference(&mut env2, &else_ty, &s4);
+    let (else_typed, s4) = infer_typed(else_br, &mut env2)?;
+    advance_next_var_from_inference(&mut env2, &else_typed.ty, &s4);
     env.next_var = env.next_var.max(env2.next_var);
 
-    let then_ty = apply_subst(&s4, &then_ty);
-    let s5 = unify(&then_ty, &else_ty)?;
+    let then_ty = apply_subst(&s4, &then_typed.ty);
+    let s5 = unify(&then_ty, &else_typed.ty)?;
 
     let result_ty = apply_subst(&s5, &then_ty);
     let subst = compose_subst(
@@ -1133,7 +1133,17 @@ fn infer_if(
         &compose_subst(&s4, &compose_subst(&s3, &compose_subst(&s2, &s1))),
     );
 
-    Ok((result_ty, subst))
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::If(
+                Box::new(cond_typed),
+                Box::new(then_typed),
+                Box::new(else_typed),
+            ),
+            ty: result_ty,
+        },
+        subst,
+    ))
 }
 
 /// Type inference for function application `func arg` (extracted from
@@ -1142,28 +1152,35 @@ fn infer_app(
     func: &Expr,
     arg: &Expr,
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
-    let (func_ty, s1) = infer(func, env)?;
-    advance_next_var_from_inference(env, &func_ty, &s1);
+) -> Result<(TypedExpr, Substitution), TypeError> {
+    let (func_typed, s1) = infer_typed(func, env)?;
+    advance_next_var_from_inference(env, &func_typed.ty, &s1);
 
     let mut env1 = env.clone();
     apply_subst_env(&s1, &mut env1);
 
-    let (arg_ty, s2) = infer(arg, &mut env1)?;
-    advance_next_var_from_inference(&mut env1, &arg_ty, &s2);
+    let (arg_typed, s2) = infer_typed(arg, &mut env1)?;
+    advance_next_var_from_inference(&mut env1, &arg_typed.ty, &s2);
+    env.next_var = env.next_var.max(env1.next_var);
 
-    let func_ty = apply_subst(&s2, &func_ty);
+    let func_ty = apply_subst(&s2, &func_typed.ty);
     let result_ty = env1.fresh_var();
 
     let s3 = unify(
         &func_ty,
-        &Type::Fun(Box::new(arg_ty), Box::new(result_ty.clone())),
+        &Type::Fun(Box::new(arg_typed.ty.clone()), Box::new(result_ty.clone())),
     )?;
 
     let result_ty = apply_subst(&s3, &result_ty);
     let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
 
-    Ok((result_ty, subst))
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::App(Box::new(func_typed), Box::new(arg_typed)),
+            ty: result_ty,
+        },
+        subst,
+    ))
 }
 
 /// Type inference for `rec name -> body` via fixpoint typing (extracted from
@@ -1204,8 +1221,7 @@ fn infer_fun(
     ty_ann_opt: Option<&crate::ast::TypeAnnotation>,
     body: &Expr,
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
-    // Use annotated type if provided, otherwise create fresh variable
+) -> Result<(TypedExpr, Substitution), TypeError> {
     let param_ty = if let Some(ty_ann) = ty_ann_opt {
         resolve_type_annotation(ty_ann, env)?
     } else {
@@ -1215,12 +1231,19 @@ fn infer_fun(
     let mut env1 = env.clone();
     env1 = env1.extend(param.to_string(), param_ty.clone());
 
-    let (body_ty, s1) = infer(body, &mut env1)?;
-    advance_next_var_from_inference(&mut env1, &body_ty, &s1);
+    let (body_typed, s1) = infer_typed(body, &mut env1)?;
+    advance_next_var_from_inference(&mut env1, &body_typed.ty, &s1);
     env.next_var = env.next_var.max(env1.next_var);
     let param_ty = apply_subst(&s1, &param_ty);
 
-    Ok((Type::Fun(Box::new(param_ty), Box::new(body_ty)), s1))
+    let fun_ty = Type::Fun(Box::new(param_ty), Box::new(body_typed.ty.clone()));
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::Fun(param.to_string(), ty_ann_opt.cloned(), Box::new(body_typed)),
+            ty: fun_ty,
+        },
+        s1,
+    ))
 }
 
 /// Type inference for a record literal `{ f1 = e1, ... }` (extracted from
@@ -1317,18 +1340,13 @@ fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitutio
             Ok(leaf(TypedExprKind::Var(name.clone()), ty))
         }
         Expr::BinOp(op, left, right) => Ok(pending(expr, infer_binop(*op, left, right, env)?)),
-        Expr::If(cond, then_br, else_br) => {
-            Ok(pending(expr, infer_if(cond, then_br, else_br, env)?))
-        }
+        Expr::If(cond, then_br, else_br) => infer_if(cond, then_br, else_br, env),
         Expr::Let(name, ty_ann_opt, value, body) => Ok(pending(
             expr,
             infer_let(name, ty_ann_opt.as_ref(), value, body, env)?,
         )),
-        Expr::Fun(param, ty_ann_opt, body) => Ok(pending(
-            expr,
-            infer_fun(param, ty_ann_opt.as_ref(), body, env)?,
-        )),
-        Expr::App(func, arg) => Ok(pending(expr, infer_app(func, arg, env)?)),
+        Expr::Fun(param, ty_ann_opt, body) => infer_fun(param, ty_ann_opt.as_ref(), body, env),
+        Expr::App(func, arg) => infer_app(func, arg, env),
         Expr::Rec(name, body) => Ok(pending(expr, infer_rec(name, body, env)?)),
         Expr::Tuple(elements) => Ok(pending(expr, infer_tuple(elements, env)?)),
         Expr::TupleProj(tuple_expr, index) => {
