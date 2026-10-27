@@ -1313,19 +1313,27 @@ fn infer_fun(
 fn infer_record(
     fields: &[(String, Expr)],
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
+) -> Result<(TypedExpr, Substitution), TypeError> {
     let mut field_types = HashMap::new();
+    let mut typed_fields = Vec::with_capacity(fields.len());
     let mut subst = HashMap::new();
 
     for (name, expr) in fields {
-        let (ty, s) = infer(expr, env)?;
-        let ty = apply_subst(&subst, &ty);
+        let (expr_typed, s) = infer_typed(expr, env)?;
+        let ty = apply_subst(&subst, &expr_typed.ty);
         subst = compose_subst(&s, &subst);
         apply_subst_env(&s, env);
         field_types.insert(name.clone(), ty);
+        typed_fields.push((name.clone(), expr_typed));
     }
 
-    Ok((Type::Record(field_types), subst))
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::Record(typed_fields),
+            ty: Type::Record(field_types),
+        },
+        subst,
+    ))
 }
 
 /// Type inference for a `type Name ... = ...` definition node (extracted from
@@ -1336,7 +1344,7 @@ fn infer_type_def(
     constructors: &[(String, Vec<crate::ast::TypeAnnotation>)],
     body: &Expr,
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
+) -> Result<(TypedExpr, Substitution), TypeError> {
     for (ctor_name, payload_types) in constructors {
         let info = ConstructorInfo {
             type_params: type_params.to_vec(),
@@ -1345,7 +1353,21 @@ fn infer_type_def(
         };
         env.register_constructor(ctor_name.clone(), info);
     }
-    infer(body, env)
+
+    let (body_typed, subst) = infer_typed(body, env)?;
+    let ty = body_typed.ty.clone();
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::TypeDef {
+                name: name.to_string(),
+                type_params: type_params.to_vec(),
+                constructors: constructors.to_vec(),
+                body: Box::new(body_typed),
+            },
+            ty,
+        },
+        subst,
+    ))
 }
 
 /// Type inference for `type Name = TyExpr in body` (extracted from `infer` to
@@ -1355,11 +1377,23 @@ fn infer_type_alias(
     ty_expr: &crate::ast::TypeExpr,
     body: &Expr,
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
+) -> Result<(TypedExpr, Substitution), TypeError> {
     let ty = resolve_type_expr(ty_expr, env)?;
     let mut new_env = env.clone();
     new_env.define_type_alias(name.to_string(), ty);
-    infer(body, &mut new_env)
+
+    let (body_typed, subst) = infer_typed(body, &mut new_env)?;
+    advance_next_var_from_inference(&mut new_env, &body_typed.ty, &subst);
+    env.next_var = env.next_var.max(new_env.next_var);
+
+    let ty = body_typed.ty.clone();
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::TypeAlias(name.to_string(), ty_expr.clone(), Box::new(body_typed)),
+            ty,
+        },
+        subst,
+    ))
 }
 
 /// Build a leaf typed node (literal / `Var` / resolved `Load`) with no
@@ -1413,10 +1447,8 @@ fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitutio
         Expr::TupleProj(tuple_expr, index) => infer_tuple_proj(tuple_expr, *index, env),
         Expr::Match(scrutinee, arms) => Ok(pending(expr, infer_match(scrutinee, arms, env)?)),
         Expr::Load(..) => Ok(pending(expr, (env.fresh_var(), HashMap::new()))),
-        Expr::TypeAlias(name, ty_expr, body) => {
-            Ok(pending(expr, infer_type_alias(name, ty_expr, body, env)?))
-        }
-        Expr::Record(fields) => Ok(pending(expr, infer_record(fields, env)?)),
+        Expr::TypeAlias(name, ty_expr, body) => infer_type_alias(name, ty_expr, body, env),
+        Expr::Record(fields) => infer_record(fields, env),
         Expr::FieldAccess(record_expr, field_name) => {
             infer_field_access(record_expr, field_name, env)
         }
@@ -1425,10 +1457,7 @@ fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitutio
             type_params,
             constructors,
             body,
-        } => Ok(pending(
-            expr,
-            infer_type_def(name, type_params, constructors, body, env)?,
-        )),
+        } => infer_type_def(name, type_params, constructors, body, env),
         Expr::Constructor(name, args) => Ok(pending(expr, infer_constructor(name, args, env)?)),
     }
 }
