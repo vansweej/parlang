@@ -1222,6 +1222,60 @@ fn infer_fun(
     Ok((Type::Fun(Box::new(param_ty), Box::new(body_ty)), s1))
 }
 
+/// Type inference for a record literal `{ f1 = e1, ... }` (extracted from
+/// `infer` to keep its line count down).
+fn infer_record(
+    fields: &[(String, Expr)],
+    env: &mut TypeEnv,
+) -> Result<(Type, Substitution), TypeError> {
+    let mut field_types = HashMap::new();
+    let mut subst = HashMap::new();
+
+    for (name, expr) in fields {
+        let (ty, s) = infer(expr, env)?;
+        let ty = apply_subst(&subst, &ty);
+        subst = compose_subst(&s, &subst);
+        apply_subst_env(&s, env);
+        field_types.insert(name.clone(), ty);
+    }
+
+    Ok((Type::Record(field_types), subst))
+}
+
+/// Type inference for a `type Name ... = ...` definition node (extracted from
+/// `infer` to keep its line count down).
+fn infer_type_def(
+    name: &str,
+    type_params: &[String],
+    constructors: &[(String, Vec<crate::ast::TypeAnnotation>)],
+    body: &Expr,
+    env: &mut TypeEnv,
+) -> Result<(Type, Substitution), TypeError> {
+    for (ctor_name, payload_types) in constructors {
+        let info = ConstructorInfo {
+            type_params: type_params.to_vec(),
+            payload_types: payload_types.clone(),
+            sum_type_name: name.to_string(),
+        };
+        env.register_constructor(ctor_name.clone(), info);
+    }
+    infer(body, env)
+}
+
+/// Type inference for `type Name = TyExpr in body` (extracted from `infer` to
+/// keep its line count down).
+fn infer_type_alias(
+    name: &str,
+    ty_expr: &crate::ast::TypeExpr,
+    body: &Expr,
+    env: &mut TypeEnv,
+) -> Result<(Type, Substitution), TypeError> {
+    let ty = resolve_type_expr(ty_expr, env)?;
+    let mut new_env = env.clone();
+    new_env.define_type_alias(name.to_string(), ty);
+    infer(body, &mut new_env)
+}
+
 /// Type inference for expressions
 ///
 /// # Errors
@@ -1272,40 +1326,9 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             Ok((env.fresh_var(), HashMap::new()))
         }
 
-        Expr::TypeAlias(name, ty_expr, body) => {
-            // Resolve the type expression to a Type
-            let ty = resolve_type_expr(ty_expr, env)?;
+        Expr::TypeAlias(name, ty_expr, body) => infer_type_alias(name, ty_expr, body, env),
 
-            // Define the type alias in the environment
-            let mut new_env = env.clone();
-            new_env.define_type_alias(name.clone(), ty);
-
-            // Infer the type of the body with the extended environment
-            infer(body, &mut new_env)
-        }
-
-        Expr::Record(fields) => {
-            // Infer types for all field expressions
-            let mut field_types = HashMap::new();
-            let mut subst = HashMap::new();
-
-            for (name, expr) in fields {
-                let (ty, s) = infer(expr, env)?;
-
-                // Apply accumulated substitution to the type
-                let ty = apply_subst(&subst, &ty);
-
-                // Compose substitutions
-                subst = compose_subst(&s, &subst);
-
-                // Apply substitution to environment for next field
-                apply_subst_env(&s, env);
-
-                field_types.insert(name.clone(), ty);
-            }
-
-            Ok((Type::Record(field_types), subst))
-        }
+        Expr::Record(fields) => infer_record(fields, env),
 
         Expr::FieldAccess(record_expr, field_name) => {
             infer_field_access(record_expr, field_name, env)
@@ -1316,20 +1339,7 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
             type_params,
             constructors,
             body,
-        } => {
-            // Register constructors in the environment
-            for (ctor_name, payload_types) in constructors {
-                let info = ConstructorInfo {
-                    type_params: type_params.clone(),
-                    payload_types: payload_types.clone(),
-                    sum_type_name: name.clone(),
-                };
-                env.register_constructor(ctor_name.clone(), info);
-            }
-
-            // Type check the body with constructors available
-            infer(body, env)
-        }
+        } => infer_type_def(name, type_params, constructors, body, env),
 
         Expr::Constructor(name, args) => infer_constructor(name, args, env),
     }
@@ -1362,6 +1372,28 @@ fn advance_next_var_from_inference(env: &mut TypeEnv, ty: &Type, subst: &Substit
             env.advance_past(&replacement_var);
         }
     }
+}
+
+/// Infer, annotation-check, generalize, and bind one top-level `let` into
+/// `program_env` (extracted from `typecheck_program_with_env`).
+fn infer_decl_let(
+    name: &str,
+    ty_ann: Option<&crate::ast::TypeAnnotation>,
+    value: &Expr,
+    program_env: &mut TypeEnv,
+) -> Result<(), TypeError> {
+    let (value_ty, mut subst) = infer(value, program_env)?;
+    advance_next_var_from_inference(program_env, &value_ty, &subst);
+    if let Some(ty_ann) = ty_ann {
+        let annotated_ty = resolve_type_annotation(ty_ann, program_env)?;
+        let annotation_subst = unify(&value_ty, &annotated_ty)?;
+        subst = compose_subst(&annotation_subst, &subst);
+    }
+    apply_subst_env(&subst, program_env);
+    let value_ty = apply_subst(&subst, &value_ty);
+    let scheme = program_env.generalize(&value_ty);
+    program_env.bind(name.to_string(), scheme);
+    Ok(())
 }
 
 /// Type check a top-level program, threading generalized declarations left to right.
@@ -1445,19 +1477,7 @@ pub fn typecheck_program_with_env(program: &Program, env: &mut TypeEnv) -> Resul
                 ty_ann,
                 value,
                 ..
-            } => {
-                let (value_ty, mut subst) = infer(value, &mut program_env)?;
-                advance_next_var_from_inference(&mut program_env, &value_ty, &subst);
-                if let Some(ty_ann) = ty_ann {
-                    let annotated_ty = resolve_type_annotation(ty_ann, &mut program_env)?;
-                    let annotation_subst = unify(&value_ty, &annotated_ty)?;
-                    subst = compose_subst(&annotation_subst, &subst);
-                }
-                apply_subst_env(&subst, &mut program_env);
-                let value_ty = apply_subst(&subst, &value_ty);
-                let scheme = program_env.generalize(&value_ty);
-                program_env.bind(name.clone(), scheme);
-            }
+            } => infer_decl_let(name, ty_ann.as_ref(), value, &mut program_env)?,
             Decl::Data { .. } | Decl::TypeAlias { .. } => {}
         }
     }
