@@ -1,6 +1,6 @@
 /// Hindley-Milner type inference implementation
 use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
-use crate::typed_ast::{TypedExpr, TypedExprKind, TypedMatchArm};
+use crate::typed_ast::{TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedProgram};
 use crate::types::{Type, TypeScheme, TypeVar};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -1488,14 +1488,15 @@ fn advance_next_var_from_inference(env: &mut TypeEnv, ty: &Type, subst: &Substit
 }
 
 /// Infer, annotation-check, generalize, and bind one top-level `let` into
-/// `program_env` (extracted from `typecheck_program_with_env`).
+/// `program_env`, returning the resolved typed value and its scheme.
 fn infer_decl_let(
     name: &str,
     ty_ann: Option<&crate::ast::TypeAnnotation>,
     value: &Expr,
     program_env: &mut TypeEnv,
-) -> Result<(), TypeError> {
-    let (value_ty, mut subst) = infer(value, program_env)?;
+) -> Result<(TypedExpr, TypeScheme), TypeError> {
+    let (typed_value, mut subst) = infer_typed(value, program_env)?;
+    let value_ty = typed_value.ty.clone();
     advance_next_var_from_inference(program_env, &value_ty, &subst);
     if let Some(ty_ann) = ty_ann {
         let annotated_ty = resolve_type_annotation(ty_ann, program_env)?;
@@ -1503,20 +1504,66 @@ fn infer_decl_let(
         subst = compose_subst(&annotation_subst, &subst);
     }
     apply_subst_env(&subst, program_env);
+    let resolved_value = resolve_typed(&subst, &typed_value);
     let value_ty = apply_subst(&subst, &value_ty);
     let scheme = program_env.generalize(&value_ty);
-    program_env.bind(name.to_string(), scheme);
-    Ok(())
+    program_env.bind(name.to_string(), scheme.clone());
+    Ok((resolved_value, scheme))
 }
 
-/// Type check a top-level program, threading generalized declarations left to right.
+/// Run the final declaration pass, binding each top-level `let` and collecting
+/// the typed declarations in source order.
+fn collect_typed_decls(
+    program: &Program,
+    program_env: &mut TypeEnv,
+) -> Result<Vec<TypedDecl>, TypeError> {
+    let mut decls = Vec::with_capacity(program.decls.len());
+    for decl in &program.decls {
+        match decl {
+            Decl::Let {
+                name,
+                ty_ann,
+                value,
+                doc,
+            } => {
+                let (value, scheme) = infer_decl_let(name, ty_ann.as_ref(), value, program_env)?;
+                decls.push(TypedDecl::Let {
+                    name: name.clone(),
+                    ty_ann: ty_ann.clone(),
+                    scheme,
+                    value: Box::new(value),
+                    doc: doc.clone(),
+                });
+            }
+            Decl::Data {
+                name,
+                type_params,
+                constructors,
+                doc,
+            } => decls.push(TypedDecl::Data {
+                name: name.clone(),
+                type_params: type_params.clone(),
+                constructors: constructors.clone(),
+                doc: doc.clone(),
+            }),
+            Decl::TypeAlias { name, ty_expr, doc } => decls.push(TypedDecl::TypeAlias {
+                name: name.clone(),
+                ty_expr: ty_expr.clone(),
+                doc: doc.clone(),
+            }),
+        }
+    }
+    Ok(decls)
+}
+
+/// Type check a program, returning the fully resolved typed program AST.
 ///
 /// # Errors
 ///
 /// Returns a `TypeError` if a declaration or the trailing body fails to type-check.
-pub fn typecheck_program(program: &Program) -> Result<Type, TypeError> {
+pub fn typecheck_program_typed(program: &Program) -> Result<TypedProgram, TypeError> {
     let mut env = TypeEnv::new();
-    typecheck_program_with_env(program, &mut env)
+    typecheck_program_typed_with_env(program, &mut env)
 }
 
 /// Type check a top-level program and persist its declarations in `env` on success.
@@ -1526,6 +1573,29 @@ pub fn typecheck_program(program: &Program) -> Result<Type, TypeError> {
 /// Returns a `TypeError` if a declaration or the trailing body fails to type-check.
 /// The supplied environment is unchanged on error.
 pub fn typecheck_program_with_env(program: &Program, env: &mut TypeEnv) -> Result<Type, TypeError> {
+    Ok(typecheck_program_typed_with_env(program, env)?.ty)
+}
+
+/// Type check a top-level program, threading generalized declarations left to right.
+///
+/// # Errors
+///
+/// Returns a `TypeError` if a declaration or the trailing body fails to type-check.
+pub fn typecheck_program(program: &Program) -> Result<Type, TypeError> {
+    Ok(typecheck_program_typed(program)?.ty)
+}
+
+/// Type check a top-level program and persist its declarations in `env` on success,
+/// returning the fully resolved typed program AST.
+///
+/// # Errors
+///
+/// Returns a `TypeError` if a declaration or the trailing body fails to type-check.
+/// The supplied environment is unchanged on error.
+pub fn typecheck_program_typed_with_env(
+    program: &Program,
+    env: &mut TypeEnv,
+) -> Result<TypedProgram, TypeError> {
     let mut program_env = env.clone();
 
     let mut type_names = HashSet::new();
@@ -1583,27 +1653,24 @@ pub fn typecheck_program_with_env(program: &Program, env: &mut TypeEnv) -> Resul
         }
     }
 
-    for decl in &program.decls {
-        match decl {
-            Decl::Let {
-                name,
-                ty_ann,
-                value,
-                ..
-            } => infer_decl_let(name, ty_ann.as_ref(), value, &mut program_env)?,
-            Decl::Data { .. } | Decl::TypeAlias { .. } => {}
-        }
-    }
+    let decls = collect_typed_decls(program, &mut program_env)?;
 
-    let ty = match &program.body {
+    let (typed_body, ty) = match &program.body {
         Some(body) => {
-            let (ty, subst) = infer(body, &mut program_env)?;
-            Ok(apply_subst(&subst, &ty))
+            let (typed, subst) = infer_typed(body, &mut program_env)?;
+            let resolved = resolve_typed(&subst, &typed);
+            let ty = resolved.ty.clone();
+            (Some(resolved), ty)
         }
-        None => Ok(Type::Int),
-    }?;
+        None => (None, Type::Int),
+    };
+
     *env = program_env;
-    Ok(ty)
+    Ok(TypedProgram {
+        decls,
+        body: typed_body,
+        ty,
+    })
 }
 
 #[cfg(test)]
