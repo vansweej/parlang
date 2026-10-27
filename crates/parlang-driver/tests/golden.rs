@@ -114,3 +114,86 @@ fn dump_dot_arithmetic() {
         "stdout was: {stdout}"
     );
 }
+
+fn run_fixture_with_flags(name: &str, flags: &[&str], expected: &str) {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let fixture = format!("{manifest}/tests/fixtures/{name}");
+
+    let output = Command::cargo_bin("parlang-driver")
+        .expect("driver binary should be built")
+        .args(flags)
+        .arg(&fixture)
+        .output()
+        .expect("driver should run");
+
+    assert!(
+        output.status.success(),
+        "driver failed for {name} {flags:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout is valid utf-8");
+    assert_eq!(
+        stdout.trim(),
+        expected,
+        "unexpected output for {name} {flags:?}"
+    );
+}
+
+#[test]
+fn dump_typed_text_identity() {
+    run_fixture_with_flags(
+        "identity.par",
+        &["--dump", "--stage", "typed"],
+        "Program : Int\n  body: App : Int\n    func: Fun x : Int -> Int\n      body: Var x : Int\n    arg: Int 100 : Int",
+    );
+}
+
+#[test]
+fn dump_parsed_stage_explicit() {
+    run_fixture_with_flags(
+        "arithmetic.par",
+        &["--dump", "--stage", "parsed"],
+        "(1 + (2 * 3))",
+    );
+}
+
+#[test]
+fn dump_typed_dot_arithmetic() {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let fixture = format!("{manifest}/tests/fixtures/arithmetic.par");
+
+    let output = Command::cargo_bin("parlang-driver")
+        .expect("driver binary should be built")
+        .args(["--dump-dot", "--stage", "typed"])
+        .arg(&fixture)
+        .output()
+        .expect("driver should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout is valid utf-8");
+    assert!(
+        stdout.contains("digraph TypedAST {"),
+        "stdout was: {stdout}"
+    );
+    assert!(stdout.contains("BinOp\\n+\\n: Int"), "stdout was: {stdout}");
+    assert!(
+        stdout.contains("[label=\"Program\\n: Int\"];"),
+        "stdout was: {stdout}"
+    );
+}
+
+#[test]
+fn stage_requires_dump() {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let fixture = format!("{manifest}/tests/fixtures/arithmetic.par");
+
+    let output = Command::cargo_bin("parlang-driver")
+        .expect("driver binary should be built")
+        .args(["--stage", "typed"])
+        .arg(&fixture)
+        .output()
+        .expect("driver should run");
+
+    assert!(!output.status.success());
+}
