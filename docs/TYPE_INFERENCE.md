@@ -168,7 +168,7 @@ fn generalize(env: &TypeEnvironment, t: &Type) -> TypeScheme {
     let free_in_env = env.free_type_vars();
     let free_in_type = t.free_type_vars();
     let quantified = free_in_type - free_in_env;
-    TypeScheme::new(quantified, t.clone())
+    TypeScheme::poly(quantified, t.clone())
 }
 ```
 

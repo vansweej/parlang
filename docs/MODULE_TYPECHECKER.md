@@ -120,6 +120,30 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv)
 
 This function recursively infers types for subexpressions and unifies constraints.
 
+## Typed AST pipeline
+
+Alongside `typecheck`, three entrypoints produce a typed tree:
+
+- `typecheck_typed`: type checks a single expression and returns the typed expression
+- `typecheck_program_typed`: type checks a whole program (declarations plus body)
+- `typecheck_program_typed_with_env`: the same, starting from a caller-supplied `TypeEnv`
+
+**Threading design.** The typed tree is built *through* the inference helpers as they run; it is not produced by re-walking the untyped AST afterwards.
+
+**Per-root resolution.** Each root is resolved with `resolve_typed` under the final substitution for that root:
+- the expression root;
+- each top-level let value, resolved with its own substitution (including any annotation unification);
+- the trailing body.
+
+**Always-free cases.** Some nodes keep free type variables:
+- the `Load` node carries its body untyped and gets a fresh type variable;
+- an unregistered `Constructor` node gets a fresh type variable;
+- a generalized let-value's internal type variables stay `Var` after root resolution.
+
+**`next_var` sync invariant.** Every inference run on a cloned-env child must `max`-sync `next_var` back into the parent, so variables allocated inside the subtree are never reissued. This is why the syncs in `infer_binop` and `infer_type_alias` were added, and why `infer_app` syncs again after allocating its result variable.
+
+**Unregistered constructors.** Unregistered constructors now infer their arguments, so an ill-typed argument surfaces as an error, while the node type itself stays a fresh type variable.
+
 ## Algorithm Details
 
 ### Unification

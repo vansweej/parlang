@@ -70,6 +70,7 @@ integration tests.
 | `parser.rs` | `combine`-based parser; entrypoints `parse_expr()` / `parse_program()` |
 | `types.rs` | Type representations (`Type`, `TypeScheme`, `TypeVar`) |
 | `typechecker.rs` | Algorithm W inference; entrypoint `typecheck()` |
+| `typed_ast.rs` | Typed AST produced by `typecheck_typed` and friends |
 | `exhaustiveness.rs` | Pattern-match exhaustiveness checker (`check_exhaustiveness`) |
 | `eval.rs` | Tree-walking interpreter; `eval()`, `Value`, `Environment` |
 | `dot.rs` | AST → Graphviz DOT |
