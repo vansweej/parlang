@@ -146,6 +146,116 @@ fn test_cli_dump_requires_file() {
 }
 
 #[test]
+fn test_cli_dump_stage_typed_text() {
+    let test_file = env::temp_dir().join("test_stage_typed_text.par");
+    fs::write(&test_file, "(fun x -> x) 100").unwrap();
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--dump",
+            "--stage",
+            "typed",
+        ])
+        .output()
+        .expect("Failed to execute command");
+    let _ = fs::remove_file(&test_file);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("func: Fun x : Int -> Int"),
+        "stdout was: {stdout}"
+    );
+}
+
+#[test]
+fn test_cli_dump_stage_typed_dot() {
+    let test_file = env::temp_dir().join("test_stage_typed_dot.par");
+    fs::write(&test_file, "1 + 2").unwrap();
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--dump-dot",
+            "--stage",
+            "typed",
+        ])
+        .output()
+        .expect("Failed to execute command");
+    let _ = fs::remove_file(&test_file);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("digraph TypedAST"), "stdout was: {stdout}");
+}
+
+#[test]
+fn test_cli_dump_stage_parsed_explicit() {
+    let test_file = env::temp_dir().join("test_stage_parsed.par");
+    fs::write(&test_file, "1 + 2").unwrap();
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--dump",
+            "--stage",
+            "parsed",
+        ])
+        .output()
+        .expect("Failed to execute command");
+    let _ = fs::remove_file(&test_file);
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("(1 + 2)"), "stdout was: {stdout}");
+}
+
+#[test]
+fn test_cli_stage_requires_dump() {
+    let test_file = env::temp_dir().join("test_stage_requires.par");
+    fs::write(&test_file, "1 + 2").unwrap();
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--stage",
+            "typed",
+        ])
+        .output()
+        .expect("Failed to execute command");
+    let _ = fs::remove_file(&test_file);
+    assert!(!output.status.success());
+}
+
+#[test]
+fn test_cli_dump_stage_typed_type_error() {
+    let test_file = env::temp_dir().join("test_stage_type_error.par");
+    fs::write(&test_file, "1 + true").unwrap();
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--dump",
+            "--stage",
+            "typed",
+        ])
+        .output()
+        .expect("Failed to execute command");
+    let _ = fs::remove_file(&test_file);
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("type error"), "stderr was: {stderr}");
+}
+
+#[test]
 fn test_cli_complex_program() {
     // Test a more complex program
     let test_file = env::temp_dir().join("test_complex.par");
