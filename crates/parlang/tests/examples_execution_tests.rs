@@ -66,13 +66,7 @@ fn example_rels() -> Vec<String> {
 fn typed_rule_ok(node: &TypedExpr) -> Result<(), String> {
     use TypedExprKind as K;
     match &node.kind {
-        K::Int(_)
-        | K::Bool(_)
-        | K::Char(_)
-        | K::Float(_)
-        | K::Var(_)
-        | K::Pending(_)
-        | K::Load(_, _) => Ok(()),
+        K::Int(_) | K::Bool(_) | K::Char(_) | K::Float(_) | K::Var(_) | K::Load(_, _) => Ok(()),
         K::BinOp(op, l, r) => {
             typed_rule_ok(l)?;
             typed_rule_ok(r)?;

@@ -5,10 +5,6 @@
 //! final substitution, so every `ty` is fully substituted. Some nodes are
 //! always type-variable-free leaves by construction: `Load` bodies are never
 //! inspected by inference, and unregistered constructors yield a fresh var.
-//!
-//! [`TypedExprKind::Pending`] is temporary scaffolding used during the
-//! incremental migration of the inference helpers; it is removed once every
-//! helper threads a real typed node.
 
 use crate::ast::{Expr, Pattern, TypeAnnotation, TypeExpr};
 use crate::types::{Type, TypeScheme};
@@ -21,7 +17,7 @@ pub struct TypedExpr {
 }
 
 /// Typed mirror of [`crate::ast::Expr`]. Children are typed; see module docs
-/// for the `Load` and `Pending` exceptions.
+/// for the `Load` exception.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypedExprKind {
     Int(i64),
@@ -56,9 +52,6 @@ pub enum TypedExprKind {
         body: Box<TypedExpr>,
     },
     Constructor(String, Vec<TypedExpr>),
-    /// Temporary scaffold: an un-migrated subtree carried opaquely as its
-    /// original untyped `Expr`. Removed once all helpers are migrated.
-    Pending(Expr),
 }
 
 /// A typed match arm: the (untyped) pattern, the variable bindings it

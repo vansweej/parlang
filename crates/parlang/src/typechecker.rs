@@ -897,7 +897,7 @@ fn infer_constructor(
     name: &str,
     args: &[Expr],
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
+) -> Result<(TypedExpr, Substitution), TypeError> {
     // Look up constructor information and clone it to avoid borrow issues
     if let Some(info) = env.lookup_constructor(name).cloned() {
         // Create a mapping from type parameters to fresh type variables
@@ -909,11 +909,13 @@ fn infer_constructor(
         // Type check each argument
         let mut subst = HashMap::new();
         let mut arg_types = Vec::new();
+        let mut typed_args = Vec::new();
 
         for arg in args {
-            let (arg_ty, s) = infer(arg, env)?;
+            let (typed_arg, s) = infer_typed(arg, env)?;
             subst = compose_subst(&s, &subst);
-            arg_types.push(apply_subst(&subst, &arg_ty));
+            arg_types.push(apply_subst(&subst, &typed_arg.ty));
+            typed_args.push(typed_arg);
         }
 
         // Check that the number of arguments matches
@@ -941,11 +943,30 @@ fn infer_constructor(
             .collect();
 
         let result_ty = Type::SumType(info.sum_type_name.clone(), type_args);
-        Ok((result_ty, subst))
+        Ok((
+            TypedExpr {
+                kind: TypedExprKind::Constructor(name.to_string(), typed_args),
+                ty: result_ty,
+            },
+            subst,
+        ))
     } else {
-        // Constructor not registered - return a fresh type variable
-        // This maintains backward compatibility
-        Ok((env.fresh_var(), HashMap::new()))
+        // Constructor not registered: infer the args for a typed tree, thread
+        // their substitution, and give the node a fresh type variable.
+        let mut typed_args = Vec::new();
+        let mut subst = HashMap::new();
+        for arg in args {
+            let (arg_typed, s) = infer_typed(arg, env)?;
+            subst = compose_subst(&s, &subst);
+            typed_args.push(arg_typed);
+        }
+        Ok((
+            TypedExpr {
+                kind: TypedExprKind::Constructor(name.to_string(), typed_args),
+                ty: env.fresh_var(),
+            },
+            subst,
+        ))
     }
 }
 
@@ -1077,38 +1098,52 @@ fn infer_match(
     scrutinee: &Expr,
     arms: &[(Pattern, Expr)],
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
-    let (scrut_ty, s0) = infer(scrutinee, env)?;
-    advance_next_var_from_inference(env, &scrut_ty, &s0);
+) -> Result<(TypedExpr, Substitution), TypeError> {
+    let (scrut_typed, s0) = infer_typed(scrutinee, env)?;
+    advance_next_var_from_inference(env, &scrut_typed.ty, &s0);
 
     let result_ty = env.fresh_var();
     let mut subst = s0;
+    let mut typed_arms = Vec::with_capacity(arms.len());
 
     for (pattern, body) in arms {
-        let expected = apply_subst(&subst, &scrut_ty);
+        let expected = apply_subst(&subst, &scrut_typed.ty);
         let mut bindings: Vec<(String, Type)> = Vec::new();
         let pattern_subst = infer_pattern(pattern, &expected, env, &mut bindings)?;
         subst = compose_subst(&pattern_subst, &subst);
 
         let mut arm_env = env.clone();
         apply_subst_env(&subst, &mut arm_env);
-        for (name, ty) in bindings {
-            arm_env = arm_env.extend(name, apply_subst(&subst, &ty));
+        for (name, ty) in &bindings {
+            arm_env = arm_env.extend(name.clone(), apply_subst(&subst, ty));
         }
 
-        let (body_ty, body_subst) = infer(body, &mut arm_env)?;
-        advance_next_var_from_inference(&mut arm_env, &body_ty, &body_subst);
+        let (body_typed, body_subst) = infer_typed(body, &mut arm_env)?;
+        advance_next_var_from_inference(&mut arm_env, &body_typed.ty, &body_subst);
         env.next_var = env.next_var.max(arm_env.next_var);
         subst = compose_subst(&body_subst, &subst);
 
         let arm_subst = unify(
             &apply_subst(&subst, &result_ty),
-            &apply_subst(&subst, &body_ty),
+            &apply_subst(&subst, &body_typed.ty),
         )?;
         subst = compose_subst(&arm_subst, &subst);
+
+        typed_arms.push(TypedMatchArm {
+            pattern: pattern.clone(),
+            bindings,
+            body: body_typed,
+        });
     }
 
-    Ok((apply_subst(&subst, &result_ty), subst))
+    let ty = apply_subst(&subst, &result_ty);
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::Match(Box::new(scrut_typed), typed_arms),
+            ty,
+        },
+        subst,
+    ))
 }
 
 /// Type inference for a tuple expression `(e1, e2, ...)`. The empty tuple is
@@ -1221,6 +1256,7 @@ fn infer_app(
 
     let func_ty = apply_subst(&s2, &func_typed.ty);
     let result_ty = env1.fresh_var();
+    env.next_var = env.next_var.max(env1.next_var);
 
     let s3 = unify(
         &func_ty,
@@ -1402,19 +1438,6 @@ fn leaf(kind: TypedExprKind, ty: Type) -> (TypedExpr, Substitution) {
     (TypedExpr { kind, ty }, HashMap::new())
 }
 
-/// Wrap an un-migrated helper's `(Type, Substitution)` result into an opaque
-/// `Pending` typed node carrying the original expression.
-fn pending(expr: &Expr, result: (Type, Substitution)) -> (TypedExpr, Substitution) {
-    let (ty, subst) = result;
-    (
-        TypedExpr {
-            kind: TypedExprKind::Pending(expr.clone()),
-            ty,
-        },
-        subst,
-    )
-}
-
 /// Type inference for expressions
 ///
 /// # Errors
@@ -1445,8 +1468,11 @@ fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitutio
         Expr::Rec(name, body) => infer_rec(name, body, env),
         Expr::Tuple(elements) => infer_tuple(elements, env),
         Expr::TupleProj(tuple_expr, index) => infer_tuple_proj(tuple_expr, *index, env),
-        Expr::Match(scrutinee, arms) => Ok(pending(expr, infer_match(scrutinee, arms, env)?)),
-        Expr::Load(..) => Ok(pending(expr, (env.fresh_var(), HashMap::new()))),
+        Expr::Match(scrutinee, arms) => infer_match(scrutinee, arms, env),
+        Expr::Load(path, body) => Ok(leaf(
+            TypedExprKind::Load(path.clone(), body.clone()),
+            env.fresh_var(),
+        )),
         Expr::TypeAlias(name, ty_expr, body) => infer_type_alias(name, ty_expr, body, env),
         Expr::Record(fields) => infer_record(fields, env),
         Expr::FieldAccess(record_expr, field_name) => {
@@ -1458,7 +1484,7 @@ fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitutio
             constructors,
             body,
         } => infer_type_def(name, type_params, constructors, body, env),
-        Expr::Constructor(name, args) => Ok(pending(expr, infer_constructor(name, args, env)?)),
+        Expr::Constructor(name, args) => infer_constructor(name, args, env),
     }
 }
 
@@ -1472,18 +1498,14 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
 }
 
 /// Apply `subst` to every `ty` in a typed tree (and every match-arm binding),
-/// producing a fully resolved typed AST. `Pending`/`Load` payloads are copied
+/// producing a fully resolved typed AST. `Load` payloads are copied
 /// unchanged; only their node `ty` is resolved.
 fn resolve_typed(subst: &Substitution, typed: &TypedExpr) -> TypedExpr {
     use TypedExprKind as K;
     let kind = match &typed.kind {
-        K::Int(_)
-        | K::Bool(_)
-        | K::Char(_)
-        | K::Float(_)
-        | K::Var(_)
-        | K::Pending(_)
-        | K::Load(_, _) => typed.kind.clone(),
+        K::Int(_) | K::Bool(_) | K::Char(_) | K::Float(_) | K::Var(_) | K::Load(_, _) => {
+            typed.kind.clone()
+        }
         K::BinOp(op, l, r) => K::BinOp(
             *op,
             Box::new(resolve_typed(subst, l)),
