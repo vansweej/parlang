@@ -1820,6 +1820,122 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn test_typed_app_resolves_func_child() {
+        // modelled on test_infer_application
+        use crate::typed_ast::TypedExprKind as K;
+        let typed = check_typed("(fun x -> x + 1) 41").unwrap();
+        assert_eq!(typed.ty, Type::Int);
+        let K::App(func, _arg) = &typed.kind else {
+            panic!("expected App")
+        };
+        assert_eq!(func.ty, Type::Fun(Box::new(Type::Int), Box::new(Type::Int)));
+    }
+
+    #[test]
+    fn test_typed_polymorphic_let_value_keeps_var() {
+        // modelled on test_infer_identity (fun x -> x) inside a let
+        use crate::typed_ast::TypedExprKind as K;
+        let typed = check_typed("let id = fun x -> x in id 1").unwrap();
+        assert_eq!(typed.ty, Type::Int);
+        let K::Let(_, _, value, _) = &typed.kind else {
+            panic!("expected Let")
+        };
+        let K::Fun(_, _, body) = &value.kind else {
+            panic!("expected Fun value")
+        };
+        let Type::Fun(param, ret) = &value.ty else {
+            panic!("expected Fun type")
+        };
+        assert!(matches!(**param, Type::Var(_)), "param should stay a Var");
+        assert_eq!(**param, **ret);
+        assert_eq!(body.ty, **ret);
+    }
+
+    #[test]
+    fn test_typed_match_arm_bindings() {
+        // tuple-pattern match: `match (1, 2) with | (a, b) -> a + b`
+        use crate::typed_ast::TypedExprKind as K;
+        let typed = check_typed("match (1, 2) with | (a, b) -> a + b").unwrap();
+        let K::Match(_, arms) = &typed.kind else {
+            panic!("expected Match")
+        };
+        assert!(!arms[0].bindings.is_empty());
+        assert!(arms[0].bindings.iter().all(|(_, ty)| *ty == Type::Int));
+    }
+
+    #[test]
+    fn test_typed_hidden_let_var_not_reissued() {
+        // `(fun z -> 1 + (let f = fun x -> 2 in 3)) true`
+        // Without the infer_binop next_var sync, the hidden `fun x -> 2` param var
+        // is reissued as the app's result var and then bound to Int by the root
+        // subst, corrupting the inner let-value function's parameter type.
+        use crate::typed_ast::TypedExprKind as K;
+        let typed = check_typed("(fun z -> 1 + (let f = fun x -> 2 in 3)) true").unwrap();
+        let K::App(func, _arg) = &typed.kind else {
+            panic!("expected App")
+        };
+        let K::Fun(_, _, body) = &func.kind else {
+            panic!("expected Fun func")
+        };
+        let K::BinOp(_, _, right) = &body.kind else {
+            panic!("expected BinOp body")
+        };
+        let K::Let(_, _, value, _) = &right.kind else {
+            panic!("expected Let right")
+        };
+        let K::Fun(_, _, _) = &value.kind else {
+            panic!("expected Fun value")
+        };
+        let Type::Fun(param, ret) = &value.ty else {
+            panic!("expected Fun type")
+        };
+        assert!(matches!(**param, Type::Var(_)), "param should stay a Var");
+        assert_eq!(**ret, Type::Int);
+    }
+
+    #[test]
+    fn test_unregistered_constructor_arg_is_inferred() {
+        // "ab" desugars to Cons 'a' (Cons 'b' Nil); unregistered Cons infers args.
+        use crate::typed_ast::TypedExprKind as K;
+        let typed = check_typed("\"ab\"").unwrap();
+        let K::Constructor(name, args) = &typed.kind else {
+            panic!("expected Constructor")
+        };
+        assert_eq!(name, "Cons");
+        assert_eq!(args[0].ty, Type::Char);
+    }
+
+    #[test]
+    fn test_unregistered_constructor_unbound_arg_errors() {
+        // The arg is now inferred, so an unbound variable surfaces as an error.
+        let err = check_typed("Foo undefinedVar");
+        assert!(matches!(err, Err(TypeError::UnboundVariable(_))));
+    }
+
+    #[test]
+    fn test_constructor_args_do_not_share_app_result_vars() {
+        // `f 1` and `g true` are independent applications inside constructor
+        // arguments; their result types must be distinct type variables.
+        let ty = check("fun f -> fun g -> Foo (f 1) (g true)").unwrap();
+        let Type::Fun(f_ty, rest) = &ty else {
+            panic!("expected Fun")
+        };
+        let Type::Fun(g_ty, _) = &**rest else {
+            panic!("expected Fun for g")
+        };
+        let Type::Fun(_, f_ret) = &**f_ty else {
+            panic!("expected f: Int -> _")
+        };
+        let Type::Fun(_, g_ret) = &**g_ty else {
+            panic!("expected g: Bool -> _")
+        };
+        assert_ne!(
+            f_ret, g_ret,
+            "f and g must not share a result type variable"
+        );
+    }
+
     fn check(source: &str) -> Result<Type, TypeError> {
         let expr = parse(source).unwrap();
         typecheck(&expr)
