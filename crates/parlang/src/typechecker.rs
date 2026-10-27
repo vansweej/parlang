@@ -835,25 +835,29 @@ fn infer_field_access(
     record_expr: &Expr,
     field_name: &str,
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
-    // Infer the type of the record expression
-    let (record_ty, s1) = infer(record_expr, env)?;
+) -> Result<(TypedExpr, Substitution), TypeError> {
+    let (record_typed, s1) = infer_typed(record_expr, env)?;
+    let record_ty = apply_subst(&s1, &record_typed.ty);
 
-    // Apply substitution to get concrete record type
-    let record_ty = apply_subst(&s1, &record_ty);
-
-    match record_ty {
-        Type::Record(fields) => {
-            // Look up the field type
+    let field_ty = match record_ty {
+        Type::Record(ref fields) => {
             if let Some(field_ty) = fields.get(field_name) {
-                Ok((field_ty.clone(), s1))
+                field_ty.clone()
             } else {
                 let available: Vec<String> = fields.keys().cloned().collect();
-                Err(TypeError::FieldNotFound(field_name.to_string(), available))
+                return Err(TypeError::FieldNotFound(field_name.to_string(), available));
             }
         }
-        _ => Err(TypeError::RecordExpected(format!("{record_ty}"))),
-    }
+        _ => return Err(TypeError::RecordExpected(format!("{record_ty}"))),
+    };
+
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::FieldAccess(Box::new(record_typed), field_name.to_string()),
+            ty: field_ty,
+        },
+        s1,
+    ))
 }
 
 /// Type inference for tuple projection `tuple_expr.index`. The tuple
@@ -866,20 +870,25 @@ fn infer_tuple_proj(
     tuple_expr: &Expr,
     index: usize,
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
-    let (tuple_ty, s1) = infer(tuple_expr, env)?;
-    let tuple_ty = apply_subst(&s1, &tuple_ty);
+) -> Result<(TypedExpr, Substitution), TypeError> {
+    let (tuple_typed, s1) = infer_typed(tuple_expr, env)?;
+    let tuple_ty = apply_subst(&s1, &tuple_typed.ty);
 
-    match tuple_ty {
-        Type::Tuple(elements) => {
-            if let Some(element_ty) = elements.get(index) {
-                Ok((element_ty.clone(), s1))
-            } else {
-                Err(TypeError::TupleIndexOutOfBounds(index, elements.len()))
-            }
-        }
-        other => Err(TypeError::TupleExpected(format!("{other}"))),
-    }
+    let element_ty = match tuple_ty {
+        Type::Tuple(ref elements) => match elements.get(index) {
+            Some(element_ty) => element_ty.clone(),
+            None => return Err(TypeError::TupleIndexOutOfBounds(index, elements.len())),
+        },
+        other => return Err(TypeError::TupleExpected(format!("{other}"))),
+    };
+
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::TupleProj(Box::new(tuple_typed), index),
+            ty: element_ty,
+        },
+        s1,
+    ))
 }
 
 /// Type inference for a sum-type constructor application (extracted from
@@ -1105,30 +1114,45 @@ fn infer_match(
 /// Type inference for a tuple expression `(e1, e2, ...)`. The empty tuple is
 /// the `Unit` type; otherwise each element is inferred left to right,
 /// threading the accumulated substitution, and the result is `Type::Tuple`.
-fn infer_tuple(elements: &[Expr], env: &mut TypeEnv) -> Result<(Type, Substitution), TypeError> {
+fn infer_tuple(
+    elements: &[Expr],
+    env: &mut TypeEnv,
+) -> Result<(TypedExpr, Substitution), TypeError> {
     if elements.is_empty() {
-        return Ok((Type::Unit, HashMap::new()));
+        return Ok((
+            TypedExpr {
+                kind: TypedExprKind::Tuple(vec![]),
+                ty: Type::Unit,
+            },
+            HashMap::new(),
+        ));
     }
 
     let mut subst = HashMap::new();
-    let mut element_types = Vec::with_capacity(elements.len());
+    let mut typed_elems = Vec::with_capacity(elements.len());
 
     for element in elements {
         let mut element_env = env.clone();
         apply_subst_env(&subst, &mut element_env);
-        let (element_ty, element_subst) = infer(element, &mut element_env)?;
-        advance_next_var_from_inference(&mut element_env, &element_ty, &element_subst);
+        let (element_typed, element_subst) = infer_typed(element, &mut element_env)?;
+        advance_next_var_from_inference(&mut element_env, &element_typed.ty, &element_subst);
         env.next_var = env.next_var.max(element_env.next_var);
         subst = compose_subst(&element_subst, &subst);
-        element_types.push(element_ty);
+        typed_elems.push(element_typed);
     }
 
-    let resolved: Vec<Type> = element_types
+    let resolved: Vec<Type> = typed_elems
         .iter()
-        .map(|element_ty| apply_subst(&subst, element_ty))
+        .map(|e| apply_subst(&subst, &e.ty))
         .collect();
 
-    Ok((Type::Tuple(resolved), subst))
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::Tuple(typed_elems),
+            ty: Type::Tuple(resolved),
+        },
+        subst,
+    ))
 }
 
 /// Type inference for `if cond then then_br else else_br` (extracted from
@@ -1385,20 +1409,17 @@ fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitutio
         Expr::Fun(param, ty_ann_opt, body) => infer_fun(param, ty_ann_opt.as_ref(), body, env),
         Expr::App(func, arg) => infer_app(func, arg, env),
         Expr::Rec(name, body) => infer_rec(name, body, env),
-        Expr::Tuple(elements) => Ok(pending(expr, infer_tuple(elements, env)?)),
-        Expr::TupleProj(tuple_expr, index) => {
-            Ok(pending(expr, infer_tuple_proj(tuple_expr, *index, env)?))
-        }
+        Expr::Tuple(elements) => infer_tuple(elements, env),
+        Expr::TupleProj(tuple_expr, index) => infer_tuple_proj(tuple_expr, *index, env),
         Expr::Match(scrutinee, arms) => Ok(pending(expr, infer_match(scrutinee, arms, env)?)),
         Expr::Load(..) => Ok(pending(expr, (env.fresh_var(), HashMap::new()))),
         Expr::TypeAlias(name, ty_expr, body) => {
             Ok(pending(expr, infer_type_alias(name, ty_expr, body, env)?))
         }
         Expr::Record(fields) => Ok(pending(expr, infer_record(fields, env)?)),
-        Expr::FieldAccess(record_expr, field_name) => Ok(pending(
-            expr,
-            infer_field_access(record_expr, field_name, env)?,
-        )),
+        Expr::FieldAccess(record_expr, field_name) => {
+            infer_field_access(record_expr, field_name, env)
+        }
         Expr::TypeDef {
             name,
             type_params,
