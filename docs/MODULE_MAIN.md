@@ -108,6 +108,10 @@ struct Cli {
     /// Dump the parsed AST as Graphviz DOT to stdout, then exit.
     #[arg(long, requires = "file")]
     dump_dot: bool,
+
+    /// Pipeline stage to dump: `parsed` (default) or `typed` (requires --dump or --dump-dot).
+    #[arg(long, value_enum, requires = "dump_mode")]
+    stage: Option<Stage>,
 }
 
 #[derive(Subcommand)]
@@ -136,6 +140,8 @@ parlang examples/simple.par
 parlang <FILE> --dump         # Dump AST as text IR to stdout, then exit
 parlang <FILE> --dump-dot     # Dump AST as Graphviz DOT to stdout, then exit
 parlang script.par --dump-dot > ast.dot  # Example: produce a DOT file
+parlang <FILE> --dump --stage typed      # Dump the typed AST (indented tree), then exit
+parlang <FILE> --dump-dot --stage typed  # Dump the typed AST as Graphviz DOT, then exit
 ```
 
 **Help and Version**:
@@ -236,7 +242,7 @@ flowchart TD
 **Behavior**:
 - Reads the specified file
 - Parses the entire file contents as a `Program`
-- **Optional**: If `--dump` or `--dump-dot` is specified, prints the AST to stdout and exits before evaluation
+- **Optional**: If `--dump` or `--dump-dot` is specified, prints the AST to stdout and exits before evaluation; with `--stage typed` the program is type-checked first and the typed AST is printed instead (a type error exits with code 1)
 - Type-checks and evaluates the program in a fresh environment
 - Prints the final result value
 - Exits with code 0 on success, code 1 on any error
