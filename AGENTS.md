@@ -55,6 +55,7 @@ Run each command through the contained invocation above.
 cargo run                                       # REPL
 cargo run -- crates/parlang/examples/simple.par               # run a file
 cargo run -- crates/parlang/examples/simple.par --dump-dot > ast.dot  # dump AST as DOT to stdout
+cargo run -- crates/parlang/examples/simple.par --dump --stage typed  # dump typed AST as indented text
 cargo run                                       # HM type checking runs automatically
 ```
 
@@ -70,7 +71,7 @@ integration tests.
 | `parser.rs` | `combine`-based parser; entrypoints `parse_expr()` / `parse_program()` |
 | `types.rs` | Type representations (`Type`, `TypeScheme`, `TypeVar`) |
 | `typechecker.rs` | Algorithm W inference; entrypoint `typecheck()` |
-| `typed_ast.rs` | Typed AST produced by `typecheck_typed` and friends |
+| `typed_ast.rs` | Typed AST produced by `typecheck_typed` and friends; `typed_program_to_text` renders it |
 | `exhaustiveness.rs` | Pattern-match exhaustiveness checker (`check_exhaustiveness`) |
 | `eval.rs` | Tree-walking interpreter; `eval()`, `Value`, `Environment` |
 | `dot.rs` | AST → Graphviz DOT |

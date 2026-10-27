@@ -701,7 +701,13 @@ cargo run -- examples/simple.par --dump-dot
 
 # Produce a DOT file by redirecting stdout
 cargo run -- examples/simple.par --dump-dot > ast.dot
+
+# Dump the type-annotated AST (after Hindley-Milner inference)
+cargo run -- examples/simple.par --dump --stage typed
+cargo run -- examples/simple.par --dump-dot --stage typed
 ```
+
+`--stage` selects which pipeline stage is dumped: `parsed` (the default) prints the AST straight from the parser, while `typed` runs type inference first and annotates every expression node with its inferred type.
 
 Then render the DOT file to an image using Graphviz:
 
