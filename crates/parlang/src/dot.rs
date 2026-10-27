@@ -16,6 +16,7 @@
 /// fs::write("ast.dot", dot_output).unwrap();
 /// ```
 use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
+use crate::typed_ast::{TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedProgram};
 use std::fmt::Write;
 use std::io;
 
@@ -635,10 +636,304 @@ fn escape_label(s: &str) -> String {
         .replace('\n', "\\n")
 }
 
+/// Build a typed node label: the untyped label text with a trailing
+/// `\n: <ty>` line, escaped once through `escape_label`.
+fn typed_node_label(expr: &TypedExpr) -> String {
+    let base = match &expr.kind {
+        TypedExprKind::Int(n) => format!("Int\n{n}"),
+        TypedExprKind::Bool(b) => format!("Bool\n{b}"),
+        TypedExprKind::Char(c) => format!("Char\n{}", Literal::Char(*c)),
+        TypedExprKind::Float(fl) => format!("Float\n{fl}"),
+        TypedExprKind::Var(name) => format!("Var\n{name}"),
+        TypedExprKind::BinOp(op, _, _) => format!("BinOp\n{}", binop_label(*op)),
+        TypedExprKind::If(_, _, _) => "If".to_string(),
+        TypedExprKind::Let(name, _, _, _) => format!("Let\n{name}"),
+        TypedExprKind::Fun(name, _, _) => format!("Fun\n{name}"),
+        TypedExprKind::App(_, _) => "App".to_string(),
+        TypedExprKind::Load(path, _) => format!("Load\n{path}"),
+        TypedExprKind::Rec(name, _) => format!("Rec\n{name}"),
+        TypedExprKind::Match(_, _) => "Match".to_string(),
+        TypedExprKind::Tuple(_) => "Tuple".to_string(),
+        TypedExprKind::TupleProj(_, i) => format!("TupleProj\n{i}"),
+        TypedExprKind::TypeAlias(name, _, _) => format!("TypeAlias\n{name}"),
+        TypedExprKind::Record(_) => "Record".to_string(),
+        TypedExprKind::FieldAccess(_, field) => format!("FieldAccess\n{field}"),
+        TypedExprKind::TypeDef {
+            name, type_params, ..
+        } => format!("TypeDef\n{name}\n{}", type_params.join(" ")),
+        TypedExprKind::Constructor(name, _) => format!("Constructor\n{name}"),
+    };
+    let full = format!("{base}\n: {}", expr.ty);
+    escape_label(&full)
+}
+
+fn typed_record_edges(
+    parent: &str,
+    fields: &[(String, TypedExpr)],
+    output: &mut String,
+    gen: &mut NodeIdGenerator,
+) {
+    for (i, (name, value)) in fields.iter().enumerate() {
+        let field_id = gen.next();
+        let _ = writeln!(
+            output,
+            "  {} [label=\"Field\\n{}\"];",
+            field_id,
+            escape_label(name)
+        );
+        let value_id = typed_expr_to_dot(value, output, gen);
+        let _ = writeln!(output, "  {parent} -> {field_id} [label=\"field {i}\"];");
+        let _ = writeln!(output, "  {field_id} -> {value_id} [label=\"value\"];");
+    }
+}
+
+fn typed_type_def_edges(
+    parent: &str,
+    constructors: &[(String, Vec<crate::ast::TypeAnnotation>)],
+    body: &TypedExpr,
+    output: &mut String,
+    gen: &mut NodeIdGenerator,
+) {
+    for (ctor_name, _ctor_types) in constructors {
+        let ctor_id = gen.next();
+        let _ = writeln!(
+            output,
+            "  {} [label=\"Constructor\\n{}\"];",
+            ctor_id,
+            escape_label(ctor_name)
+        );
+        let _ = writeln!(output, "  {parent} -> {ctor_id} [label=\"ctor\"];");
+    }
+    let body_id = typed_expr_to_dot(body, output, gen);
+    let _ = writeln!(output, "  {parent} -> {body_id} [label=\"body\"];");
+}
+
+fn typed_edge(parent: &str, expr: &TypedExpr, output: &mut String, gen: &mut NodeIdGenerator) {
+    match &expr.kind {
+        TypedExprKind::BinOp(_, l, r) => {
+            let l_id = typed_expr_to_dot(l, output, gen);
+            let r_id = typed_expr_to_dot(r, output, gen);
+            let _ = writeln!(output, "  {parent} -> {l_id} [label=\"left\"];");
+            let _ = writeln!(output, "  {parent} -> {r_id} [label=\"right\"];");
+        }
+        TypedExprKind::If(c, t, e) => {
+            let c_id = typed_expr_to_dot(c, output, gen);
+            let t_id = typed_expr_to_dot(t, output, gen);
+            let e_id = typed_expr_to_dot(e, output, gen);
+            let _ = writeln!(output, "  {parent} -> {c_id} [label=\"cond\"];");
+            let _ = writeln!(output, "  {parent} -> {t_id} [label=\"then\"];");
+            let _ = writeln!(output, "  {parent} -> {e_id} [label=\"else\"];");
+        }
+        TypedExprKind::Let(_, _, v, b) => {
+            let v_id = typed_expr_to_dot(v, output, gen);
+            let b_id = typed_expr_to_dot(b, output, gen);
+            let _ = writeln!(output, "  {parent} -> {v_id} [label=\"value\"];");
+            let _ = writeln!(output, "  {parent} -> {b_id} [label=\"body\"];");
+        }
+        TypedExprKind::Fun(_, _, b) | TypedExprKind::Rec(_, b) => {
+            let b_id = typed_expr_to_dot(b, output, gen);
+            let _ = writeln!(output, "  {parent} -> {b_id} [label=\"body\"];");
+        }
+        TypedExprKind::TypeAlias(_, ty_expr, b) => {
+            let type_id = type_expr_to_dot(ty_expr, output, gen);
+            let b_id = typed_expr_to_dot(b, output, gen);
+            let _ = writeln!(output, "  {parent} -> {type_id} [label=\"type\"];");
+            let _ = writeln!(output, "  {parent} -> {b_id} [label=\"body\"];");
+        }
+        TypedExprKind::TypeDef {
+            constructors, body, ..
+        } => typed_type_def_edges(parent, constructors, body, output, gen),
+        TypedExprKind::App(f, a) => {
+            let f_id = typed_expr_to_dot(f, output, gen);
+            let a_id = typed_expr_to_dot(a, output, gen);
+            let _ = writeln!(output, "  {parent} -> {f_id} [label=\"func\"];");
+            let _ = writeln!(output, "  {parent} -> {a_id} [label=\"arg\"];");
+        }
+        TypedExprKind::Load(_, body) => {
+            let b_id = expr_to_dot(body, output, gen);
+            let _ = writeln!(output, "  {parent} -> {b_id} [label=\"body\"];");
+        }
+        TypedExprKind::Match(s, arms) => {
+            let s_id = typed_expr_to_dot(s, output, gen);
+            let _ = writeln!(output, "  {parent} -> {s_id} [label=\"scrutinee\"];");
+            for (i, arm) in arms.iter().enumerate() {
+                typed_arm_to_dot(parent, i, arm, output, gen);
+            }
+        }
+        TypedExprKind::Tuple(elems) => {
+            for (i, elem) in elems.iter().enumerate() {
+                let e_id = typed_expr_to_dot(elem, output, gen);
+                let _ = writeln!(output, "  {parent} -> {e_id} [label=\"elem {i}\"];");
+            }
+        }
+        TypedExprKind::TupleProj(t, _) => {
+            let t_id = typed_expr_to_dot(t, output, gen);
+            let _ = writeln!(output, "  {parent} -> {t_id} [label=\"tuple\"];");
+        }
+        TypedExprKind::Record(fields) => typed_record_edges(parent, fields, output, gen),
+        TypedExprKind::FieldAccess(r, _) => {
+            let r_id = typed_expr_to_dot(r, output, gen);
+            let _ = writeln!(output, "  {parent} -> {r_id} [label=\"record\"];");
+        }
+        TypedExprKind::Constructor(_, args) => {
+            for (i, arg) in args.iter().enumerate() {
+                let a_id = typed_expr_to_dot(arg, output, gen);
+                let _ = writeln!(output, "  {parent} -> {a_id} [label=\"arg{i}\"];");
+            }
+        }
+        TypedExprKind::Int(_)
+        | TypedExprKind::Bool(_)
+        | TypedExprKind::Char(_)
+        | TypedExprKind::Float(_)
+        | TypedExprKind::Var(_) => {}
+    }
+}
+
+fn typed_arm_to_dot(
+    parent: &str,
+    index: usize,
+    arm: &TypedMatchArm,
+    output: &mut String,
+    gen: &mut NodeIdGenerator,
+) {
+    let arm_id = gen.next();
+    let _ = writeln!(output, "  {arm_id} [label=\"Arm {index}\"];");
+    let pattern_id = pattern_to_dot(&arm.pattern, output, gen);
+    let result_id = typed_expr_to_dot(&arm.body, output, gen);
+    let _ = writeln!(output, "  {parent} -> {arm_id} [label=\"arm {index}\"];");
+    let _ = writeln!(output, "  {arm_id} -> {pattern_id} [label=\"pattern\"];");
+    let _ = writeln!(output, "  {arm_id} -> {result_id} [label=\"result\"];");
+}
+
+fn typed_expr_to_dot(expr: &TypedExpr, output: &mut String, gen: &mut NodeIdGenerator) -> String {
+    let node_id = gen.next();
+    let label = typed_node_label(expr);
+    let _ = writeln!(output, "  {node_id} [label=\"{label}\"];");
+    typed_edge(&node_id, expr, output, gen);
+    node_id
+}
+
+fn typed_decl_to_dot(
+    program_id: &str,
+    index: usize,
+    decl: &TypedDecl,
+    output: &mut String,
+    gen: &mut NodeIdGenerator,
+) {
+    match decl {
+        TypedDecl::Let {
+            name,
+            scheme,
+            value,
+            ..
+        } => {
+            let decl_id = gen.next();
+            let label = escape_label(&format!("Let\n{name}\n: {scheme}"));
+            let _ = writeln!(output, "  {decl_id} [label=\"{label}\"];");
+            let value_id = typed_expr_to_dot(value, output, gen);
+            let _ = writeln!(
+                output,
+                "  {program_id} -> {decl_id} [label=\"decl {index}\"];"
+            );
+            let _ = writeln!(output, "  {decl_id} -> {value_id} [label=\"value\"];");
+        }
+        TypedDecl::Data {
+            name,
+            type_params,
+            constructors,
+            ..
+        } => {
+            let decl_id = gen.next();
+            let params = type_params.join(" ");
+            let label = format!("Data\\n{}\\n{}", escape_label(name), escape_label(&params));
+            let _ = writeln!(output, "  {decl_id} [label=\"{label}\"];");
+            for (ctor_name, _ctor_types) in constructors {
+                let ctor_id = gen.next();
+                let _ = writeln!(
+                    output,
+                    "  {} [label=\"Constructor\\n{}\"];",
+                    ctor_id,
+                    escape_label(ctor_name)
+                );
+                let _ = writeln!(output, "  {decl_id} -> {ctor_id} [label=\"ctor\"];");
+            }
+            let _ = writeln!(
+                output,
+                "  {program_id} -> {decl_id} [label=\"decl {index}\"];"
+            );
+        }
+        TypedDecl::TypeAlias { name, ty_expr, .. } => {
+            let decl_id = gen.next();
+            let _ = writeln!(
+                output,
+                "  {} [label=\"TypeAlias\\n{}\"];",
+                decl_id,
+                escape_label(name)
+            );
+            let type_id = type_expr_to_dot(ty_expr, output, gen);
+            let _ = writeln!(
+                output,
+                "  {program_id} -> {decl_id} [label=\"decl {index}\"];"
+            );
+            let _ = writeln!(output, "  {decl_id} -> {type_id} [label=\"type\"];");
+        }
+    }
+}
+
+/// Convert a [`TypedProgram`] to Graphviz DOT.
+///
+/// Mirrors [`program_to_dot`] node-for-node, but every expression label gains
+/// a `: <type>` line and `Let` declarations show their generalized
+/// `TypeScheme`. The header is `digraph TypedAST`.
+#[must_use]
+pub fn typed_program_to_dot(program: &TypedProgram) -> String {
+    let mut output = String::new();
+    output.push_str("digraph TypedAST {\n");
+    output.push_str("  node [shape=box, style=rounded];\n");
+    output.push_str("  edge [fontsize=10];\n\n");
+
+    let mut gen = NodeIdGenerator::new();
+    let program_id = gen.next();
+    let root_label = escape_label(&format!("Program\n: {}", program.ty));
+    let _ = writeln!(output, "  {program_id} [label=\"{root_label}\"];");
+    for (index, decl) in program.decls.iter().enumerate() {
+        typed_decl_to_dot(&program_id, index, decl, &mut output, &mut gen);
+    }
+    if let Some(body) = &program.body {
+        let body_id = typed_expr_to_dot(body, &mut output, &mut gen);
+        let _ = writeln!(output, "  {program_id} -> {body_id} [label=\"body\"];");
+    }
+
+    output.push_str("}\n");
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ast::*;
+
+    #[test]
+    fn typed_dot_identity_header_and_labels() {
+        let program = crate::parse_program("(fun x -> x) 100").expect("parse");
+        let typed = crate::typecheck_program_typed(&program).expect("typecheck");
+        let dot = typed_program_to_dot(&typed);
+        assert!(dot.starts_with("digraph TypedAST {\n"));
+        assert!(dot.contains("node0 [label=\"Program\\n: Int\"];"));
+        assert!(dot.contains("Fun\\nx\\n: Int -> Int"));
+        assert!(dot.contains("Int\\n100\\n: Int"));
+        assert!(dot.contains("node0 -> node1 [label=\"body\"];"));
+        assert!(dot.ends_with("}\n"));
+    }
+
+    #[test]
+    fn typed_dot_let_decl_shows_scheme() {
+        let program = crate::parse_program("let id = fun x -> x;\nid 1").expect("parse");
+        let typed = crate::typecheck_program_typed(&program).expect("typecheck");
+        let dot = typed_program_to_dot(&typed);
+        assert!(dot.contains("[label=\"Let\\nid\\n: forall t"));
+        assert!(dot.contains("node0 -> node1 [label=\"decl 0\"];"));
+    }
 
     #[test]
     fn test_int_literal() {
