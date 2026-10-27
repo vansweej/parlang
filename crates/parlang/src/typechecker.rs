@@ -724,29 +724,39 @@ fn infer_binop(
     left: &Expr,
     right: &Expr,
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
-    let (left_ty, s1) = infer(left, env)?;
-    advance_next_var_from_inference(env, &left_ty, &s1);
+) -> Result<(TypedExpr, Substitution), TypeError> {
+    let (left_typed, s1) = infer_typed(left, env)?;
+    advance_next_var_from_inference(env, &left_typed.ty, &s1);
     let mut env1 = env.clone();
     apply_subst_env(&s1, &mut env1);
 
-    let (right_ty, s2) = infer(right, &mut env1)?;
-    let left_ty = apply_subst(&s2, &left_ty);
+    let (right_typed, s2) = infer_typed(right, &mut env1)?;
+    advance_next_var_from_inference(&mut env1, &right_typed.ty, &s2);
+    env.next_var = env.next_var.max(env1.next_var);
+    let left_ty = apply_subst(&s2, &left_typed.ty);
 
-    match op {
+    let (result_ty, subst) = match op {
         BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-            infer_arith_binop(left_ty, &right_ty, &s1, &s2)
+            infer_arith_binop(left_ty, &right_typed.ty, &s1, &s2)?
         }
         BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
-            infer_ordering_binop(left_ty, &right_ty, &s1, &s2)
+            infer_ordering_binop(left_ty, &right_typed.ty, &s1, &s2)?
         }
         BinOp::Eq | BinOp::Neq => {
             // Equality works on any type, but both sides must match
-            let s3 = unify(&left_ty, &right_ty)?;
+            let s3 = unify(&left_ty, &right_typed.ty)?;
             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
-            Ok((Type::Bool, subst))
+            (Type::Bool, subst)
         }
-    }
+    };
+
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::BinOp(op, Box::new(left_typed), Box::new(right_typed)),
+            ty: result_ty,
+        },
+        subst,
+    ))
 }
 
 /// Type inference for `let name [: Ty] = value in body` (extracted from
@@ -757,43 +767,65 @@ fn infer_let(
     value: &Expr,
     body: &Expr,
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
-    let (value_ty, s1) = infer(value, env)?;
-    advance_next_var_from_inference(env, &value_ty, &s1);
+) -> Result<(TypedExpr, Substitution), TypeError> {
+    let (value_typed, s1) = infer_typed(value, env)?;
+    advance_next_var_from_inference(env, &value_typed.ty, &s1);
 
-    // If there's a type annotation, check it matches the inferred type
     if let Some(ty_ann) = ty_ann_opt {
         let annotated_ty = resolve_type_annotation(ty_ann, env)?;
-        let s_ann = unify(&value_ty, &annotated_ty)?;
+        let s_ann = unify(&value_typed.ty, &annotated_ty)?;
         let s1 = compose_subst(&s_ann, &s1);
 
         let mut env1 = env.clone();
         apply_subst_env(&s1, &mut env1);
 
-        let unified_ty = apply_subst(&s1, &value_ty);
+        let unified_ty = apply_subst(&s1, &value_typed.ty);
         let scheme = env1.generalize(&unified_ty);
         env1.bind(name.to_string(), scheme);
 
-        let (body_ty, s2) = infer(body, &mut env1)?;
-        advance_next_var_from_inference(&mut env1, &body_ty, &s2);
+        let (body_typed, s2) = infer_typed(body, &mut env1)?;
+        advance_next_var_from_inference(&mut env1, &body_typed.ty, &s2);
         env.next_var = env.next_var.max(env1.next_var);
 
         let subst = compose_subst(&s2, &s1);
-        Ok((body_ty, subst))
+        let ty = body_typed.ty.clone();
+        Ok((
+            TypedExpr {
+                kind: TypedExprKind::Let(
+                    name.to_string(),
+                    ty_ann_opt.cloned(),
+                    Box::new(value_typed),
+                    Box::new(body_typed),
+                ),
+                ty,
+            },
+            subst,
+        ))
     } else {
         let mut env1 = env.clone();
         apply_subst_env(&s1, &mut env1);
 
-        // Generalize the type (let-polymorphism)
-        let scheme = env1.generalize(&value_ty);
+        let scheme = env1.generalize(&value_typed.ty);
         env1.bind(name.to_string(), scheme);
 
-        let (body_ty, s2) = infer(body, &mut env1)?;
-        advance_next_var_from_inference(&mut env1, &body_ty, &s2);
+        let (body_typed, s2) = infer_typed(body, &mut env1)?;
+        advance_next_var_from_inference(&mut env1, &body_typed.ty, &s2);
         env.next_var = env.next_var.max(env1.next_var);
 
         let subst = compose_subst(&s2, &s1);
-        Ok((body_ty, subst))
+        let ty = body_typed.ty.clone();
+        Ok((
+            TypedExpr {
+                kind: TypedExprKind::Let(
+                    name.to_string(),
+                    ty_ann_opt.cloned(),
+                    Box::new(value_typed),
+                    Box::new(body_typed),
+                ),
+                ty,
+            },
+            subst,
+        ))
     }
 }
 
@@ -1189,7 +1221,7 @@ fn infer_rec(
     name: &str,
     body: &Expr,
     env: &mut TypeEnv,
-) -> Result<(Type, Substitution), TypeError> {
+) -> Result<(TypedExpr, Substitution), TypeError> {
     // For recursive functions, we use fixpoint typing:
     // 1. Generate a fresh type variable for the recursive function
     // 2. Add it to the environment before checking the body
@@ -1199,19 +1231,25 @@ fn infer_rec(
     let rec_ty = env.fresh_var();
     let mut extended_env = env.extend(name.to_string(), rec_ty.clone());
 
-    let (body_ty, subst) = infer(body, &mut extended_env)?;
-    advance_next_var_from_inference(&mut extended_env, &body_ty, &subst);
+    let (body_typed, subst) = infer_typed(body, &mut extended_env)?;
+    advance_next_var_from_inference(&mut extended_env, &body_typed.ty, &subst);
     env.next_var = env.next_var.max(extended_env.next_var);
 
     // The body type should be the same as the recursive function type
     // (after applying the substitution from inferring the body)
     let rec_ty = apply_subst(&subst, &rec_ty);
-    let s2 = unify(&rec_ty, &body_ty)?;
+    let s2 = unify(&rec_ty, &body_typed.ty)?;
 
-    let final_ty = apply_subst(&s2, &body_ty);
+    let final_ty = apply_subst(&s2, &body_typed.ty);
     let final_subst = compose_subst(&s2, &subst);
 
-    Ok((final_ty, final_subst))
+    Ok((
+        TypedExpr {
+            kind: TypedExprKind::Rec(name.to_string(), Box::new(body_typed)),
+            ty: final_ty,
+        },
+        final_subst,
+    ))
 }
 
 /// Type inference for `fun param [: Ty] -> body` (extracted from `infer` to
@@ -1339,15 +1377,14 @@ fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitutio
                 .ok_or_else(|| TypeError::UnboundVariable(name.clone()))?;
             Ok(leaf(TypedExprKind::Var(name.clone()), ty))
         }
-        Expr::BinOp(op, left, right) => Ok(pending(expr, infer_binop(*op, left, right, env)?)),
+        Expr::BinOp(op, left, right) => infer_binop(*op, left, right, env),
         Expr::If(cond, then_br, else_br) => infer_if(cond, then_br, else_br, env),
-        Expr::Let(name, ty_ann_opt, value, body) => Ok(pending(
-            expr,
-            infer_let(name, ty_ann_opt.as_ref(), value, body, env)?,
-        )),
+        Expr::Let(name, ty_ann_opt, value, body) => {
+            infer_let(name, ty_ann_opt.as_ref(), value, body, env)
+        }
         Expr::Fun(param, ty_ann_opt, body) => infer_fun(param, ty_ann_opt.as_ref(), body, env),
         Expr::App(func, arg) => infer_app(func, arg, env),
-        Expr::Rec(name, body) => Ok(pending(expr, infer_rec(name, body, env)?)),
+        Expr::Rec(name, body) => infer_rec(name, body, env),
         Expr::Tuple(elements) => Ok(pending(expr, infer_tuple(elements, env)?)),
         Expr::TupleProj(tuple_expr, index) => {
             Ok(pending(expr, infer_tuple_proj(tuple_expr, *index, env)?))
