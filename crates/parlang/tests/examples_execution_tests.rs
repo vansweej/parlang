@@ -60,148 +60,84 @@ fn example_rels() -> Vec<String> {
         .collect()
 }
 
+/// Every typed child of `node`, in source order.
+fn typed_children(node: &TypedExpr) -> Vec<&TypedExpr> {
+    use TypedExprKind as K;
+    match &node.kind {
+        K::Int(_) | K::Bool(_) | K::Char(_) | K::Float(_) | K::Var(_) | K::Load(_, _) => vec![],
+        K::BinOp(_, l, r) | K::App(l, r) | K::Let(_, _, l, r) => vec![&**l, &**r],
+        K::If(c, t, e) => vec![&**c, &**t, &**e],
+        K::Fun(_, _, b)
+        | K::Rec(_, b)
+        | K::TupleProj(b, _)
+        | K::TypeAlias(_, _, b)
+        | K::FieldAccess(b, _)
+        | K::TypeDef { body: b, .. } => vec![&**b],
+        K::Match(s, arms) => std::iter::once(&**s)
+            .chain(arms.iter().map(|arm| &arm.body))
+            .collect(),
+        K::Tuple(elems) | K::Constructor(_, elems) => elems.iter().collect(),
+        K::Record(fields) => fields.iter().map(|(_, e)| e).collect(),
+    }
+}
+
+/// Check the local typing rule of a single fully-resolved node (children are
+/// checked separately by `typed_rule_ok`). Only rules that genuinely hold on
+/// resolved types are asserted.
+fn node_rule_ok(node: &TypedExpr) -> Result<(), String> {
+    use TypedExprKind as K;
+    let ok = match &node.kind {
+        K::BinOp(BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div, l, r) => {
+            node.ty == l.ty && node.ty == r.ty
+        }
+        K::BinOp(..) => node.ty == Type::Bool,
+        K::If(c, t, e) => c.ty == Type::Bool && t.ty == node.ty && e.ty == node.ty,
+        K::Let(_, _, _, b) | K::Rec(_, b) => node.ty == b.ty,
+        K::Fun(_, _, b) => matches!(&node.ty, Type::Fun(_, bt) if **bt == b.ty),
+        K::App(f, a) => f.ty == Type::Fun(Box::new(a.ty.clone()), Box::new(node.ty.clone())),
+        K::Match(_, arms) => arms.iter().all(|arm| arm.body.ty == node.ty),
+        K::Tuple(elems) => node.ty == Type::Tuple(elems.iter().map(|e| e.ty.clone()).collect()),
+        K::TupleProj(t, i) => {
+            !matches!(&t.ty, Type::Tuple(elems) if elems.get(*i).is_some_and(|e| *e != node.ty))
+        }
+        K::Record(fields) => {
+            node.ty
+                == Type::Record(
+                    fields
+                        .iter()
+                        .map(|(n, e)| (n.clone(), e.ty.clone()))
+                        .collect(),
+                )
+        }
+        K::Int(_)
+        | K::Bool(_)
+        | K::Char(_)
+        | K::Float(_)
+        | K::Var(_)
+        | K::Load(_, _)
+        | K::TypeAlias(..)
+        | K::FieldAccess(..)
+        | K::TypeDef { .. }
+        | K::Constructor(..) => true,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "typed rule violated: ty={:?} kind={:?}",
+            node.ty, node.kind
+        ))
+    }
+}
+
 /// Recursively verify a fully-resolved typed node against the inference rules
 /// its type must satisfy. Recurses into every typed child before checking the
 /// node itself. Returns `Err(description)` on the first violation.
 fn typed_rule_ok(node: &TypedExpr) -> Result<(), String> {
-    use TypedExprKind as K;
-    match &node.kind {
-        K::Int(_) | K::Bool(_) | K::Char(_) | K::Float(_) | K::Var(_) | K::Load(_, _) => Ok(()),
-        K::BinOp(op, l, r) => {
-            typed_rule_ok(l)?;
-            typed_rule_ok(r)?;
-            match op {
-                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                    if node.ty != l.ty || node.ty != r.ty {
-                        return Err(format!(
-                            "arith binop ty mismatch: node={:?} l={:?} r={:?}",
-                            node.ty, l.ty, r.ty
-                        ));
-                    }
-                    Ok(())
-                }
-                BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge | BinOp::Eq | BinOp::Neq => {
-                    if node.ty != Type::Bool {
-                        return Err(format!("comparison binop ty not Bool: {:?}", node.ty));
-                    }
-                    Ok(())
-                }
-            }
-        }
-        K::If(c, t, e) => {
-            typed_rule_ok(c)?;
-            typed_rule_ok(t)?;
-            typed_rule_ok(e)?;
-            if c.ty != Type::Bool {
-                return Err(format!("if cond not Bool: {:?}", c.ty));
-            }
-            if t.ty != node.ty || e.ty != node.ty {
-                return Err(format!(
-                    "if branch ty mismatch: node={:?} t={:?} e={:?}",
-                    node.ty, t.ty, e.ty
-                ));
-            }
-            Ok(())
-        }
-        K::Let(_, _, v, b) => {
-            typed_rule_ok(v)?;
-            typed_rule_ok(b)?;
-            if node.ty != b.ty {
-                return Err(format!("let ty != body ty: {:?} vs {:?}", node.ty, b.ty));
-            }
-            Ok(())
-        }
-        K::Fun(_, _, b) => {
-            typed_rule_ok(b)?;
-            match &node.ty {
-                Type::Fun(_, bt) if **bt == b.ty => Ok(()),
-                other => Err(format!("fun ty not Fun(_, body ty): {other:?}")),
-            }
-        }
-        K::App(f, a) => {
-            typed_rule_ok(f)?;
-            typed_rule_ok(a)?;
-            let expected = Type::Fun(Box::new(a.ty.clone()), Box::new(node.ty.clone()));
-            if f.ty != expected {
-                return Err(format!(
-                    "app func ty mismatch: func={:?} expected={expected:?}",
-                    f.ty
-                ));
-            }
-            Ok(())
-        }
-        K::Rec(_, b) => {
-            typed_rule_ok(b)?;
-            if node.ty != b.ty {
-                return Err(format!("rec ty != body ty: {:?} vs {:?}", node.ty, b.ty));
-            }
-            Ok(())
-        }
-        K::Match(s, arms) => {
-            typed_rule_ok(s)?;
-            for arm in arms {
-                typed_rule_ok(&arm.body)?;
-                if arm.body.ty != node.ty {
-                    return Err(format!(
-                        "match arm ty mismatch: node={:?} arm={:?}",
-                        node.ty, arm.body.ty
-                    ));
-                }
-            }
-            Ok(())
-        }
-        K::Tuple(elems) => {
-            for e in elems {
-                typed_rule_ok(e)?;
-            }
-            let expected = Type::Tuple(elems.iter().map(|e| e.ty.clone()).collect());
-            if node.ty != expected {
-                return Err(format!(
-                    "tuple ty mismatch: node={:?} expected={expected:?}",
-                    node.ty
-                ));
-            }
-            Ok(())
-        }
-        K::TupleProj(t, i) => {
-            typed_rule_ok(t)?;
-            if let Type::Tuple(elems) = &t.ty {
-                if let Some(elem_ty) = elems.get(*i) {
-                    if *elem_ty != node.ty {
-                        return Err(format!(
-                            "tuple-proj ty mismatch: elem={elem_ty:?} node={:?}",
-                            node.ty
-                        ));
-                    }
-                }
-            }
-            Ok(())
-        }
-        K::TypeAlias(_, _, b) | K::FieldAccess(b, _) | K::TypeDef { body: b, .. } => {
-            typed_rule_ok(b)
-        }
-        K::Record(fields) => {
-            for (_, e) in fields {
-                typed_rule_ok(e)?;
-            }
-            let expected = Type::Record(
-                fields
-                    .iter()
-                    .map(|(n, e)| (n.clone(), e.ty.clone()))
-                    .collect(),
-            );
-            if node.ty != expected {
-                return Err(format!("record ty mismatch: node={:?}", node.ty));
-            }
-            Ok(())
-        }
-        K::Constructor(_, args) => {
-            for a in args {
-                typed_rule_ok(a)?;
-            }
-            Ok(())
-        }
+    for child in typed_children(node) {
+        typed_rule_ok(child)?;
     }
+    node_rule_ok(node)
 }
 
 #[test]
