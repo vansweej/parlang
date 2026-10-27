@@ -3,7 +3,7 @@
 /// This executable provides:
 /// - REPL mode for interactive evaluation
 /// - File execution mode for running .par files
-/// - AST dumping to stdout as text IR (--dump) or Graphviz DOT (--dump-dot)
+/// - AST dumping to stdout as text IR (--dump) or DOT (--dump-dot), parsed or typed (--stage)
 use clap::{Parser, Subcommand};
 use parlang::{
     eval_program, eval_program_with_env, parse_program, program_to_dot, run_on_evaluator_stack,
@@ -18,6 +18,7 @@ use std::sync::mpsc;
 #[derive(Parser)]
 #[command(name = "parlang")]
 #[command(author, version, about = "A small ML-alike functional language", long_about = None)]
+#[command(group(clap::ArgGroup::new("dump_mode").args(["dump", "dump_dot"])))]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -25,18 +26,57 @@ struct Cli {
     /// Input file to execute (.par file)
     file: Option<String>,
 
-    /// Dump the parsed AST as text IR to stdout, then exit (skips evaluation).
+    /// Dump the AST as text IR to stdout, then exit (skips evaluation).
     #[arg(long, conflicts_with = "dump_dot", requires = "file")]
     dump: bool,
 
-    /// Dump the parsed AST as Graphviz DOT to stdout, then exit (skips evaluation).
+    /// Dump the AST as Graphviz DOT to stdout, then exit (skips evaluation).
     #[arg(long, requires = "file")]
     dump_dot: bool,
+
+    /// Pipeline stage to dump: `parsed` (default) or `typed` (requires --dump or --dump-dot).
+    #[arg(long, value_enum, requires = "dump_mode")]
+    stage: Option<Stage>,
 }
 
 struct ReplResponse {
     type_line: Option<String>,
     outcome: Result<String, String>,
+}
+
+/// Which pipeline stage to dump.
+#[derive(Copy, Clone, clap::ValueEnum)]
+enum Stage {
+    /// The AST straight from the parser.
+    Parsed,
+    /// The type-annotated AST after Hindley-Milner inference.
+    Typed,
+}
+
+/// Dump `program` at the chosen `stage`, as DOT when `dot` is set.
+///
+/// Runs `typecheck_program_typed` for the `typed` stage and returns the type
+/// error text on failure.
+fn run_dump(program: &parlang::Program, stage: Stage, dot: bool) -> Result<(), String> {
+    match stage {
+        Stage::Parsed => {
+            if dot {
+                println!("{}", program_to_dot(program));
+            } else {
+                println!("{program}");
+            }
+        }
+        Stage::Typed => {
+            let typed = parlang::typecheck_program_typed(program)
+                .map_err(|e| format!("type error: {e}"))?;
+            if dot {
+                println!("{}", parlang::typed_program_to_dot(&typed));
+            } else {
+                print!("{}", parlang::typed_program_to_text(&typed));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Subcommand)]
@@ -71,12 +111,12 @@ fn main() {
                 match parse_program(&contents) {
                     Ok(program) => {
                         // Terminal dump modes: print AST then skip evaluation.
-                        if cli.dump {
-                            println!("{program}");
-                            return;
-                        }
-                        if cli.dump_dot {
-                            println!("{}", program_to_dot(&program));
+                        if cli.dump || cli.dump_dot {
+                            let stage = cli.stage.unwrap_or(Stage::Parsed);
+                            if let Err(e) = run_dump(&program, stage, cli.dump_dot) {
+                                eprintln!("{e}");
+                                process::exit(1);
+                            }
                             return;
                         }
 
