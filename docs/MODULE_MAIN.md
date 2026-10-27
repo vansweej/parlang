@@ -170,6 +170,7 @@ Arguments:
 Options:
   --dump                 Dump the parsed AST as text IR to stdout, then exit
   --dump-dot             Dump the parsed AST as Graphviz DOT to stdout, then exit
+  --stage <STAGE>        Pipeline stage to dump [possible values: parsed, typed]
   -h, --help             Print help
   -V, --version          Print version
 ```

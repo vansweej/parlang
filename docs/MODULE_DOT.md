@@ -102,6 +102,14 @@ digraph AST {
 }
 ```
 
+### `typed_program_to_dot()`
+
+```rust
+pub fn typed_program_to_dot(program: &TypedProgram) -> String
+```
+
+Emits the same nodes and edges as `program_to_dot`, but every expression label gains a `: <type>` line and `Let` declarations show their generalized type scheme. The graph header is `digraph TypedAST`. It is used by `--dump-dot --stage typed`.
+
 ### `write_ast_to_dot_file()`
 
 Writes DOT representation of an expression to a file.
