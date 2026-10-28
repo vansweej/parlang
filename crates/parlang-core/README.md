@@ -9,6 +9,10 @@ from the surface `parlang::ast::Expr`.
   (`Term`: `Var` / `Lam` / `App` / `Let` / `LetRec` / `Lit` / `Con`).
 - Core-owned base types (`BaseType`: `Int` / `Bool` / `Float` /
   `Unit` / `Char`), used to annotate lambda binders and classify literals.
+- A System-F-shaped Core type (`Type`: `Base` / `Var` / `Con` / `Fun` /
+  `App` / `Forall`) with ASCII `Display`, `free_vars`, and type builders.
+  `BaseType` is absorbed as the `Base` leaf. `Term` still annotates binders
+  with `BaseType` until slice 6c. See `docs/adr/0005-core-type-enum.md`.
 - DOT dumper (`core_to_dot`, header `digraph Core`) and a text dump
   (`Term::to_text` / `Display`), mirroring the surface dumpers.
 - A tiny, dependency-free builder (`builder` module, smart
@@ -46,9 +50,11 @@ probe lives in `crates/parlang/tests/elaborator_probe.rs` and exercises the
   is explicit for later stages, orthogonal to the binder-naming decision.
 - **Builder vs parser:** smart-constructor **builder** only — no `combine`
   dependency added to this zero-dependency crate.
-- **Polymorphism:** System-F forall / type variables / type-lambda / type
-  application are **deferred** to a later sub-step; the `BaseType` binder
-  annotation and module notes mark the seam.
+- **Polymorphism:** the System-F Core `Type` enum (forall / type variables /
+  type-constructor application) landed in slice 6b
+  (`docs/adr/0005-core-type-enum.md`); type-lambda / type-application TERMS and
+  the `Lam` annotation switch from `BaseType` to `Type` are deferred to slices
+  6c/6d. The `BaseType` binder annotation still marks the seam until then.
 - **`Char` and strings:** Core carries a `Char` base type — a Unicode scalar
   value, like Haskell's `Char`. Strings are `List Char` under ADR 0002's
   `Cons`/`Nil` encoding; there is no primitive string value. The earlier
