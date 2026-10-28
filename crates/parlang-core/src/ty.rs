@@ -73,6 +73,35 @@ impl Type {
             Type::Base(_) | Type::Var(_) | Type::Con(_) | Type::App(..) => write!(f, "{self}"),
         }
     }
+
+    /// Returns the free type variables of this type in deterministic
+    /// (lexicographic) order. A `Forall` binder shadows its binder name inside
+    /// its body. `Base` and `Con` leaves contribute no variables.
+    #[must_use]
+    pub fn free_vars(&self) -> std::collections::BTreeSet<String> {
+        let mut acc = std::collections::BTreeSet::new();
+        self.collect_free_vars(&mut acc);
+        acc
+    }
+
+    fn collect_free_vars(&self, acc: &mut std::collections::BTreeSet<String>) {
+        match self {
+            Type::Base(_) | Type::Con(_) => {}
+            Type::Var(name) => {
+                acc.insert(name.clone());
+            }
+            Type::Fun(a, b) | Type::App(a, b) => {
+                a.collect_free_vars(acc);
+                b.collect_free_vars(acc);
+            }
+            Type::Forall(binder, body) => {
+                let mut inner = std::collections::BTreeSet::new();
+                body.collect_free_vars(&mut inner);
+                inner.remove(binder);
+                acc.extend(inner);
+            }
+        }
+    }
 }
 
 impl Display for Type {
@@ -199,5 +228,39 @@ mod tests {
             Box::new(Type::Base(BaseType::Int)),
         );
         assert_eq!(ty.to_string(), "(forall a. a) -> int");
+    }
+
+    #[test]
+    fn free_vars_are_sorted_and_deduplicated() {
+        // b -> a -> b  =>  {a, b}
+        let ty = Type::Fun(
+            Box::new(Type::Var("b".to_string())),
+            Box::new(Type::Fun(
+                Box::new(Type::Var("a".to_string())),
+                Box::new(Type::Var("b".to_string())),
+            )),
+        );
+        let fv: Vec<String> = ty.free_vars().into_iter().collect();
+        assert_eq!(fv, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn forall_binder_is_not_free() {
+        // forall a. a -> b  =>  {b}
+        let ty = Type::Forall(
+            "a".to_string(),
+            Box::new(Type::Fun(
+                Box::new(Type::Var("a".to_string())),
+                Box::new(Type::Var("b".to_string())),
+            )),
+        );
+        let fv: Vec<String> = ty.free_vars().into_iter().collect();
+        assert_eq!(fv, vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn base_and_con_have_no_free_vars() {
+        assert!(Type::Base(BaseType::Int).free_vars().is_empty());
+        assert!(Type::Con("List".to_string()).free_vars().is_empty());
     }
 }

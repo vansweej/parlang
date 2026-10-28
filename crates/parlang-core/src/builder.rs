@@ -12,6 +12,7 @@
 use crate::base_type::BaseType;
 use crate::error::{BuildError, BuildResult};
 use crate::term::{Alt, Lit, Term};
+use crate::ty::Type;
 
 /// A term variable.
 ///
@@ -135,6 +136,63 @@ pub fn char_(c: char) -> Term {
     Term::Lit(Lit::Char(c))
 }
 
+/// A base-type leaf, for example `int`.
+#[must_use]
+pub fn base_ty(bt: BaseType) -> Type {
+    Type::Base(bt)
+}
+
+/// A named type variable.
+///
+/// # Errors
+/// Returns [`BuildError::EmptyName`] if `name` is empty.
+pub fn tvar(name: &str) -> BuildResult<Type> {
+    if name.is_empty() {
+        return Err(BuildError::EmptyName);
+    }
+    Ok(Type::Var(name.to_string()))
+}
+
+/// A nullary type-constructor reference.
+///
+/// # Errors
+/// Returns [`BuildError::EmptyName`] if `name` is empty.
+pub fn tcon(name: &str) -> BuildResult<Type> {
+    if name.is_empty() {
+        return Err(BuildError::EmptyName);
+    }
+    Ok(Type::Con(name.to_string()))
+}
+
+/// A binary type-constructor application `head arg`.
+#[must_use]
+pub fn tapp(head: Type, arg: Type) -> Type {
+    Type::App(Box::new(head), Box::new(arg))
+}
+
+/// Left-associative type application of `head` to `args`, i.e. `((f a) b) c`.
+#[must_use]
+pub fn tapps(head: Type, args: Vec<Type>) -> Type {
+    args.into_iter().fold(head, tapp)
+}
+
+/// A function type `dom -> cod`.
+#[must_use]
+pub fn fun_ty(dom: Type, cod: Type) -> Type {
+    Type::Fun(Box::new(dom), Box::new(cod))
+}
+
+/// A single-binder universal `forall binder. body`.
+///
+/// # Errors
+/// Returns [`BuildError::EmptyName`] if `binder` is empty.
+pub fn forall(binder: &str, body: Type) -> BuildResult<Type> {
+    if binder.is_empty() {
+        return Err(BuildError::EmptyName);
+    }
+    Ok(Type::Forall(binder.to_string(), Box::new(body)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,6 +204,33 @@ mod tests {
         assert_eq!(let_("", unit(), unit()), Err(BuildError::EmptyName));
         assert_eq!(letrec("", unit(), unit()), Err(BuildError::EmptyName));
         assert_eq!(con("", vec![]), Err(BuildError::EmptyName));
+    }
+
+    #[test]
+    fn empty_type_name_rejected() {
+        assert_eq!(tvar(""), Err(BuildError::EmptyName));
+        assert_eq!(tcon(""), Err(BuildError::EmptyName));
+        assert_eq!(
+            forall("", base_ty(BaseType::Int)),
+            Err(BuildError::EmptyName)
+        );
+    }
+
+    #[test]
+    fn type_builders_compose() -> Result<(), BuildError> {
+        // forall a. a -> List a
+        let ty = forall("a", fun_ty(tvar("a")?, tapp(tcon("List")?, tvar("a")?)))?;
+        assert_eq!(ty.to_string(), "forall a. a -> List a");
+        Ok(())
+    }
+
+    #[test]
+    fn tapps_is_left_associative() -> Result<(), BuildError> {
+        let built = tapps(tcon("Either")?, vec![tvar("a")?, tvar("b")?]);
+        let expected = tapp(tapp(tcon("Either")?, tvar("a")?), tvar("b")?);
+        assert_eq!(built, expected);
+        assert_eq!(built.to_string(), "Either a b");
+        Ok(())
     }
 
     #[test]
