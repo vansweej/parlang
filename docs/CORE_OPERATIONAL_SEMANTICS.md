@@ -100,6 +100,18 @@ Strict:
 current environment ρ **without** pre-inserting the name `x` into it. `t₂` is
 then evaluated under `ρ[x ↦ recclosure]`.
 
+### `Case(t, alts)`
+
+Strict in the scrutinee. `t` must reduce to a constructor value
+`Con(C, [v..])`. The alternative whose constructor name equals `C` is
+selected; its positional binders are bound to `[v..]` (the binder count must
+equal the field count) and its body is evaluated under that extended
+environment. If no alternative matches, evaluation fails with
+`NoMatchingAlt(C)`. A non-constructor scrutinee or a binder/field count
+mismatch fails with `TypeMismatch`. There is no default alternative: `Case`
+tables produced by elaboration cover the complete constructor family (Wadler
+1987, ch. 5).
+
 ### `Con` reserved-name rules (Option A)
 
 - **`Con("if", [c, thn, els])`**: `c ⇓ Bool(b)`; if `b` is `true`, evaluate
@@ -132,6 +144,7 @@ then evaluated under `ρ[x ↦ recclosure]`.
 - `DivisionByZero`
 - `ArithmeticOverflow`
 - `NotComparable`
+- `NoMatchingAlt`
 
 ## Note on branching laziness
 

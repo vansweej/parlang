@@ -47,6 +47,7 @@ All evaluation error variants:
   underflowed.
 - `NotComparable` — `eq` was applied to non-base-type operands (functions or
   constructor values).
+- `NoMatchingAlt` — a `Case` scrutinee's constructor matched no alternative.
 
 ### `EvalResult`
 
