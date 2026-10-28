@@ -6,7 +6,7 @@
 //! re-bound at every application (ADR 0001 Decision 4). See
 //! `docs/CORE_OPERATIONAL_SEMANTICS.md` and `docs/adr/0001-arc-c-eval-model.md`.
 
-use crate::term::{Lit, Term};
+use crate::term::{Alt, Lit, Term};
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
@@ -117,6 +117,8 @@ pub enum EvalError {
     ArithmeticOverflow,
     /// An operand to `eq` was not a comparable base value.
     NotComparable(String),
+    /// A `Case` scrutinee's constructor matched no alternative.
+    NoMatchingAlt(String),
 }
 
 impl Display for EvalError {
@@ -131,6 +133,9 @@ impl Display for EvalError {
             Self::ArithmeticOverflow => write!(f, "integer arithmetic overflow"),
             Self::NotComparable(kind) => {
                 write!(f, "eq: {kind} values are not comparable")
+            }
+            Self::NoMatchingAlt(con) => {
+                write!(f, "no matching alternative for constructor {con}")
             }
         }
     }
@@ -236,7 +241,36 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
                 }
             }
         }
+
+        Term::Case(scrutinee, alts) => eval_case(scrutinee, alts, env),
     }
+}
+
+/// Evaluates a [`Term::Case`]: the scrutinee must reduce to a `Con`; the alt
+/// whose `con` matches is selected and its positional binders are bound to the
+/// constructor's arguments before its body is evaluated.
+fn eval_case(scrutinee: &Term, alts: &[Alt], env: &Environment) -> EvalResult {
+    let value = eval(scrutinee, env)?;
+    let Value::Con(name, args) = value else {
+        return Err(EvalError::TypeMismatch {
+            expected: "constructor value".to_string(),
+            found: value_kind(&value).to_string(),
+        });
+    };
+    let Some(alt) = alts.iter().find(|a| a.con == name) else {
+        return Err(EvalError::NoMatchingAlt(name));
+    };
+    if alt.binders.len() != args.len() {
+        return Err(EvalError::TypeMismatch {
+            expected: format!("{} constructor fields", alt.binders.len()),
+            found: format!("{} fields", args.len()),
+        });
+    }
+    let mut call_env = env.clone();
+    for (binder, arg) in alt.binders.iter().zip(args) {
+        call_env = call_env.extend(binder, arg);
+    }
+    eval(&alt.body, &call_env)
 }
 
 // ---------------------------------------------------------------------------

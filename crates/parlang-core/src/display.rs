@@ -49,6 +49,20 @@ impl Display for Term {
                 }
                 Ok(())
             }
+            Term::Case(scrutinee, alts) => {
+                write!(f, "(case {scrutinee} of ")?;
+                for (i, alt) in alts.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " | ")?;
+                    }
+                    write!(f, "{}", alt.con)?;
+                    if !alt.binders.is_empty() {
+                        write!(f, "({})", alt.binders.join(", "))?;
+                    }
+                    write!(f, " -> {}", alt.body)?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }

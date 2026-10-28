@@ -14,7 +14,7 @@ pub mod base_type;
 pub mod term;
 
 pub use base_type::BaseType;
-pub use term::{Lit, Term};
+pub use term::{Alt, Lit, Term};
 
 pub mod display;
 pub mod dot;

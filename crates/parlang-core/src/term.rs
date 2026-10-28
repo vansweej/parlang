@@ -70,6 +70,21 @@ impl Lit {
     }
 }
 
+/// A single alternative in a [`Term::Case`] tag-switch.
+///
+/// Binders are positional and unannotated (like [`Term::Let`], unlike
+/// [`Term::Lam`]): patterns are pre-flattened by elaboration, so an alt is
+/// just a constructor name, the names to bind its fields to, and a body.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Alt {
+    /// The constructor name this alternative matches.
+    pub con: String,
+    /// Positional binder names, one per constructor field.
+    pub binders: Vec<String>,
+    /// The body evaluated when this alternative is selected.
+    pub body: Term,
+}
+
 /// A Core term.
 ///
 /// Binders are named (`String`); see the module documentation for the ADR
@@ -90,6 +105,12 @@ pub enum Term {
     Lit(Lit),
     /// A constructor application: constructor name and ordered arguments.
     Con(String, Vec<Term>),
+
+    /// A low-level tag-switch eliminator: a scrutinee and one alternative
+    /// per constructor of its type (positional, unannotated binders). Rich
+    /// patterns and exhaustiveness live in the surface/elaborator; see
+    /// `docs/adr/0003-core-case-eliminator.md`.
+    Case(Box<Term>, Vec<Alt>),
 }
 
 #[cfg(test)]

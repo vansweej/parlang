@@ -7,7 +7,7 @@
 
 use std::fmt::Write as _;
 
-use crate::term::{Lit, Term};
+use crate::term::{Alt, Lit, Term};
 
 /// Renders a Core term as a Graphviz DOT document.
 #[must_use]
@@ -55,7 +55,28 @@ fn emit(term: &Term, ids: &mut NodeIdGenerator, out: &mut String) -> String {
         let child_id = emit(child, ids, out);
         let _ = writeln!(out, "  {id} -> {child_id};");
     }
+    if let Term::Case(_, alts) = term {
+        for alt in alts {
+            emit_alt(alt, id.as_str(), ids, out);
+        }
+    }
     id
+}
+
+/// Emits an intermediate alt node (labelled `Con binders`) under a `Case`
+/// node, then the alt body as the alt node's child.
+fn emit_alt(alt: &Alt, case_id: &str, ids: &mut NodeIdGenerator, out: &mut String) {
+    let alt_id = ids.next();
+    let mut label = alt.con.clone();
+    if !alt.binders.is_empty() {
+        label.push(' ');
+        label.push_str(&alt.binders.join(" "));
+    }
+    let escaped = escape_label(&label);
+    let _ = writeln!(out, "  {alt_id} [label=\"{escaped}\"];");
+    let _ = writeln!(out, "  {case_id} -> {alt_id};");
+    let body_id = emit(&alt.body, ids, out);
+    let _ = writeln!(out, "  {alt_id} -> {body_id};");
 }
 
 /// Returns the DOT node label for a term.
@@ -68,6 +89,7 @@ fn node_label(term: &Term) -> String {
         Term::LetRec(name, _, _) => format!("LetRec {name}"),
         Term::Lit(lit) => lit_label(lit),
         Term::Con(name, _) => format!("Con {name}"),
+        Term::Case(_, _) => "Case".to_string(),
     }
 }
 
@@ -92,6 +114,7 @@ fn children(term: &Term) -> Vec<&Term> {
             vec![value.as_ref(), body.as_ref()]
         }
         Term::Con(_, args) => args.iter().collect(),
+        Term::Case(scrutinee, _) => vec![scrutinee.as_ref()],
     }
 }
 
