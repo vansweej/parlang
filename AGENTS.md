@@ -32,7 +32,7 @@ systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapM
 | Single test file | `cargo test --test <file_stem>` (e.g. `--test record_tests`) |
 | Lint | `cargo clippy --all-targets --all-features` |
 | Format | `cargo fmt` |
-| Coverage | `cargo tarpaulin` |
+| Coverage | `cargo tarpaulin` (add `RUST_MIN_STACK=67108864` to the wrapper's `env`; see README) |
 
 **Pre-PR order:** `cargo clippy` → `cargo fmt` → `cargo test`.
 Run each command through the contained invocation above.

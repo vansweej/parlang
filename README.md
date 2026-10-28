@@ -837,19 +837,25 @@ To generate code coverage reports, use [cargo-tarpaulin](https://github.com/xd00
 ```bash
 # Run tests with coverage
 systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
-  env CARGO_TARGET_DIR=/tmp/parlang-tarpaulin nix develop . --command cargo tarpaulin
+  env CARGO_TARGET_DIR=/tmp/parlang-tarpaulin RUST_MIN_STACK=67108864 \
+  nix develop . --command cargo tarpaulin
 
 # Generate HTML report
 systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
-  env CARGO_TARGET_DIR=/tmp/parlang-tarpaulin nix develop . --command cargo tarpaulin --out Html
+  env CARGO_TARGET_DIR=/tmp/parlang-tarpaulin RUST_MIN_STACK=67108864 \
+  nix develop . --command cargo tarpaulin --out Html
 
 # Generate detailed coverage with line-by-line details
 systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
-  env CARGO_TARGET_DIR=/tmp/parlang-tarpaulin nix develop . --command cargo tarpaulin --out Html --output-dir coverage
+  env CARGO_TARGET_DIR=/tmp/parlang-tarpaulin RUST_MIN_STACK=67108864 \
+  nix develop . --command cargo tarpaulin --out Html --output-dir coverage
 ```
 
 Tarpaulin recompiles the suite with instrumentation and can re-trigger the
 integration-test fan-out memory spike, so always run it through the contained wrapper.
+Instrumentation also enlarges stack frames, so deeply nested parses and evaluations
+that fit the default 2 MiB test-thread stack under `cargo test` can overflow under
+coverage; `RUST_MIN_STACK=67108864` gives every test thread 64 MiB of headroom.
 
 ## License
 
