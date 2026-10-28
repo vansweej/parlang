@@ -47,8 +47,6 @@ pub enum Value {
     Bool(bool),
     /// The unit value.
     Unit,
-    /// A UTF-8 string.
-    Str(String),
     /// A Unicode scalar value (a code point), matching Haskell's `Char`.
     Char(char),
     /// A 64-bit float.
@@ -170,7 +168,6 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
             Lit::Float(x) => Value::Float(*x),
             Lit::Unit => Value::Unit,
             Lit::Char(c) => Value::Char(*c),
-            Lit::Str(s) => Value::Str(s.clone()),
         }),
 
         Term::Lam(p, _ty, body) => Ok(Value::Closure(Box::new(ClosureData {
@@ -233,8 +230,6 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
                 "/" => eval_arith('/', args, env),
                 "<" => eval_cmp(args, env),
                 "eq" => eval_eq(args, env),
-                "strlen" => eval_strlen(args, env),
-                "strcat" => eval_strcat(args, env),
                 _ => {
                     let mut vals = Vec::with_capacity(args.len());
                     for a in args {
@@ -293,32 +288,6 @@ fn eval_if(args: &[Term], env: &Environment) -> EvalResult {
         other => Err(EvalError::TypeMismatch {
             expected: "bool".to_string(),
             found: value_kind(&other).to_string(),
-        }),
-    }
-}
-
-/// Evaluate the private `strcat` primitive, concatenating two `Value::Str` values.
-///
-/// Requires exactly two arguments, both evaluating to `Value::Str`.
-fn eval_strcat(args: &[Term], env: &Environment) -> EvalResult {
-    if args.len() != 2 {
-        return Err(EvalError::TypeMismatch {
-            expected: "2 arguments".to_string(),
-            found: format!("{} arguments", args.len()),
-        });
-    }
-    let a = eval(&args[0], env)?;
-    let b = eval(&args[1], env)?;
-    match (&a, &b) {
-        (Value::Str(a), Value::Str(b)) => {
-            let mut joined = String::with_capacity(a.len() + b.len());
-            joined.push_str(a);
-            joined.push_str(b);
-            Ok(Value::Str(joined))
-        }
-        (Value::Str(_), v) | (v, _) => Err(EvalError::TypeMismatch {
-            expected: "str".to_string(),
-            found: value_kind(v).to_string(),
         }),
     }
 }
@@ -400,7 +369,6 @@ fn eval_eq(args: &[Term], env: &Environment) -> EvalResult {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a == b)),
         (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
         (Value::Unit, Value::Unit) => Ok(Value::Bool(true)),
-        (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a == b)),
         (Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a == b)),
         // Float comparison via to_bits: NaN == NaN is true; 0.0 != -0.0.
         // Both are intentional consequences of bit-equality (ADR 0001).
@@ -414,35 +382,12 @@ fn eval_eq(args: &[Term], env: &Environment) -> EvalResult {
     }
 }
 
-/// Evaluates the `strlen` built-in: returns the UTF-8 character count of a
-/// [`Value::Str`] as an [`Value::Int`].
-fn eval_strlen(args: &[Term], env: &Environment) -> EvalResult {
-    if args.len() != 1 {
-        return Err(EvalError::TypeMismatch {
-            expected: "1 argument".to_string(),
-            found: format!("{} arguments", args.len()),
-        });
-    }
-    let v = eval(&args[0], env)?;
-    match v {
-        Value::Str(s) => {
-            let n = i64::try_from(s.chars().count()).map_err(|_| EvalError::ArithmeticOverflow)?;
-            Ok(Value::Int(n))
-        }
-        other => Err(EvalError::TypeMismatch {
-            expected: "str".to_string(),
-            found: value_kind(&other).to_string(),
-        }),
-    }
-}
-
 /// Maps a [`Value`] to a short type-tag string for error messages.
 fn value_kind(v: &Value) -> &'static str {
     match v {
         Value::Int(_) => "int",
         Value::Bool(_) => "bool",
         Value::Unit => "unit",
-        Value::Str(_) => "str",
         Value::Char(_) => "char",
         Value::Float(_) => "float",
         Value::Closure(_) => "closure",
@@ -459,7 +404,7 @@ fn value_kind(v: &Value) -> &'static str {
 mod tests {
     use super::*;
     use crate::base_type::BaseType;
-    use crate::builder::{app, bool_, con, int, lam, let_, letrec, str_, unit, var};
+    use crate::builder::{app, bool_, char_, con, int, lam, let_, letrec, unit, var};
 
     fn env() -> Environment {
         Environment::new()
@@ -617,16 +562,21 @@ mod tests {
     }
 
     #[test]
-    fn strlen_counts_utf8_chars() -> Result<(), crate::error::BuildError> {
-        let t = con("strlen", vec![str_("héllo")])?;
-        assert_eq!(eval(&t, &env()), Ok(Value::Int(5)));
+    fn literal_char() {
+        assert_eq!(eval(&char_('a'), &env()), Ok(Value::Char('a')));
+    }
+
+    #[test]
+    fn char_eq_true() -> Result<(), crate::error::BuildError> {
+        let t = con("eq", vec![char_('a'), char_('a')])?;
+        assert_eq!(eval(&t, &env()), Ok(Value::Bool(true)));
         Ok(())
     }
 
     #[test]
-    fn strcat_joins_two_strings() -> Result<(), crate::error::BuildError> {
-        let t = con("strcat", vec![str_("foo"), str_("bar")])?;
-        assert_eq!(eval(&t, &env()), Ok(Value::Str("foobar".to_string())));
+    fn char_cmp_less_than() -> Result<(), crate::error::BuildError> {
+        let t = con("<", vec![char_('a'), char_('b')])?;
+        assert_eq!(eval(&t, &env()), Ok(Value::Bool(true)));
         Ok(())
     }
 
@@ -644,30 +594,29 @@ mod tests {
     }
 
     #[test]
-    fn strlen_rejects_non_string() -> Result<(), crate::error::BuildError> {
-        let t = con("strlen", vec![int(1)])?;
-        assert!(matches!(
+    fn strlen_is_ordinary_con() -> Result<(), crate::error::BuildError> {
+        // After slice 6a this name is no longer reserved: a Con with that
+        // name is an ordinary constructor value.
+        let t = con("strlen", vec![char_('a')])?;
+        assert_eq!(
             eval(&t, &env()),
-            Err(EvalError::TypeMismatch { .. })
-        ));
+            Ok(Value::Con("strlen".to_string(), vec![Value::Char('a')]))
+        );
         Ok(())
     }
 
     #[test]
-    fn strcat_rejects_wrong_arity() -> Result<(), crate::error::BuildError> {
-        let t = con("strcat", vec![str_("x")])?;
-        assert!(matches!(
+    fn strcat_is_ordinary_con() -> Result<(), crate::error::BuildError> {
+        // After slice 6a this name is no longer reserved: a Con with that
+        // name is an ordinary constructor value.
+        let t = con("strcat", vec![char_('a'), char_('b')])?;
+        assert_eq!(
             eval(&t, &env()),
-            Err(EvalError::TypeMismatch { .. })
-        ));
-        Ok(())
-    }
-
-    #[test]
-    fn strlen_name_is_not_bound() -> Result<(), crate::error::BuildError> {
-        let t = var("strlen")?;
-        let result = eval(&t, &env());
-        assert!(matches!(result, Err(EvalError::UnboundVar(_))));
+            Ok(Value::Con(
+                "strcat".to_string(),
+                vec![Value::Char('a'), Value::Char('b')]
+            ))
+        );
         Ok(())
     }
 

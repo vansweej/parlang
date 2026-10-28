@@ -135,12 +135,6 @@ pub fn char_(c: char) -> Term {
     Term::Lit(Lit::Char(c))
 }
 
-/// A string literal.
-#[must_use]
-pub fn str_(s: &str) -> Term {
-    Term::Lit(Lit::Str(s.to_string()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

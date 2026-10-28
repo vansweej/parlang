@@ -4,10 +4,10 @@
 //! deliberately monomorphic: polymorphism and type inference are deferred to a
 //! later arc, and this enum forms the fixed seam those arcs build on.
 //!
-//! ADR note: `String` has no surface counterpart yet (Arc F seam). It exists in
-//! the Core model so that string literals have a well-defined base type and so
-//! the elaborator introduced in Arc F has a stable target to lower into, but no
-//! surface syntax produces it today.
+//! Core carries a `Char` base type — a Unicode scalar value (a code point),
+//! like Haskell's `Char`. Strings in Core are `List Char` under ADR 0002's
+//! `Cons`/`Nil` encoding, not a primitive string value; see
+//! `docs/adr/0004-core-char-and-strings.md`.
 
 use std::fmt::{self, Display, Formatter};
 
@@ -24,8 +24,6 @@ pub enum BaseType {
     Unit,
     /// A Unicode scalar value (code point), matching Haskell's `Char`.
     Char,
-    /// The string type (no surface counterpart yet; Arc F seam).
-    String,
 }
 
 impl BaseType {
@@ -38,7 +36,6 @@ impl BaseType {
             BaseType::Float => "float",
             BaseType::Unit => "unit",
             BaseType::Char => "char",
-            BaseType::String => "string",
         }
     }
 }
@@ -62,7 +59,6 @@ mod tests {
             BaseType::Float,
             BaseType::Unit,
             BaseType::Char,
-            BaseType::String,
         ];
         for bt in all {
             assert_eq!(bt.as_str(), bt.to_string(), "mismatch for {bt:?}");
@@ -77,7 +73,6 @@ mod tests {
             BaseType::Float,
             BaseType::Unit,
             BaseType::Char,
-            BaseType::String,
         ];
         for bt in all {
             let s = bt.as_str();

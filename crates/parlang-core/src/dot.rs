@@ -101,7 +101,6 @@ fn lit_label(lit: &Lit) -> String {
         Lit::Float(v) => format!("Lit {v}"),
         Lit::Unit => "Lit ()".to_string(),
         Lit::Char(c) => format!("Lit {c:?}"),
-        Lit::Str(s) => format!("Lit {s:?}"),
     }
 }
 
@@ -145,8 +144,8 @@ mod tests {
     }
 
     #[test]
-    fn escaping_quotes_in_string_literal() {
-        let term = Term::Lit(Lit::Str("a\"b".to_string()));
+    fn escaping_quotes_in_char_literal() {
+        let term = Term::Lit(Lit::Char('"'));
         let dot = core_to_dot(&term);
         assert!(dot.contains("\\\""), "quote not escaped: {dot}");
     }
