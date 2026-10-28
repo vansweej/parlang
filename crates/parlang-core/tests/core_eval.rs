@@ -4,7 +4,9 @@
 //! Runs inside `parlang-core`; the driver is intentionally not wired to the
 //! Core VM in Arc C.
 
-use parlang_core::builder::{alt, app, apps, bool_, case_, con, int, lam, let_, letrec, unit, var};
+use parlang_core::builder::{
+    alt, app, apps, bool_, case_, char_, con, int, lam, let_, letrec, unit, var,
+};
 use parlang_core::{eval, BaseType, Environment, EvalError, Value};
 
 fn env() -> Environment {
@@ -317,5 +319,49 @@ fn case_binder_arity_mismatch_errors() -> Result<(), parlang_core::BuildError> {
         eval(&term, &Environment::new()),
         Err(EvalError::TypeMismatch { .. })
     ));
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Strings as List Char (ADR 0002 Cons/Nil encoding; ADR 0004 Char model)
+// ---------------------------------------------------------------------------
+
+/// A string is a list of `Char`s under ADR 0002's `Cons`/`Nil` encoding;
+/// its length is computed with the ordinary `Case` eliminator.
+#[test]
+fn string_as_list_char_length_is_two() -> Result<(), Box<dyn std::error::Error>> {
+    // "ab" = Cons('a', Cons('b', Nil))
+    let s = con(
+        "Cons",
+        vec![
+            char_('a'),
+            con("Cons", vec![char_('b'), con("Nil", vec![])?])?,
+        ],
+    )?;
+    // letrec len = \xs. case xs of Cons(h, t) -> 1 + len t | Nil -> 0 in len s
+    let body = case_(
+        var("xs")?,
+        vec![
+            alt(
+                "Cons",
+                &["h", "t"],
+                con("+", vec![int(1), app(var("len")?, var("t")?)])?,
+            )?,
+            alt("Nil", &[], int(0))?,
+        ],
+    );
+    let len_lam = lam("xs", BaseType::Unit, body)?;
+    let term = letrec("len", len_lam, app(var("len")?, s))?;
+    assert_eq!(eval(&term, &env())?, Value::Int(2));
+    Ok(())
+}
+
+/// A non-ASCII Unicode scalar round-trips through eval and renders readably.
+#[test]
+fn non_ascii_char_roundtrips() -> Result<(), Box<dyn std::error::Error>> {
+    let scalar = '\u{1F600}';
+    let v = eval(&char_(scalar), &env())?;
+    assert_eq!(v, Value::Char(scalar));
+    assert_eq!(char_(scalar).to_text(), format!("{scalar:?}"));
     Ok(())
 }
