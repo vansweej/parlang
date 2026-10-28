@@ -22,6 +22,8 @@ pub enum BaseType {
     Float,
     /// The unit type.
     Unit,
+    /// A Unicode scalar value (code point), matching Haskell's `Char`.
+    Char,
     /// The string type (no surface counterpart yet; Arc F seam).
     String,
 }
@@ -35,6 +37,7 @@ impl BaseType {
             BaseType::Bool => "bool",
             BaseType::Float => "float",
             BaseType::Unit => "unit",
+            BaseType::Char => "char",
             BaseType::String => "string",
         }
     }
@@ -58,6 +61,7 @@ mod tests {
             BaseType::Bool,
             BaseType::Float,
             BaseType::Unit,
+            BaseType::Char,
             BaseType::String,
         ];
         for bt in all {
@@ -72,6 +76,7 @@ mod tests {
             BaseType::Bool,
             BaseType::Float,
             BaseType::Unit,
+            BaseType::Char,
             BaseType::String,
         ];
         for bt in all {

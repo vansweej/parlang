@@ -17,6 +17,7 @@ impl Display for Lit {
             Lit::Bool(v) => write!(f, "{v}"),
             Lit::Float(v) => write!(f, "{v}"),
             Lit::Unit => write!(f, "()"),
+            Lit::Char(c) => write!(f, "{c:?}"),
             Lit::Str(s) => write!(f, "{s:?}"),
         }
     }

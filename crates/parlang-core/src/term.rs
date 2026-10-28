@@ -52,6 +52,8 @@ pub enum Lit {
     Float(f64),
     /// The unit literal.
     Unit,
+    /// A Unicode scalar value literal (a code point), like Haskell's `Char`.
+    Char(char),
     /// A string literal (no surface counterpart yet; Arc F seam).
     Str(String),
 }
@@ -65,6 +67,7 @@ impl Lit {
             Lit::Bool(_) => BaseType::Bool,
             Lit::Float(_) => BaseType::Float,
             Lit::Unit => BaseType::Unit,
+            Lit::Char(_) => BaseType::Char,
             Lit::Str(_) => BaseType::String,
         }
     }
@@ -123,6 +126,7 @@ mod tests {
         assert_eq!(Lit::Bool(true).base_type(), BaseType::Bool);
         assert_eq!(Lit::Float(1.5).base_type(), BaseType::Float);
         assert_eq!(Lit::Unit.base_type(), BaseType::Unit);
+        assert_eq!(Lit::Char('a').base_type(), BaseType::Char);
         assert_eq!(Lit::Str("hi".to_string()).base_type(), BaseType::String);
     }
 

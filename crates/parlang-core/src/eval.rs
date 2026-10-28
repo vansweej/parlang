@@ -49,6 +49,8 @@ pub enum Value {
     Unit,
     /// A UTF-8 string.
     Str(String),
+    /// A Unicode scalar value (a code point), matching Haskell's `Char`.
+    Char(char),
     /// A 64-bit float.
     Float(f64),
     /// A non-recursive closure (lambda + captured environment).
@@ -167,6 +169,7 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
             Lit::Bool(b) => Value::Bool(*b),
             Lit::Float(x) => Value::Float(*x),
             Lit::Unit => Value::Unit,
+            Lit::Char(c) => Value::Char(*c),
             Lit::Str(s) => Value::Str(s.clone()),
         }),
 
@@ -367,6 +370,8 @@ fn eval_cmp(args: &[Term], env: &Environment) -> EvalResult {
     let rhs = eval(&args[1], env)?;
     if let (Value::Int(a), Value::Int(b)) = (&lhs, &rhs) {
         Ok(Value::Bool(a < b))
+    } else if let (Value::Char(a), Value::Char(b)) = (&lhs, &rhs) {
+        Ok(Value::Bool(a < b))
     } else {
         let found = if matches!(lhs, Value::Int(_)) {
             value_kind(&rhs)
@@ -396,6 +401,7 @@ fn eval_eq(args: &[Term], env: &Environment) -> EvalResult {
         (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
         (Value::Unit, Value::Unit) => Ok(Value::Bool(true)),
         (Value::Str(a), Value::Str(b)) => Ok(Value::Bool(a == b)),
+        (Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a == b)),
         // Float comparison via to_bits: NaN == NaN is true; 0.0 != -0.0.
         // Both are intentional consequences of bit-equality (ADR 0001).
         (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a.to_bits() == b.to_bits())),
@@ -437,6 +443,7 @@ fn value_kind(v: &Value) -> &'static str {
         Value::Bool(_) => "bool",
         Value::Unit => "unit",
         Value::Str(_) => "str",
+        Value::Char(_) => "char",
         Value::Float(_) => "float",
         Value::Closure(_) => "closure",
         Value::RecClosure(_) => "recclosure",

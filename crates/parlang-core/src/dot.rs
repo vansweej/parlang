@@ -100,6 +100,7 @@ fn lit_label(lit: &Lit) -> String {
         Lit::Bool(v) => format!("Lit {v}"),
         Lit::Float(v) => format!("Lit {v}"),
         Lit::Unit => "Lit ()".to_string(),
+        Lit::Char(c) => format!("Lit {c:?}"),
         Lit::Str(s) => format!("Lit {s:?}"),
     }
 }

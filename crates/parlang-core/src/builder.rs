@@ -129,6 +129,12 @@ pub fn unit() -> Term {
     Term::Lit(Lit::Unit)
 }
 
+/// A `Char` literal (a Unicode scalar value).
+#[must_use]
+pub fn char_(c: char) -> Term {
+    Term::Lit(Lit::Char(c))
+}
+
 /// A string literal.
 #[must_use]
 pub fn str_(s: &str) -> Term {
