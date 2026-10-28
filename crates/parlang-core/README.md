@@ -20,8 +20,11 @@ from the surface `parlang::ast::Expr`.
 - A small `prelude()` environment (`not`, `isEmpty`, `nonEmpty`) built on
   those primitives.
 
-Elaboration (surface -> Core) is not implemented; Core is exercised only by
-hand-written terms in this crate's own tests.
+Core now includes a `Case` tag-switch eliminator (one alternative per
+constructor; see `docs/adr/0003-core-case-eliminator.md`). A full elaboration
+pass (surface -> Core) is not yet shipped; a deliberately throwaway elaborator
+probe lives in `crates/parlang/tests/elaborator_probe.rs` and exercises the
+`Case` shape against real `match` compilation.
 
 ## ADR outcomes
 

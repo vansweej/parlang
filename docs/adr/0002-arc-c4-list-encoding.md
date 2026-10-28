@@ -4,6 +4,9 @@
 
 Accepted
 
+Constructor deconstruction (deferred below to "Arc F") is now decided by ADR
+0003 (`0003-core-case-eliminator.md`): the Core `Case` tag-switch eliminator.
+
 ## Context
 
 Arc E, Arc F, and Arc G require a stable, frozen encoding for list values so
