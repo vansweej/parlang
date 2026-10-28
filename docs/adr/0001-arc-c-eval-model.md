@@ -85,6 +85,9 @@ the VM's `Con` dispatch in `eval.rs` and do not appear as bindings in any
 non-error `false` rather than raising `NotComparable`) is unchanged by this
 addition.
 
+Superseded in part by ADR 0004 (`0004-core-char-and-strings.md`): the
+primitive-string helpers were retired; Core strings are `List Char`.
+
 ### Decision 4 — Recursion via `RecClosure` re-bound at each application
 
 `Term::LetRec(n, v, b)` requires `v` to be a `Term::Lam(param, _ty, body)`; it

@@ -4,8 +4,9 @@
 //! tree-walking VM (Arc C) that evaluates it: see [`eval`], [`Value`],
 //! [`Environment`], and [`EvalError`]. Branching and primitives use reserved
 //! constructor names dispatched by the VM (`if`, `+`, `-`, `*`, `/`, `<`,
-//! `eq`, `strlen`, `strcat`); recursion uses [`Value::RecClosure`]. `strlen`
-//! and `strcat` are host string primitives. The evaluation model is
+//! `eq`); recursion uses [`Value::RecClosure`]. Strings are `List Char` under
+//! ADR 0002's `Cons`/`Nil` encoding (see `docs/adr/0004-core-char-and-strings.md`).
+//! The evaluation model is
 //! specified in `docs/CORE_OPERATIONAL_SEMANTICS.md` and
 //! `docs/adr/0001-arc-c-eval-model.md`. The `parlang-driver` crate does NOT
 //! depend on this crate yet.

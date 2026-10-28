@@ -8,17 +8,16 @@ from the surface `parlang::ast::Expr`.
 - System-F-*shaped* but **monomorphic** Core term AST
   (`Term`: `Var` / `Lam` / `App` / `Let` / `LetRec` / `Lit` / `Con`).
 - Core-owned base types (`BaseType`: `Int` / `Bool` / `Float` /
-  `Unit` / `String`), used to annotate lambda binders and classify literals.
+  `Unit` / `Char`), used to annotate lambda binders and classify literals.
 - DOT dumper (`core_to_dot`, header `digraph Core`) and a text dump
   (`Term::to_text` / `Display`), mirroring the surface dumpers.
 - A tiny, dependency-free builder (`builder` module, smart
   constructors) for hand-writing Core in tests.
 - A strict, call-by-value, environment-based evaluator (`eval`, `Value`,
   `Environment`, `EvalError`) over `Term`, with reserved primitives
-  (`if`, `+`, `-`, `*`, `/`, `<`, `eq`, `strlen`, `strcat`), recursion via
+  (`if`, `+`, `-`, `*`, `/`, `<`, `eq`), recursion via
   `LetRec` / `Value::RecClosure`, and checked arithmetic.
-- A small `prelude()` environment (`not`, `isEmpty`, `nonEmpty`) built on
-  those primitives.
+- A small `prelude()` environment (`not`) built on those primitives.
 
 Core now includes a `Case` tag-switch eliminator (one alternative per
 constructor; see `docs/adr/0003-core-case-eliminator.md`). A full elaboration
@@ -50,7 +49,8 @@ probe lives in `crates/parlang/tests/elaborator_probe.rs` and exercises the
 - **Polymorphism:** System-F forall / type variables / type-lambda / type
   application are **deferred** to a later sub-step; the `BaseType` binder
   annotation and module notes mark the seam.
-- **`String` base type:** Core carries a `String` base type with **no surface
-  counterpart yet**. When elaboration lands, the elaborator must treat
-  Core `String` as having no surface source — a partiality to handle
-  deliberately.
+- **`Char` and strings:** Core carries a `Char` base type — a Unicode scalar
+  value, like Haskell's `Char`. Strings are `List Char` under ADR 0002's
+  `Cons`/`Nil` encoding; there is no primitive string value. The earlier
+  primitive-string false start has been retired. See ADR 0004
+  (`docs/adr/0004-core-char-and-strings.md`).

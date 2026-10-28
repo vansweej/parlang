@@ -7,6 +7,9 @@ Accepted
 Constructor deconstruction (deferred below to "Arc F") is now decided by ADR
 0003 (`0003-core-case-eliminator.md`): the Core `Case` tag-switch eliminator.
 
+Strings in Core are `List Char` under this `Cons`/`Nil` encoding; see ADR 0004
+(`0004-core-char-and-strings.md`) for the Core `Char` model.
+
 ## Context
 
 Arc E, Arc F, and Arc G require a stable, frozen encoding for list values so
