@@ -22,6 +22,7 @@ use parlang::{
     TypedExprKind, TypedMatchArm, TypedProgram,
 };
 use parlang_core::term::{Alt, Lit, Term};
+use parlang_core::ty::Type as CoreType;
 use parlang_core::{eval, BaseType, Environment as CoreEnv, Value as CoreValue};
 
 /// An error raised when the probe meets a construct it does not support, or
@@ -113,6 +114,86 @@ fn fun_param_base_type(fun_ty: &Type) -> BaseType {
         Type::Fun(param, _) => base_type_of(param),
         _ => BaseType::Unit,
     }
+}
+
+/// Translates a FULL surface `Type` (as inferred by the surface typechecker)
+/// into a Core `CoreType`, hard-rejecting (via `None`) any construct outside
+/// the System-F-shaped Core slice rather than silently falling back. This is
+/// the slice-6b pull on the Core `Type` enum: it is NOT the real elaborator and
+/// does NOT touch `Term::Lam` or `base_type_of` (that is slice 6c).
+///
+/// Mappings:
+/// - `Int`/`Bool`/`Char`/`Float`/`Unit` -> the matching `CoreType::Base` leaf.
+/// - `Fun(a, b)` -> `CoreType::Fun`.
+/// - `Var(TypeVar(n))` -> a named `CoreType::Var` spelled `tN`, mirroring the
+///   surface's own `tN` rendering. The `format!("t{}", v.0)` positional form is
+///   deliberate: `v.0` is a tuple-struct field access on `TypeVar`.
+/// - `SumType(name, args)` -> left-associative `CoreType::App` of the named
+///   `CoreType::Con` over the translated args (so `List (Option a)` is NOT
+///   lossy, unlike the surface Display).
+/// - `Record(..)` and `Tuple(..)` -> hard-reject (`None`): Core has no row type
+///   yet, and a tuple needs an arity-tagged constructor (deferred to slice 7),
+///   which would also collide with user `data Tuple ...` declarations.
+fn core_type_of(ty: &Type) -> Option<CoreType> {
+    match ty {
+        Type::Int => Some(CoreType::Base(BaseType::Int)),
+        Type::Bool => Some(CoreType::Base(BaseType::Bool)),
+        Type::Char => Some(CoreType::Base(BaseType::Char)),
+        Type::Float => Some(CoreType::Base(BaseType::Float)),
+        Type::Unit => Some(CoreType::Base(BaseType::Unit)),
+        Type::Fun(dom, cod) => {
+            let d = core_type_of(dom)?;
+            let c = core_type_of(cod)?;
+            Some(CoreType::Fun(Box::new(d), Box::new(c)))
+        }
+        // Positional field access: `v.0` is the inner `usize` of `TypeVar`.
+        Type::Var(v) => Some(CoreType::Var(format!("t{}", v.0))),
+        Type::SumType(name, args) => {
+            let mut head = CoreType::Con(name.clone());
+            for arg in args {
+                let a = core_type_of(arg)?;
+                head = CoreType::App(Box::new(head), Box::new(a));
+            }
+            Some(head)
+        }
+        Type::Record(_) | Type::Tuple(_) => None,
+    }
+}
+
+#[test]
+fn core_type_of_translates_base_and_arrow() {
+    // Int -> Bool
+    let ty = Type::Fun(Box::new(Type::Int), Box::new(Type::Bool));
+    let core = core_type_of(&ty).expect("Int -> Bool should translate");
+    assert_eq!(core.to_string(), "int -> bool", "rendering: {core}");
+}
+
+#[test]
+fn core_type_of_translates_sum_type_without_loss() {
+    // List (Option t0)  -- the surface Display would lose the nesting.
+    let option_a = Type::SumType("Option".to_string(), vec![Type::Var(parlang::TypeVar(0))]);
+    let list = Type::SumType("List".to_string(), vec![option_a]);
+    let core = core_type_of(&list).expect("nested sum type should translate");
+    assert_eq!(core.to_string(), "List (Option t0)", "rendering: {core}");
+}
+
+#[test]
+fn core_type_of_rejects_record() {
+    let mut fields = std::collections::HashMap::new();
+    fields.insert("x".to_string(), Type::Int);
+    assert!(
+        core_type_of(&Type::Record(fields)).is_none(),
+        "records must hard-reject"
+    );
+}
+
+#[test]
+fn core_type_of_rejects_tuple() {
+    let tuple = Type::Tuple(vec![Type::Int, Type::Bool]);
+    assert!(
+        core_type_of(&tuple).is_none(),
+        "tuples must hard-reject (arity-tagged ctor deferred to slice 7)"
+    );
 }
 
 /// Recursively validates that a pattern is within the probe's supported slice
@@ -674,4 +755,165 @@ fn literal_patterns_rejected() {
     let src = example_src("examples/pattern_matching.par");
     let msg = unsupported_msg(elaborate_source(&src).unwrap_err());
     assert!(msg.contains("literal pattern"), "unexpected reason: {msg}");
+}
+
+/// Infers the surface type of a whole program's trailing body, then translates
+/// it to a Core `CoreType` and renders it. Returns `None` when the body is
+/// absent or the inferred type falls outside the Core slice.
+fn core_type_render(src: &str) -> Option<String> {
+    let program = parse_program(src).expect("parse should succeed");
+    let typed = typecheck_program_typed(&program).expect("typecheck should succeed");
+    let body = typed.body.as_ref()?;
+    core_type_of(&body.ty).map(|t| t.to_string())
+}
+
+#[test]
+fn inferred_monomorphic_body_type_translates() {
+    // A plain arithmetic body infers to int.
+    let rendered = core_type_render("let x = 3 in x * 4").expect("body type should translate");
+    assert_eq!(rendered, "int", "unexpected rendering: {rendered}");
+}
+
+#[test]
+fn inferred_function_body_type_translates() {
+    // An increment lambda body infers to a Core arrow over base leaves.
+    let rendered = core_type_render("fun x -> x + 1").expect("body type should translate");
+    assert_eq!(rendered, "int -> int", "unexpected rendering: {rendered}");
+}
+
+#[test]
+fn inferred_sum_type_body_translates_without_loss() {
+    // A List Int value body translates to a non-lossy Core application.
+    let src = "data List a = Nil | Cons a (List a) in Cons 1 (Cons 2 Nil)";
+    let rendered = core_type_render(src).expect("body type should translate");
+    assert_eq!(rendered, "List int", "unexpected rendering: {rendered}");
+}
+
+/// Translates a generalized surface `TypeScheme` into a Core `CoreType`,
+/// wrapping the translated body in nested `CoreType::Forall`, outermost binder
+/// first. Each binder is spelled IDENTICALLY to its occurrence spelling
+/// (`format!("t{}", v.0)`), so the quantifier binds the same name the body
+/// mentions. Hard-rejects (`None`) if any typeclass constraints are present
+/// (Core has no classes yet) or the body is untranslatable.
+fn core_scheme_of(scheme: &parlang::TypeScheme) -> Option<CoreType> {
+    if !scheme.constraints.is_empty() {
+        return None;
+    }
+    let mut body = core_type_of(&scheme.ty)?;
+    // Positional field access: `v.0` is the inner `usize` of `TypeVar`.
+    for v in scheme.vars.iter().rev() {
+        body = CoreType::Forall(format!("t{}", v.0), Box::new(body));
+    }
+    Some(body)
+}
+
+/// Finds a top-level `let` decl by name in a typechecked program and returns a
+/// clone of its generalized scheme.
+fn decl_scheme(src: &str, want: &str) -> parlang::TypeScheme {
+    let program = parse_program(src).expect("parse should succeed");
+    let typed = typecheck_program_typed(&program).expect("typecheck should succeed");
+    for decl in &typed.decls {
+        if let TypedDecl::Let { name, scheme, .. } = decl {
+            if name == want {
+                return scheme.clone();
+            }
+        }
+    }
+    panic!("no let decl named {want}");
+}
+
+#[test]
+fn generalized_scheme_translates_to_forall() {
+    // `id` generalizes to a single-variable scheme; its Core type is a single
+    // Forall, closed, over an arrow whose domain and codomain are the same var.
+    let scheme = decl_scheme("let id = fun x -> x;\nid 3", "id");
+    assert_eq!(scheme.vars.len(), 1, "id should have one quantified var");
+    let core = core_scheme_of(&scheme).expect("id scheme should translate");
+    assert!(
+        matches!(core, CoreType::Forall(_, _)),
+        "expected a Forall, got: {core}"
+    );
+    assert!(
+        core.free_vars().is_empty(),
+        "a generalized scheme must be closed, got free vars in: {core}"
+    );
+    // Build the expected rendering FROM the scheme's own var number; the fresh
+    // counter is not stable across runs.
+    let v = scheme.vars[0].0;
+    let expected = format!("forall t{v}. t{v} -> t{v}");
+    assert_eq!(core.to_string(), expected, "unexpected rendering");
+}
+
+#[test]
+fn open_scheme_body_has_one_free_var() {
+    // The UN-generalized body type of `id` is the open `t{v} -> t{v}`, whose
+    // free type variables are exactly {t{v}}.
+    let scheme = decl_scheme("let id = fun x -> x;\nid 3", "id");
+    let v = scheme.vars[0].0;
+    let body = core_type_of(&scheme.ty).expect("id body type should translate");
+    let fv: Vec<String> = body.free_vars().into_iter().collect();
+    assert_eq!(fv, vec![format!("t{v}")], "unexpected free vars in: {body}");
+}
+
+#[test]
+fn two_variable_scheme_translates_to_nested_foralls() {
+    // `konst a b = a` generalizes to a two-variable scheme -> two nested
+    // Foralls, closed. (`const` is a reserved-ish name to avoid; use `konst`.)
+    let scheme = decl_scheme("let konst = fun a -> fun b -> a;\nkonst 1 2", "konst");
+    assert_eq!(
+        scheme.vars.len(),
+        2,
+        "konst should have two quantified vars"
+    );
+    let core = core_scheme_of(&scheme).expect("konst scheme should translate");
+    assert!(
+        core.free_vars().is_empty(),
+        "a generalized scheme must be closed, got: {core}"
+    );
+    // Outermost binder first == scheme.vars[0]; body is `t0 -> t1 -> t0`.
+    let v0 = scheme.vars[0].0;
+    let v1 = scheme.vars[1].0;
+    let expected = format!("forall t{v0}. forall t{v1}. t{v0} -> t{v1} -> t{v0}");
+    assert_eq!(core.to_string(), expected, "unexpected rendering");
+}
+
+#[test]
+fn scheme_with_constraints_hard_rejects() {
+    // Build a scheme carrying a (reserved, currently-unused) constraint and
+    // confirm the translation hard-rejects, since Core has no classes yet.
+    let scheme = parlang::TypeScheme {
+        vars: vec![parlang::TypeVar(0)],
+        ty: Type::Var(parlang::TypeVar(0)),
+        constraints: vec![parlang::Constraint {
+            class: "Eq".to_string(),
+            args: vec![Type::Var(parlang::TypeVar(0))],
+        }],
+    };
+    assert!(
+        core_scheme_of(&scheme).is_none(),
+        "constrained schemes must hard-reject"
+    );
+}
+
+#[test]
+fn stdlib_decl_schemes_all_translate_closed() {
+    // Corpus sweep: every top-level `let` decl scheme in stdlib.par (which
+    // includes polymorphic `id` and `compose`) must translate to a closed Core
+    // type. The file has no record or tuple types in any decl scheme.
+    let src = example_src("examples/stdlib.par");
+    let program = parse_program(&src).expect("parse stdlib");
+    let typed = typecheck_program_typed(&program).expect("typecheck stdlib");
+    let mut seen = 0_usize;
+    for decl in &typed.decls {
+        if let TypedDecl::Let { name, scheme, .. } = decl {
+            let core = core_scheme_of(scheme)
+                .unwrap_or_else(|| panic!("decl {name} scheme should translate"));
+            assert!(
+                core.free_vars().is_empty(),
+                "decl {name} scheme must be closed, got: {core}"
+            );
+            seen += 1;
+        }
+    }
+    assert!(seen >= 8, "expected stdlib.par let decls, saw {seen}");
 }
