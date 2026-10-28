@@ -21,7 +21,7 @@ The value domain is:
 v ::= n                         -- integer
     | b                         -- boolean
     | ()                        -- unit
-    | s                         -- string
+    | c                         -- char (Unicode scalar value)
     | f                         -- float
     | <closure ρ, x, t>         -- function closure
     | <recclosure ρ, g, x, t>   -- recursive function closure
@@ -33,7 +33,7 @@ This maps to the Rust `Value` enum:
 - `Int(i64)`
 - `Bool(bool)`
 - `Unit`
-- `Str(String)`
+- `Char(char)`
 - `Float(f64)`
 - `Closure { param, body, env }`
 - `RecClosure { name, param, body, env }` — a distinct variant from
@@ -57,7 +57,7 @@ Lookup the name in ρ. An unbound name is an error (`UnboundVar`).
 ### `Lit`
 
 Injects the literal into the corresponding value (`Int`, `Bool`, `Unit`,
-`Str`, `Float`).
+`Char`, `Float`).
 
 ### `Lam(x, τ, t)`
 
@@ -120,17 +120,12 @@ tables produced by elaboration cover the complete constructor family (Wadler
   apply checked arithmetic. Division by zero yields `DivisionByZero`. A
   `None` result from a checked operation (overflow/underflow) yields
   `ArithmeticOverflow`. Non-`Int` operands yield `TypeMismatch`.
-- **`Con("<", [a, b])`**: `Int` operands only, result is `Bool`. Non-`Int`
-  operands yield `TypeMismatch` (there is no float comparison).
+- **`Con("<", [a, b])`**: `Int` or `Char` operands, result is `Bool`.
+  `Char` operands compare by scalar (code-point) ordering. Other operand
+  types yield `TypeMismatch` (there is no float comparison).
 - **`Con("eq", [a, b])`**: base-type operands only. `Float` operands are
-  compared via `f64::to_bits` bit-equality. `Closure`/`RecClosure`/`Con`
-  operands yield `NotComparable`.
-- **`Con("strlen", [s])`**: host string primitive; `s` must evaluate to
-  `Str`, and the result is `Int` (the character count). Non-`Str` operands
-  yield `TypeMismatch`.
-- **`Con("strcat", [a, b])`**: host string primitive; both `a` and `b` must
-  evaluate to `Str`, and the result is their concatenation as `Str`.
-  Non-`Str` operands yield `TypeMismatch`.
+  compared via `f64::to_bits` bit-equality; `Char` operands by scalar
+  equality. `Closure`/`RecClosure`/`Con` operands yield `NotComparable`.
 - A generic `Con(name, args)` with a non-reserved `name` evaluates all `args`
   strictly, left-to-right, and yields `Con(name, [v..])`.
 
@@ -156,7 +151,8 @@ taken branch is evaluated.
 
 `eq` on `Float` uses `f64::to_bits` bit-equality. This is **intended**, not a
 bug: under bit-equality, `NaN == NaN` is **true**, and `0.0 != -0.0` (signed
-zero is distinct from its negation).
+zero is distinct from its negation). Strings are `List Char`, not a primitive
+value; the retired primitive-string helpers are recorded in ADR 0004.
 
 ## References
 

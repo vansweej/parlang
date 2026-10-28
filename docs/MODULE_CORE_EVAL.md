@@ -15,7 +15,7 @@ and justified in [docs/adr/0001-arc-c-eval-model.md](adr/0001-arc-c-eval-model.m
 The runtime value domain, mirroring `Lit`'s base types plus function and
 constructor values:
 
-- `Int(i64)`, `Bool(bool)`, `Unit`, `Str(String)`, `Float(f64)`
+- `Int(i64)`, `Bool(bool)`, `Unit`, `Char(char)`, `Float(f64)`
 - `Closure { param, body, env }` — a non-recursive function closure.
 - `RecClosure { name, param, body, env }` — a **distinct** variant from
   `Closure`. Unlike `Closure`, a `RecClosure` carries the name it was bound
@@ -73,17 +73,14 @@ shared `Term` AST frozen:
 - `Con("+"|"-"|"*"|"/", [a, b])` — both operands must be `Int`; checked
   arithmetic (`DivisionByZero` / `ArithmeticOverflow` / `TypeMismatch` on
   mismatch).
-- `Con("<", [a, b])` — `Int` operands only, yields `Bool`.
+- `Con("<", [a, b])` — `Int` or `Char` operands, yields `Bool`; `Char`
+  operands compare by scalar ordering.
 - `Con("eq", [a, b])` — restricted to base values (`Int`, `Bool`, `Unit`,
-  `Str`, `Float`); `Float` operands are compared via `f64::to_bits`
-  bit-equality; function or constructor operands are rejected with
-  `NotComparable`.
-- `Con("strlen", [s])` — `s` must be `Str`; returns the `Int` count of
-  UTF-8 characters in `s`. See `MODULE_CORE_PRELUDE.md` for the Core-defined
-  helpers (`isEmpty`, `nonEmpty`, etc.) built on top of this primitive.
-- `Con("strcat", [a, b])` — both `a` and `b` must be `Str`; returns their
-  concatenation as a `Str`. See `MODULE_CORE_PRELUDE.md` for the Core-defined
-  helpers built on top of this primitive.
+  `Char`, `Float`); `Float` operands are compared via `f64::to_bits`
+  bit-equality, `Char` operands by scalar equality; function or constructor
+  operands are rejected with `NotComparable`. Strings are `List Char`, not a
+  primitive value; the retired primitive-string helpers are recorded in
+  ADR 0004.
 
 The `eq` float semantics are intended, not accidental: under bit-equality,
 `NaN == NaN` is **true**, and `0.0 != -0.0` (signed zero is distinct from its
