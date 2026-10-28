@@ -1,4 +1,4 @@
-use parlang::parse_program;
+use parlang::{parse_program, run_on_evaluator_stack};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -583,23 +583,28 @@ fn sublime_bat_corpus_runs() {
 
 #[test]
 fn corpus_files_all_parse() {
+    // The combine parser recurses natively per `let ... in` level; coverage
+    // instrumentation (tarpaulin) inflates frames past the 2 MiB test-thread
+    // stack, so collect, read, and parse on the 256 MiB evaluator worker.
     let root = workspace_root();
-    let files = collect_par_files(&root);
+    let (file_count, failures) = run_on_evaluator_stack(move || {
+        let files = collect_par_files(&root);
+        let mut failures = Vec::new();
+        for path in &files {
+            let contents = fs::read_to_string(path)
+                .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+            if let Err(error) = parse_program(&contents) {
+                failures.push(format!("{}: {error}", path.display()));
+            }
+        }
+        (files.len(), failures)
+    })
+    .expect("corpus parse worker should run on the evaluator stack");
 
     assert!(
-        files.len() >= 30,
-        "expected at least 30 .par files in the corpus, found {}",
-        files.len()
+        file_count >= 30,
+        "expected at least 30 .par files in the corpus, found {file_count}"
     );
-
-    let mut failures = Vec::new();
-    for path in &files {
-        let contents = fs::read_to_string(path)
-            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-        if let Err(error) = parse_program(&contents) {
-            failures.push(format!("{}: {error}", path.display()));
-        }
-    }
 
     assert!(
         failures.is_empty(),
