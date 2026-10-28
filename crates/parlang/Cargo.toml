@@ -12,6 +12,7 @@ clap = { workspace = true }
 rustyline = { workspace = true }
 
 [dev-dependencies]
+parlang-core = { path = "../parlang-core" }
 
 [[bin]]
 name = "parlang"
