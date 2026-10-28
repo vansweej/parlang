@@ -149,4 +149,22 @@ mod tests {
         let dot = core_to_dot(&term);
         assert!(dot.contains("\\\""), "quote not escaped: {dot}");
     }
+
+    #[test]
+    fn case_dumps_alt_nodes() {
+        let term = Term::Case(
+            Box::new(Term::Var("s".to_string())),
+            vec![Alt {
+                con: "Nil".to_string(),
+                binders: vec![],
+                body: Term::Lit(Lit::Int(0)),
+            }],
+        );
+        let dot = core_to_dot(&term);
+        assert!(
+            dot.contains("[label=\"Case\"];"),
+            "case node missing: {dot}"
+        );
+        assert!(dot.contains("[label=\"Nil\"];"), "alt node missing: {dot}");
+    }
 }

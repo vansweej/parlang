@@ -84,6 +84,7 @@ impl Term {
 mod tests {
     use super::*;
     use crate::base_type::BaseType;
+    use crate::term::Alt;
 
     #[test]
     fn identity_lambda_text() {
@@ -127,5 +128,25 @@ mod tests {
         let term = Term::Lit(Lit::Float(1.5));
         let text = term.to_text();
         assert!(text.contains("1.5"), "expected 1.5 in: {text}");
+    }
+
+    #[test]
+    fn case_text_renders_alts() {
+        let term = Term::Case(
+            Box::new(Term::Var("s".to_string())),
+            vec![
+                Alt {
+                    con: "Cons".to_string(),
+                    binders: vec!["x".to_string(), "xs".to_string()],
+                    body: Term::Var("x".to_string()),
+                },
+                Alt {
+                    con: "Nil".to_string(),
+                    binders: vec![],
+                    body: Term::Lit(Lit::Int(0)),
+                },
+            ],
+        );
+        assert_eq!(term.to_text(), "(case s of Cons(x, xs) -> x | Nil -> 0)");
     }
 }

@@ -4,7 +4,7 @@
 //! Runs inside `parlang-core`; the driver is intentionally not wired to the
 //! Core VM in Arc C.
 
-use parlang_core::builder::{app, apps, bool_, con, int, lam, let_, letrec, unit, var};
+use parlang_core::builder::{alt, app, apps, bool_, case_, con, int, lam, let_, letrec, unit, var};
 use parlang_core::{eval, BaseType, Environment, EvalError, Value};
 
 fn env() -> Environment {
@@ -255,4 +255,67 @@ fn unit_literal() {
 #[test]
 fn bool_literal() {
     assert_eq!(eval(&bool_(false), &env()), Ok(Value::Bool(false)));
+}
+
+#[test]
+fn case_selects_matching_alt() -> Result<(), parlang_core::BuildError> {
+    // case Cons(1, Nil) of Cons(h, t) -> h | Nil -> 0  ==> 1
+    let scrutinee = con("Cons", vec![int(1), con("Nil", vec![])?])?;
+    let term = case_(
+        scrutinee,
+        vec![
+            alt("Cons", &["h", "t"], var("h")?)?,
+            alt("Nil", &[], int(0))?,
+        ],
+    );
+    assert_eq!(eval(&term, &Environment::new()), Ok(Value::Int(1)));
+    Ok(())
+}
+
+#[test]
+fn case_list_length_via_letrec() -> Result<(), parlang_core::BuildError> {
+    // letrec len = \xs. case xs of Cons(h, t) -> 1 + len t | Nil -> 0
+    // in len (Cons 7 (Cons 8 Nil))  ==> 2
+    let body = case_(
+        var("xs")?,
+        vec![
+            alt(
+                "Cons",
+                &["h", "t"],
+                con("+", vec![int(1), app(var("len")?, var("t")?)])?,
+            )?,
+            alt("Nil", &[], int(0))?,
+        ],
+    );
+    let len_lam = lam("xs", BaseType::Unit, body)?;
+    let list = con(
+        "Cons",
+        vec![int(7), con("Cons", vec![int(8), con("Nil", vec![])?])?],
+    )?;
+    let term = letrec("len", len_lam, app(var("len")?, list))?;
+    assert_eq!(eval(&term, &Environment::new()), Ok(Value::Int(2)));
+    Ok(())
+}
+
+#[test]
+fn case_no_matching_alt_errors() -> Result<(), parlang_core::BuildError> {
+    // case Nil of Cons(h, t) -> h   ==> NoMatchingAlt("Nil")
+    let term = case_(con("Nil", vec![])?, vec![alt("Cons", &["h", "t"], int(0))?]);
+    assert_eq!(
+        eval(&term, &Environment::new()),
+        Err(EvalError::NoMatchingAlt("Nil".to_string()))
+    );
+    Ok(())
+}
+
+#[test]
+fn case_binder_arity_mismatch_errors() -> Result<(), parlang_core::BuildError> {
+    // case Cons(1, Nil) of Cons(only) -> only   ==> TypeMismatch
+    let scrutinee = con("Cons", vec![int(1), con("Nil", vec![])?])?;
+    let term = case_(scrutinee, vec![alt("Cons", &["only"], int(0))?]);
+    assert!(matches!(
+        eval(&term, &Environment::new()),
+        Err(EvalError::TypeMismatch { .. })
+    ));
+    Ok(())
 }

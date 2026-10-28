@@ -11,7 +11,7 @@
 
 use crate::base_type::BaseType;
 use crate::error::{BuildError, BuildResult};
-use crate::term::{Lit, Term};
+use crate::term::{Alt, Lit, Term};
 
 /// A term variable.
 ///
@@ -82,6 +82,27 @@ pub fn con(name: &str, args: Vec<Term>) -> BuildResult<Term> {
         return Err(BuildError::EmptyName);
     }
     Ok(Term::Con(name.to_string(), args))
+}
+
+/// A single `Case` alternative: constructor name, positional binders, body.
+///
+/// # Errors
+/// Returns [`BuildError::EmptyName`] if `con` is empty.
+pub fn alt(con: &str, binders: &[&str], body: Term) -> BuildResult<Alt> {
+    if con.is_empty() {
+        return Err(BuildError::EmptyName);
+    }
+    Ok(Alt {
+        con: con.to_string(),
+        binders: binders.iter().map(|b| (*b).to_string()).collect(),
+        body,
+    })
+}
+
+/// A `Case` tag-switch over `scrutinee` with the given alternatives.
+#[must_use]
+pub fn case_(scrutinee: Term, alts: Vec<Alt>) -> Term {
+    Term::Case(Box::new(scrutinee), alts)
 }
 
 /// An integer literal.
