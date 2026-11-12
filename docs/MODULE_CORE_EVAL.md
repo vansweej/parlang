@@ -86,6 +86,11 @@ The `eq` float semantics are intended, not accidental: under bit-equality,
 `NaN == NaN` is **true**, and `0.0 != -0.0` (signed zero is distinct from its
 negation).
 
+Slice 6e update: `eq` on mismatched base operands (for example `Int` versus
+`Bool`) now yields `TypeMismatch` rather than `false`. Such terms cannot arise
+in lint-clean Core, so the stricter rule is observable only on hand-built
+ill-typed terms.
+
 ## Recursion
 
 `LetRec` evaluation builds a self-binding recursive closure: `Term::LetRec(n, v, b)`

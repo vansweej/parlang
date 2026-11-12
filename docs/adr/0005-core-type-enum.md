@@ -118,6 +118,9 @@ memory).
   arguments and a `LetRec` type annotation landed. Erasure is recorded in
   ADR 0006.
 
+  Status update (slice 6e): the Core Lint pass (ADR 0007) consumes `subst` and
+  `alpha_eq` as a pure checker over explicitly-typed Core.
+
 ## References
 
 - `docs/adr/0003-core-case-eliminator.md` — Finding F1 (Lam binder `BaseType`).

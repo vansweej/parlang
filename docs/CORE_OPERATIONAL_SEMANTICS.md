@@ -154,6 +154,9 @@ bug: under bit-equality, `NaN == NaN` is **true**, and `0.0 != -0.0` (signed
 zero is distinct from its negation). Strings are `List Char`, not a primitive
 value; the retired primitive-string helpers are recorded in ADR 0004.
 
+Slice 6e update: mismatched base operands to `eq` reduce to a `TypeMismatch`
+error rather than `false`, consistent with explicitly-typed, lint-clean Core.
+
 ## References
 
 - Benjamin C. Pierce, *Types and Programming Languages* (TAPL), Ch. 5, 6, 7.
