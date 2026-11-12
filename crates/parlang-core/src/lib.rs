@@ -34,6 +34,9 @@ pub use eval::{eval, Environment, EvalError, EvalResult, Value};
 
 pub mod prelude;
 pub use prelude::{prelude, PreludeError};
+
+pub mod lint;
+pub use lint::{lint, prelude_env, DataCon, DataType, LintEnv, LintError};
 // core-modules: phase5
 /// Returns the crate's semantic version string.
 #[must_use]
