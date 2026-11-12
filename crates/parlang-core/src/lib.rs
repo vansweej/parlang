@@ -34,7 +34,7 @@ pub use eval::{eval, Environment, EvalError, EvalResult, Value};
 pub mod machine;
 pub mod readback;
 pub mod value_display;
-pub use machine::{run, Machine, StepKind, StepOutcome};
+pub use machine::{reduction_terms, run, trace, Machine, StepKind, StepOutcome, TraceStep};
 
 pub mod prelude;
 pub use prelude::{prelude, PreludeError};

@@ -75,6 +75,8 @@ pub enum StepKind {
     LetBind,
     /// Erase a type abstraction or application.
     Erase,
+    /// Record the machine's completed state in a trace.
+    Halt,
 }
 
 impl std::fmt::Display for StepKind {
@@ -90,6 +92,7 @@ impl std::fmt::Display for StepKind {
             Self::CaseSelect => "caseselect",
             Self::LetBind => "letbind",
             Self::Erase => "erase",
+            Self::Halt => "halt",
         };
         write!(formatter, "{name}")
     }
@@ -166,6 +169,32 @@ pub enum StepOutcome {
     Continue(StepKind),
     /// The machine completed with a value.
     Done(Value),
+}
+
+/// A state snapshot and the transition that follows it.
+#[derive(Clone, Debug)]
+pub struct TraceStep {
+    /// The kind of transition represented by this snapshot.
+    pub kind: StepKind,
+    /// The machine state before the transition, or the final halted state.
+    pub state: State,
+}
+
+impl TraceStep {
+    /// Returns `true` when this trace step is a textbook reduction.
+    #[must_use]
+    pub fn is_reduction(&self) -> bool {
+        matches!(
+            self.kind,
+            StepKind::Beta
+                | StepKind::Unfold
+                | StepKind::Delta
+                | StepKind::Branch
+                | StepKind::CaseSelect
+                | StepKind::LetBind
+                | StepKind::Erase
+        )
+    }
 }
 
 /// A mutable CEK machine.
@@ -534,6 +563,58 @@ pub fn run(term: &Term, env: &Environment, fuel: Option<usize>) -> Result<Value,
     }
 }
 
+/// Traces evaluation with raw machine-state snapshots.
+///
+/// Each nonterminal entry contains the state before its transition. The final
+/// entry has kind [`StepKind::Halt`] and contains the completed return state.
+///
+/// # Errors
+/// Propagates an [`EvalError`] from a transition and returns
+/// [`EvalError::StepLimit`] when `fuel` is exhausted.
+pub fn trace(
+    term: &Term,
+    env: &Environment,
+    fuel: Option<usize>,
+) -> Result<Vec<TraceStep>, EvalError> {
+    let mut machine = Machine::new(term, env);
+    let mut remaining = fuel;
+    let mut steps = Vec::new();
+    loop {
+        if matches!(remaining, Some(0)) {
+            return Err(EvalError::StepLimit);
+        }
+        let before = machine.state().clone();
+        match machine.step()? {
+            StepOutcome::Continue(kind) => {
+                steps.push(TraceStep {
+                    kind,
+                    state: before,
+                });
+                if let Some(fuel) = &mut remaining {
+                    *fuel -= 1;
+                }
+            }
+            StepOutcome::Done(_) => {
+                steps.push(TraceStep {
+                    kind: StepKind::Halt,
+                    state: machine.state().clone(),
+                });
+                return Ok(steps);
+            }
+        }
+    }
+}
+
+/// Returns textbook Core-term snapshots for reductions and the final value.
+#[must_use]
+pub fn reduction_terms(steps: &[TraceStep]) -> Vec<String> {
+    steps
+        .iter()
+        .filter(|step| step.is_reduction() || step.kind == StepKind::Halt)
+        .map(|step| step.state.readback().to_text())
+        .collect()
+}
+
 fn value_from_lit(literal: &Lit) -> Value {
     match literal {
         Lit::Int(value) => Value::Int(*value),
@@ -676,6 +757,18 @@ mod tests {
         assert!(matches!(machine.step(), Ok(StepOutcome::Continue(_))));
         assert!(machine.state().to_string().contains("AppArg(2)"));
         Ok(())
+    }
+
+    #[test]
+    fn trace_halts_without_being_a_reduction() {
+        assert_eq!(StepKind::Halt.to_string(), "halt");
+        let steps = trace(&int(1), &Environment::new(), None);
+        assert!(matches!(
+            steps,
+            Ok(ref entries)
+                if matches!(entries.last(), Some(step) if step.kind == StepKind::Halt
+                    && !step.is_reduction())
+        ));
     }
 
     #[test]
