@@ -128,9 +128,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn base_renders_lowercase() {
-        assert_eq!(Type::Base(BaseType::Int).to_string(), "int");
-        assert_eq!(Type::from(BaseType::Unit).to_string(), "unit");
+    fn base_renders_capitalized() {
+        assert_eq!(Type::Base(BaseType::Int).to_string(), "Int");
+        assert_eq!(Type::from(BaseType::Unit).to_string(), "Unit");
     }
 
     #[test]
@@ -227,7 +227,7 @@ mod tests {
             )),
             Box::new(Type::Base(BaseType::Int)),
         );
-        assert_eq!(ty.to_string(), "(forall a. a) -> int");
+        assert_eq!(ty.to_string(), "(forall a. a) -> Int");
     }
 
     #[test]

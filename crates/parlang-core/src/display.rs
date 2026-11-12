@@ -93,7 +93,7 @@ mod tests {
             BaseType::Int,
             Box::new(Term::Var("x".to_string())),
         );
-        assert_eq!(term.to_text(), "(\\x: int. x)");
+        assert_eq!(term.to_text(), "(\\x: Int. x)");
     }
 
     #[test]
@@ -120,7 +120,7 @@ mod tests {
             )),
             Box::new(Term::Lit(Lit::Unit)),
         );
-        assert_eq!(term.to_text(), "(letrec f = (\\x: unit. x) in ())");
+        assert_eq!(term.to_text(), "(letrec f = (\\x: Unit. x) in ())");
     }
 
     #[test]

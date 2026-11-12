@@ -27,15 +27,15 @@ pub enum BaseType {
 }
 
 impl BaseType {
-    /// Returns the lowercase spelling of this base type.
+    /// Returns the capitalized spelling of this base type (GHC/Haskell style).
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
-            BaseType::Int => "int",
-            BaseType::Bool => "bool",
-            BaseType::Float => "float",
-            BaseType::Unit => "unit",
-            BaseType::Char => "char",
+            BaseType::Int => "Int",
+            BaseType::Bool => "Bool",
+            BaseType::Float => "Float",
+            BaseType::Unit => "Unit",
+            BaseType::Char => "Char",
         }
     }
 }
@@ -66,17 +66,16 @@ mod tests {
     }
 
     #[test]
-    fn spellings_are_lowercase() {
-        let all = [
-            BaseType::Int,
-            BaseType::Bool,
-            BaseType::Float,
-            BaseType::Unit,
-            BaseType::Char,
+    fn spellings_are_capitalized() {
+        let cases = [
+            (BaseType::Int, "Int"),
+            (BaseType::Bool, "Bool"),
+            (BaseType::Float, "Float"),
+            (BaseType::Unit, "Unit"),
+            (BaseType::Char, "Char"),
         ];
-        for bt in all {
-            let s = bt.as_str();
-            assert_eq!(s, s.to_lowercase(), "not lowercase for {bt:?}");
+        for (bt, want) in cases {
+            assert_eq!(bt.as_str(), want, "wrong spelling for {bt:?}");
         }
     }
 }

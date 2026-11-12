@@ -165,7 +165,7 @@ fn core_type_of_translates_base_and_arrow() {
     // Int -> Bool
     let ty = Type::Fun(Box::new(Type::Int), Box::new(Type::Bool));
     let core = core_type_of(&ty).expect("Int -> Bool should translate");
-    assert_eq!(core.to_string(), "int -> bool", "rendering: {core}");
+    assert_eq!(core.to_string(), "Int -> Bool", "rendering: {core}");
 }
 
 #[test]
@@ -771,14 +771,14 @@ fn core_type_render(src: &str) -> Option<String> {
 fn inferred_monomorphic_body_type_translates() {
     // A plain arithmetic body infers to int.
     let rendered = core_type_render("let x = 3 in x * 4").expect("body type should translate");
-    assert_eq!(rendered, "int", "unexpected rendering: {rendered}");
+    assert_eq!(rendered, "Int", "unexpected rendering: {rendered}");
 }
 
 #[test]
 fn inferred_function_body_type_translates() {
     // An increment lambda body infers to a Core arrow over base leaves.
     let rendered = core_type_render("fun x -> x + 1").expect("body type should translate");
-    assert_eq!(rendered, "int -> int", "unexpected rendering: {rendered}");
+    assert_eq!(rendered, "Int -> Int", "unexpected rendering: {rendered}");
 }
 
 #[test]
@@ -786,7 +786,7 @@ fn inferred_sum_type_body_translates_without_loss() {
     // A List Int value body translates to a non-lossy Core application.
     let src = "data List a = Nil | Cons a (List a) in Cons 1 (Cons 2 Nil)";
     let rendered = core_type_render(src).expect("body type should translate");
-    assert_eq!(rendered, "List int", "unexpected rendering: {rendered}");
+    assert_eq!(rendered, "List Int", "unexpected rendering: {rendered}");
 }
 
 /// Translates a generalized surface `TypeScheme` into a Core `CoreType`,

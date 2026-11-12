@@ -15,7 +15,7 @@ fn factorial_shaped_term_text_dump() -> Result<(), BuildError> {
 
     assert_eq!(
         term.to_text(),
-        "(letrec fac = (\\n: int. (fac n)) in (fac 5))"
+        "(letrec fac = (\\n: Int. (fac n)) in (fac 5))"
     );
     Ok(())
 }
@@ -32,7 +32,7 @@ fn factorial_shaped_term_dot_dump() -> Result<(), BuildError> {
     assert!(dot.contains("digraph Core {"));
     assert!(!dot.contains("digraph AST"));
     assert!(dot.contains("node0 [label=\"LetRec fac\"];"));
-    assert!(dot.contains("[label=\"Lam n: int\"];"));
+    assert!(dot.contains("[label=\"Lam n: Int\"];"));
     Ok(())
 }
 

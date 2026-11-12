@@ -133,7 +133,7 @@ mod tests {
         let dot = core_to_dot(&term);
         assert!(dot.starts_with("digraph Core {\n"), "header missing: {dot}");
         assert!(
-            dot.contains("node0 [label=\"Lam x: int\"];"),
+            dot.contains("node0 [label=\"Lam x: Int\"];"),
             "lam node missing: {dot}"
         );
         assert!(
