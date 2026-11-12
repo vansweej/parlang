@@ -574,7 +574,11 @@ fn value_kind(value: &Value) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::builder::{alt, bool_, case_, con, int, var};
+    use crate::base_type::BaseType;
+    use crate::builder::{
+        alt, app, base_ty, bool_, case_, char_, con, con_at, int, lam, let_, letrec, tvar, tyapp,
+        tylam, unit, var,
+    };
 
     #[test]
     fn machine_matches_reference_smoke() -> Result<(), crate::error::BuildError> {
@@ -599,6 +603,153 @@ mod tests {
                 crate::eval::reference_eval(&term, &env)
             );
         }
+        Ok(())
+    }
+
+    fn factorial_term(input: i64) -> Result<Term, crate::error::BuildError> {
+        let is_zero = con("eq", vec![var("n")?, int(0)])?;
+        let decrement = con("-", vec![var("n")?, int(1)])?;
+        let recursive_call = app(var("fac")?, decrement);
+        let product = con("*", vec![var("n")?, recursive_call])?;
+        let body = con("if", vec![is_zero, int(1), product])?;
+        let function = lam("n", BaseType::Int, body)?;
+        let call = app(var("fac")?, int(input));
+        letrec("fac", base_ty(BaseType::Int), function, call)
+    }
+
+    fn countdown_term(input: i64) -> Result<Term, crate::error::BuildError> {
+        let is_zero = con("eq", vec![var("n")?, int(0)])?;
+        let decrement = con("-", vec![var("n")?, int(1)])?;
+        let recursive_call = app(var("f")?, decrement);
+        let body = con("if", vec![is_zero, int(0), recursive_call])?;
+        let function = lam("n", BaseType::Int, body)?;
+        let call = app(var("f")?, int(input));
+        letrec("f", base_ty(BaseType::Int), function, call)
+    }
+
+    fn sum_term(input: i64) -> Result<Term, crate::error::BuildError> {
+        let is_zero = con("eq", vec![var("n")?, int(0)])?;
+        let decrement = con("-", vec![var("n")?, int(1)])?;
+        let recursive_call = app(var("s")?, decrement);
+        let sum = con("+", vec![var("n")?, recursive_call])?;
+        let body = con("if", vec![is_zero, int(0), sum])?;
+        let function = lam("n", BaseType::Int, body)?;
+        let call = app(var("s")?, int(input));
+        letrec("s", base_ty(BaseType::Int), function, call)
+    }
+
+    fn divergent_term() -> Result<Term, crate::error::BuildError> {
+        let body = app(var("f")?, var("x")?);
+        let function = lam("x", BaseType::Int, body)?;
+        let call = app(var("f")?, int(0));
+        letrec("f", base_ty(BaseType::Int), function, call)
+    }
+
+    fn cases() -> Result<Vec<(Term, Environment)>, crate::error::BuildError> {
+        let identity = app(lam("x", BaseType::Int, var("x")?)?, int(5));
+        let let_binding = let_("x", int(7), var("x")?)?;
+        let lazy_if = con("if", vec![bool_(true), int(42), var("nope")?])?;
+        let pair = con("Pair", vec![int(1), bool_(true)])?;
+        let nil = con("Nil", vec![])?;
+        let case_match = case_(
+            con("Cons", vec![int(1), con("Nil", vec![])?])?,
+            vec![
+                alt("Cons", &["h", "t"], var("h")?)?,
+                alt("Nil", &[], int(0))?,
+            ],
+        );
+        let case_missing = case_(con("Nil", vec![])?, vec![alt("Cons", &["h", "t"], int(0))?]);
+        let case_arity = case_(
+            con("Cons", vec![int(1), con("Nil", vec![])?])?,
+            vec![alt("Cons", &["only"], int(0))?],
+        );
+        let erased = app(
+            tyapp(
+                tylam("a", lam("x", tvar("a")?, var("x")?)?)?,
+                base_ty(BaseType::Int),
+            ),
+            int(5),
+        );
+        let typed_constructor = con_at("Just", vec![base_ty(BaseType::Int)], vec![int(7)])?;
+        let terms = vec![
+            int(42),
+            bool_(true),
+            unit(),
+            char_('a'),
+            Term::Lit(Lit::Float(1.5)),
+            identity,
+            let_binding,
+            lazy_if,
+            con("+", vec![int(10), int(2)])?,
+            con("-", vec![int(10), int(2)])?,
+            con("*", vec![int(10), int(2)])?,
+            con("/", vec![int(10), int(2)])?,
+            con("/", vec![int(1), int(0)])?,
+            con("+", vec![int(i64::MAX), int(1)])?,
+            con("<", vec![int(1), int(2)])?,
+            con("<", vec![char_('a'), char_('b')])?,
+            con("eq", vec![int(3), int(3)])?,
+            con("eq", vec![lam("x", BaseType::Int, var("x")?)?, int(1)])?,
+            con("eq", vec![int(1), bool_(true)])?,
+            pair,
+            nil,
+            case_match,
+            case_missing,
+            case_arity,
+            app(int(1), int(2)),
+            var("x")?,
+            letrec("f", base_ty(BaseType::Int), int(1), int(0))?,
+            erased,
+            typed_constructor,
+            factorial_term(5)?,
+            con("+", vec![int(1)])?,
+            con("if", vec![bool_(true)])?,
+        ];
+        Ok(terms
+            .into_iter()
+            .map(|term| (term, Environment::new()))
+            .collect())
+    }
+
+    #[test]
+    fn machine_matches_reference() -> Result<(), crate::error::BuildError> {
+        for (t, e) in cases()? {
+            assert_eq!(run(&t, &e, None), crate::eval::reference_eval(&t, &e));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn deep_countdown_20k() -> Result<(), crate::error::BuildError> {
+        let term = countdown_term(20_000)?;
+        assert_eq!(run(&term, &Environment::new(), None), Ok(Value::Int(0)));
+        Ok(())
+    }
+
+    #[test]
+    fn deep_nontail_sum_5k() -> Result<(), crate::error::BuildError> {
+        let term = sum_term(5_000)?;
+        assert_eq!(
+            run(&term, &Environment::new(), None),
+            Ok(Value::Int(12_502_500))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn step_limit_diverges() -> Result<(), crate::error::BuildError> {
+        let term = divergent_term()?;
+        assert_eq!(
+            run(&term, &Environment::new(), Some(1_000)),
+            Err(EvalError::StepLimit)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn no_limit_still_terminates() -> Result<(), crate::error::BuildError> {
+        let term = factorial_term(5)?;
+        assert_eq!(run(&term, &Environment::new(), None), Ok(Value::Int(120)));
         Ok(())
     }
 }
