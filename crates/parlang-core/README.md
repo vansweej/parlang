@@ -5,8 +5,10 @@ from the surface `parlang::ast::Expr`.
 
 ## Scope
 
-- System-F-*shaped* but **monomorphic** Core term AST
-  (`Term`: `Var` / `Lam` / `App` / `Let` / `LetRec` / `Lit` / `Con`).
+- System-F-shaped, **explicitly typed** Core term AST
+  (`Term`: `Var` / `Lam` / `App` / `Let` / `LetRec` / `Lit` / `Con` / `TyLam` /
+  `TyApp`). `Con` carries explicit type arguments and `LetRec` a binder
+  annotation; `TyLam` / `TyApp` are erased at runtime (ADR 0006).
 - Core-owned base types (`BaseType`: `Int` / `Bool` / `Float` /
   `Unit` / `Char`), used to annotate lambda binders and classify literals.
 - A System-F-shaped Core type (`Type`: `Base` / `Var` / `Con` / `Fun` /
@@ -53,9 +55,9 @@ probe lives in `crates/parlang/tests/elaborator_probe.rs` and exercises the
   dependency added to this zero-dependency crate.
 - **Polymorphism:** the System-F Core `Type` enum (forall / type variables /
   type-constructor application) landed in slice 6b
-  (`docs/adr/0005-core-type-enum.md`); type-lambda / type-application TERMS and
-  the `Lam` annotation switch from `BaseType` to `Type` are deferred to slices
-  6c/6d. The `BaseType` binder annotation still marks the seam until then.
+  (`docs/adr/0005-core-type-enum.md`); slice 6c switched the `Lam` annotation
+  from `BaseType` to `Type`, and slice 6d added the type-lambda /
+  type-application TERMS (`TyLam` / `TyApp`, erased at runtime; ADR 0006).
 - **`Char` and strings:** Core carries a `Char` base type — a Unicode scalar
   value, like Haskell's `Char`. Strings are `List Char` under ADR 0002's
   `Cons`/`Nil` encoding; there is no primitive string value. The earlier

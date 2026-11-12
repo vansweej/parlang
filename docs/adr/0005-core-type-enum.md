@@ -112,6 +112,12 @@ memory).
 - Substitution and alpha-equivalence are not yet available; passes needing them
   (Core Lint in 6e, `TyLam` / `TyApp` in 6d) add them when required.
 
+  Status update (slice 6d): `Type::subst` (capture-avoiding, fresh-renaming over
+  the NAMED representation - not De Bruijn) and `Type::alpha_eq` now exist, and
+  the System-F term nodes `Term::TyLam` / `Term::TyApp`, explicit `Con` type
+  arguments and a `LetRec` type annotation landed. Erasure is recorded in
+  ADR 0006.
+
 ## References
 
 - `docs/adr/0003-core-case-eliminator.md` — Finding F1 (Lam binder `BaseType`).
