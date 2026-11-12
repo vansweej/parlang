@@ -3,7 +3,7 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-/// Run a ParLang `.par` file through parse + eval and print the resulting value.
+/// Run a `ParLang` `.par` file through parse + eval and print the resulting value.
 #[derive(Parser)]
 #[command(name = "parlang-driver")]
 #[command(group(clap::ArgGroup::new("dump_mode").args(["dump", "dump_dot"])))]
