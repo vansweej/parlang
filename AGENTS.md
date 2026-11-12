@@ -21,20 +21,22 @@ build artefacts separate:
 
 ```bash
 systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
-  env CARGO_TARGET_DIR=/tmp/parlang-cargo nix develop . --command cargo test
+  env CARGO_TARGET_DIR=/tmp/parlang-cargo nix develop . --command cargo test --workspace
 ```
 
 | Task | Command |
 |------|---------|
 | Build | `cargo build` |
-| Test all | `cargo test` |
+| Test all | `cargo test --workspace` |
 | Single test | `cargo test <test_name>` |
 | Single test file | `cargo test --test <file_stem>` (e.g. `--test record_tests`) |
-| Lint | `cargo clippy --all-targets --all-features` |
+| Lint | `cargo clippy --workspace --all-targets --all-features -- -D warnings` |
 | Format | `cargo fmt` |
 | Coverage | `cargo tarpaulin` (add `RUST_MIN_STACK=67108864` to the wrapper's `env`; see README) |
 
-**Pre-PR order:** `cargo clippy` → `cargo fmt` → `cargo test`.
+Pass `--workspace` to test/clippy: `default-members = ["crates/parlang"]` means bare `cargo` commands only cover the `parlang` crate and silently skip `parlang-core` and `parlang-driver`.
+
+**Pre-PR order:** `cargo clippy --workspace --all-targets --all-features -- -D warnings` → `cargo fmt` → `cargo test --workspace`.
 Run each command through the contained invocation above.
 
 ## Toolchain quirks
