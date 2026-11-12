@@ -7,7 +7,6 @@
 //! `docs/CORE_OPERATIONAL_SEMANTICS.md` and `docs/adr/0001-arc-c-eval-model.md`.
 
 use crate::term::{Alt, Lit, Term};
-use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
 // ---------------------------------------------------------------------------
@@ -64,32 +63,68 @@ pub enum Value {
 // Environment
 // ---------------------------------------------------------------------------
 
-/// A persistent, value-semantics environment mapping names to [`Value`]s.
-///
-/// [`extend`](Environment::extend) returns a new environment; the original
-/// is unchanged.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Environment(HashMap<String, Value>);
+#[derive(Debug)]
+struct Scope {
+    name: String,
+    value: Value,
+    parent: Option<std::rc::Rc<Scope>>,
+}
+
+/// A persistent environment mapping names to [`Value`]s, represented as an
+/// `Rc` chain of [`Scope`] nodes so that [`extend`](Environment::extend) is
+/// O(1) and shares structure with the parent (roadmap Amendment 1: no
+/// whole-map clone).
+#[derive(Debug, Clone, Default)]
+pub struct Environment {
+    head: Option<std::rc::Rc<Scope>>,
+}
+
+impl PartialEq for Environment {
+    fn eq(&self, other: &Self) -> bool {
+        self.visible_bindings() == other.visible_bindings()
+    }
+}
 
 impl Environment {
     /// Creates an empty environment.
     #[must_use]
     pub fn new() -> Self {
-        Self(HashMap::new())
+        Self { head: None }
     }
 
     /// Looks up `name` in the environment.
     #[must_use]
     pub fn lookup(&self, name: &str) -> Option<&Value> {
-        self.0.get(name)
+        let mut current = &self.head;
+        while let Some(scope) = current {
+            if scope.name == name {
+                return Some(&scope.value);
+            }
+            current = &scope.parent;
+        }
+        None
     }
 
     /// Returns a new environment with `name` bound to `value`.
     #[must_use]
     pub fn extend(&self, name: &str, value: Value) -> Self {
-        let mut map = self.0.clone();
-        map.insert(name.to_string(), value);
-        Self(map)
+        Self {
+            head: Some(std::rc::Rc::new(Scope {
+                name: name.to_string(),
+                value,
+                parent: self.head.clone(),
+            })),
+        }
+    }
+
+    fn visible_bindings(&self) -> std::collections::BTreeMap<&str, &Value> {
+        let mut bindings = std::collections::BTreeMap::new();
+        let mut current = &self.head;
+        while let Some(scope) = current {
+            bindings.entry(scope.name.as_str()).or_insert(&scope.value);
+            current = &scope.parent;
+        }
+        bindings
     }
 }
 
