@@ -88,7 +88,9 @@ fn node_label(term: &Term) -> String {
         Term::Let(name, _, _) => format!("Let {name}"),
         Term::LetRec(name, _, _) => format!("LetRec {name}"),
         Term::Lit(lit) => lit_label(lit),
-        Term::Con(name, _) => format!("Con {name}"),
+        Term::Con(name, _, _) => format!("Con {name}"),
+        Term::TyLam(binder, _) => format!("TyLam {binder}"),
+        Term::TyApp(_, ty) => format!("TyApp @{ty}"),
         Term::Case(_, _) => "Case".to_string(),
     }
 }
@@ -108,12 +110,14 @@ fn lit_label(lit: &Lit) -> String {
 fn children(term: &Term) -> Vec<&Term> {
     match term {
         Term::Var(_) | Term::Lit(_) => Vec::new(),
-        Term::Lam(_, _, body) => vec![body.as_ref()],
+        Term::Lam(_, _, body) | Term::TyLam(_, body) | Term::TyApp(body, _) => {
+            vec![body.as_ref()]
+        }
         Term::App(func, arg) => vec![func.as_ref(), arg.as_ref()],
         Term::Let(_, value, body) | Term::LetRec(_, value, body) => {
             vec![value.as_ref(), body.as_ref()]
         }
-        Term::Con(_, args) => args.iter().collect(),
+        Term::Con(_, _, args) => args.iter().collect(),
         Term::Case(scrutinee, _) => vec![scrutinee.as_ref()],
     }
 }

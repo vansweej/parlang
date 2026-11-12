@@ -35,8 +35,11 @@ impl Display for Term {
                 write!(f, "(letrec {name} = {value} in {body})")
             }
             Term::Lit(lit) => write!(f, "{lit}"),
-            Term::Con(name, args) => {
+            Term::Con(name, ty_args, args) => {
                 write!(f, "{name}")?;
+                for ty in ty_args {
+                    write!(f, " @{ty}")?;
+                }
                 if !args.is_empty() {
                     write!(f, "(")?;
                     for (i, arg) in args.iter().enumerate() {
@@ -49,6 +52,8 @@ impl Display for Term {
                 }
                 Ok(())
             }
+            Term::TyLam(binder, body) => write!(f, "(/\\{binder}. {body})"),
+            Term::TyApp(term, ty) => write!(f, "({term} @{ty})"),
             Term::Case(scrutinee, alts) => {
                 write!(f, "(case {scrutinee} of ")?;
                 for (i, alt) in alts.iter().enumerate() {
@@ -102,6 +107,7 @@ mod tests {
             "p".to_string(),
             Box::new(Term::Con(
                 "Pair".to_string(),
+                vec![],
                 vec![Term::Lit(Lit::Int(1)), Term::Lit(Lit::Bool(true))],
             )),
             Box::new(Term::Var("p".to_string())),

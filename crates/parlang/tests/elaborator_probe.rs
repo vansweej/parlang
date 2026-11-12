@@ -265,7 +265,11 @@ fn elaborate(expr: &TypedExpr, ctx: &mut Elab) -> Result<Term, ElabError> {
             let c_term = elaborate(c, ctx)?;
             let t_term = elaborate(t, ctx)?;
             let e_term = elaborate(e, ctx)?;
-            Ok(Term::Con("if".to_string(), vec![c_term, t_term, e_term]))
+            Ok(Term::Con(
+                "if".to_string(),
+                vec![],
+                vec![c_term, t_term, e_term],
+            ))
         }
         TypedExprKind::BinOp(op, l, r) => elaborate_binop(*op, l, r, ctx),
         TypedExprKind::TypeDef {
@@ -279,7 +283,7 @@ fn elaborate(expr: &TypedExpr, ctx: &mut Elab) -> Result<Term, ElabError> {
             for arg in args {
                 arg_terms.push(elaborate(arg, ctx)?);
             }
-            Ok(Term::Con(name.clone(), arg_terms))
+            Ok(Term::Con(name.clone(), vec![], arg_terms))
         }
         TypedExprKind::Match(scrutinee, arms) => elaborate_match(scrutinee, arms, ctx),
         other => Err(ElabError::Unsupported(format!("expr kind: {other:?}"))),
@@ -321,7 +325,7 @@ fn elaborate_binop(
     };
     let l_term = elaborate(l, ctx)?;
     let r_term = elaborate(r, ctx)?;
-    Ok(Term::Con(name.to_string(), vec![l_term, r_term]))
+    Ok(Term::Con(name.to_string(), vec![], vec![l_term, r_term]))
 }
 
 /// Elaborates a surface `match` into a Core `Term` via backtracking-free,

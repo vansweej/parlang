@@ -103,8 +103,17 @@ pub enum Term {
     LetRec(String, Box<Term>, Box<Term>),
     /// A literal.
     Lit(Lit),
-    /// A constructor application: constructor name and ordered arguments.
-    Con(String, Vec<Term>),
+    /// A constructor application: constructor name, explicit type arguments
+    /// (empty for reserved primitives and untyped construction), and ordered
+    /// value arguments.
+    Con(String, Vec<crate::ty::Type>, Vec<Term>),
+
+    /// A type abstraction (System-F big lambda): a type binder and a body.
+    /// Erased at runtime (see `docs/adr/0006-core-system-f-term-erasure.md`).
+    TyLam(String, Box<Term>),
+    /// A type application: a term and the type it is applied to. Erased at
+    /// runtime (see `docs/adr/0006-core-system-f-term-erasure.md`).
+    TyApp(Box<Term>, crate::ty::Type),
 
     /// A low-level tag-switch eliminator: a scrutinee and one alternative
     /// per constructor of its type (positional, unannotated binders). Rich

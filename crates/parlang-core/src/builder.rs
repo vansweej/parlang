@@ -82,7 +82,35 @@ pub fn con(name: &str, args: Vec<Term>) -> BuildResult<Term> {
     if name.is_empty() {
         return Err(BuildError::EmptyName);
     }
-    Ok(Term::Con(name.to_string(), args))
+    Ok(Term::Con(name.to_string(), Vec::new(), args))
+}
+
+/// A constructor application with explicit type arguments (GHC-style).
+///
+/// # Errors
+/// Returns [`BuildError::EmptyName`] if `name` is empty.
+pub fn con_at(name: &str, ty_args: Vec<Type>, args: Vec<Term>) -> BuildResult<Term> {
+    if name.is_empty() {
+        return Err(BuildError::EmptyName);
+    }
+    Ok(Term::Con(name.to_string(), ty_args, args))
+}
+
+/// A type abstraction (erased at runtime): a type binder and a body.
+///
+/// # Errors
+/// Returns [`BuildError::EmptyName`] if `binder` is empty.
+pub fn tylam(binder: &str, body: Term) -> BuildResult<Term> {
+    if binder.is_empty() {
+        return Err(BuildError::EmptyName);
+    }
+    Ok(Term::TyLam(binder.to_string(), Box::new(body)))
+}
+
+/// A type application (erased at runtime): a term applied to a type.
+#[must_use]
+pub fn tyapp(term: Term, ty: Type) -> Term {
+    Term::TyApp(Box::new(term), ty)
 }
 
 /// A single `Case` alternative: constructor name, positional binders, body.
@@ -262,6 +290,7 @@ mod tests {
             built,
             Term::Con(
                 "Pair".to_string(),
+                vec![],
                 vec![Term::Lit(Lit::Int(1)), Term::Lit(Lit::Unit)]
             )
         );

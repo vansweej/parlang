@@ -220,8 +220,9 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
             }
         }
 
-        Term::Con(name, args) => {
+        Term::Con(name, _ty_args, args) => {
             // Reserved primitive names per ADR 0001 Decision 3 (Option A).
+            // Type arguments are erased at runtime (ADR 0006).
             match name.as_str() {
                 "if" => eval_if(args, env),
                 "+" => eval_arith('+', args, env),
@@ -239,6 +240,9 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
                 }
             }
         }
+
+        // ADR 0006: type abstraction/application are erased at runtime.
+        Term::TyLam(_, inner) | Term::TyApp(inner, _) => eval(inner, env),
 
         Term::Case(scrutinee, alts) => eval_case(scrutinee, alts, env),
     }
