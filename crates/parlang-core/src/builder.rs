@@ -63,12 +63,13 @@ pub fn let_(name: &str, value: Term, body: Term) -> BuildResult<Term> {
 ///
 /// # Errors
 /// Returns [`BuildError::EmptyName`] if `name` is empty.
-pub fn letrec(name: &str, value: Term, body: Term) -> BuildResult<Term> {
+pub fn letrec(name: &str, ty: impl Into<Type>, value: Term, body: Term) -> BuildResult<Term> {
     if name.is_empty() {
         return Err(BuildError::EmptyName);
     }
     Ok(Term::LetRec(
         name.to_string(),
+        ty.into(),
         Box::new(value),
         Box::new(body),
     ))
@@ -230,7 +231,10 @@ mod tests {
         assert_eq!(var(""), Err(BuildError::EmptyName));
         assert_eq!(lam("", BaseType::Int, unit()), Err(BuildError::EmptyName));
         assert_eq!(let_("", unit(), unit()), Err(BuildError::EmptyName));
-        assert_eq!(letrec("", unit(), unit()), Err(BuildError::EmptyName));
+        assert_eq!(
+            letrec("", BaseType::Int, unit(), unit()),
+            Err(BuildError::EmptyName)
+        );
         assert_eq!(con("", vec![]), Err(BuildError::EmptyName));
     }
 

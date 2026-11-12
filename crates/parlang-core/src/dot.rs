@@ -86,7 +86,7 @@ fn node_label(term: &Term) -> String {
         Term::Lam(name, ty, _) => format!("Lam {name}: {ty}"),
         Term::App(_, _) => "App".to_string(),
         Term::Let(name, _, _) => format!("Let {name}"),
-        Term::LetRec(name, _, _) => format!("LetRec {name}"),
+        Term::LetRec(name, ann, _, _) => format!("LetRec {name}: {ann}"),
         Term::Lit(lit) => lit_label(lit),
         Term::Con(name, _, _) => format!("Con {name}"),
         Term::TyLam(binder, _) => format!("TyLam {binder}"),
@@ -114,7 +114,7 @@ fn children(term: &Term) -> Vec<&Term> {
             vec![body.as_ref()]
         }
         Term::App(func, arg) => vec![func.as_ref(), arg.as_ref()],
-        Term::Let(_, value, body) | Term::LetRec(_, value, body) => {
+        Term::Let(_, value, body) | Term::LetRec(_, _, value, body) => {
             vec![value.as_ref(), body.as_ref()]
         }
         Term::Con(_, _, args) => args.iter().collect(),
@@ -170,5 +170,21 @@ mod tests {
             "case node missing: {dot}"
         );
         assert!(dot.contains("[label=\"Nil\"];"), "alt node missing: {dot}");
+    }
+
+    #[test]
+    fn tylam_tyapp_dot_labels() {
+        let tl = Term::TyLam("a".to_string(), Box::new(Term::Var("x".to_string())));
+        let dot = core_to_dot(&tl);
+        assert!(dot.contains("[label=\"TyLam a\"];"), "tylam label: {dot}");
+        let ta = Term::TyApp(
+            Box::new(Term::Var("f".to_string())),
+            crate::ty::Type::Base(BaseType::Int),
+        );
+        let dot2 = core_to_dot(&ta);
+        assert!(
+            dot2.contains("[label=\"TyApp @Int\"];"),
+            "tyapp label: {dot2}"
+        );
     }
 }

@@ -31,8 +31,8 @@ impl Display for Term {
             Term::Let(name, value, body) => {
                 write!(f, "(let {name} = {value} in {body})")
             }
-            Term::LetRec(name, value, body) => {
-                write!(f, "(letrec {name} = {value} in {body})")
+            Term::LetRec(name, ann, value, body) => {
+                write!(f, "(letrec {name}: {ann} = {value} in {body})")
             }
             Term::Lit(lit) => write!(f, "{lit}"),
             Term::Con(name, ty_args, args) => {
@@ -119,6 +119,10 @@ mod tests {
     fn letrec_and_unit_text() {
         let term = Term::LetRec(
             "f".to_string(),
+            crate::ty::Type::Fun(
+                Box::new(crate::ty::Type::Base(BaseType::Unit)),
+                Box::new(crate::ty::Type::Base(BaseType::Unit)),
+            ),
             Box::new(Term::Lam(
                 "x".to_string(),
                 crate::ty::Type::Base(BaseType::Unit),
@@ -126,7 +130,10 @@ mod tests {
             )),
             Box::new(Term::Lit(Lit::Unit)),
         );
-        assert_eq!(term.to_text(), "(letrec f = (\\x: Unit. x) in ())");
+        assert_eq!(
+            term.to_text(),
+            "(letrec f: Unit -> Unit = (\\x: Unit. x) in ())"
+        );
     }
 
     #[test]
@@ -154,5 +161,36 @@ mod tests {
             ],
         );
         assert_eq!(term.to_text(), "(case s of Cons(x, xs) -> x | Nil -> 0)");
+    }
+
+    #[test]
+    fn tylam_tyapp_render_ascii() {
+        let tl = Term::TyLam("a".to_string(), Box::new(Term::Var("x".to_string())));
+        assert_eq!(tl.to_text(), "(/\\a. x)");
+        let ta = Term::TyApp(
+            Box::new(Term::Var("f".to_string())),
+            crate::ty::Type::Base(BaseType::Int),
+        );
+        assert_eq!(ta.to_text(), "(f @Int)");
+    }
+
+    #[test]
+    fn typed_con_renders_at_type_args() {
+        let term = Term::Con(
+            "Just".to_string(),
+            vec![crate::ty::Type::Base(BaseType::Int)],
+            vec![Term::Lit(Lit::Int(1))],
+        );
+        assert_eq!(term.to_text(), "Just @Int(1)");
+    }
+
+    #[test]
+    fn empty_ty_arg_con_is_byte_identical() {
+        let term = Term::Con(
+            "Pair".to_string(),
+            vec![],
+            vec![Term::Lit(Lit::Int(1)), Term::Lit(Lit::Bool(true))],
+        );
+        assert_eq!(term.to_text(), "Pair(1, true)");
     }
 }

@@ -5,7 +5,8 @@
 //! Core VM in Arc C.
 
 use parlang_core::builder::{
-    alt, app, apps, bool_, case_, char_, con, int, lam, let_, letrec, tapp, tcon, tvar, unit, var,
+    alt, app, apps, base_ty, bool_, case_, char_, con, fun_ty, int, lam, let_, letrec, tapp, tcon,
+    tvar, unit, var,
 };
 use parlang_core::{eval, BaseType, Environment, EvalError, Value};
 
@@ -36,7 +37,12 @@ fn factorial_of_five() -> Result<(), Box<dyn std::error::Error>> {
         ],
     )?;
     let fac_lam = lam("n", BaseType::Int, body)?;
-    let t = letrec("fac", fac_lam, app(var("fac")?, int(5)))?;
+    let t = letrec(
+        "fac",
+        fun_ty(base_ty(BaseType::Int), base_ty(BaseType::Int)),
+        fac_lam,
+        app(var("fac")?, int(5)),
+    )?;
     assert_eq!(eval(&t, &env())?, Value::Int(120));
     Ok(())
 }
@@ -54,7 +60,12 @@ fn recursion_countdown() -> Result<(), Box<dyn std::error::Error>> {
         ],
     )?;
     let f_lam = lam("n", BaseType::Int, body)?;
-    let t = letrec("f", f_lam, app(var("f")?, int(5)))?;
+    let t = letrec(
+        "f",
+        fun_ty(base_ty(BaseType::Int), base_ty(BaseType::Int)),
+        f_lam,
+        app(var("f")?, int(5)),
+    )?;
     assert_eq!(eval(&t, &env())?, Value::Int(0));
     Ok(())
 }
@@ -296,7 +307,12 @@ fn case_list_length_via_letrec() -> Result<(), parlang_core::BuildError> {
         "Cons",
         vec![int(7), con("Cons", vec![int(8), con("Nil", vec![])?])?],
     )?;
-    let term = letrec("len", len_lam, app(var("len")?, list))?;
+    let term = letrec(
+        "len",
+        fun_ty(tapp(tcon("List")?, tvar("a")?), base_ty(BaseType::Int)),
+        len_lam,
+        app(var("len")?, list),
+    )?;
     assert_eq!(eval(&term, &Environment::new()), Ok(Value::Int(2)));
     Ok(())
 }
@@ -353,7 +369,12 @@ fn string_as_list_char_length_is_two() -> Result<(), Box<dyn std::error::Error>>
         ],
     );
     let len_lam = lam("xs", tapp(tcon("List")?, tcon("Char")?), body)?;
-    let term = letrec("len", len_lam, app(var("len")?, s))?;
+    let term = letrec(
+        "len",
+        fun_ty(tapp(tcon("List")?, tcon("Char")?), base_ty(BaseType::Int)),
+        len_lam,
+        app(var("len")?, s),
+    )?;
     assert_eq!(eval(&term, &env())?, Value::Int(2));
     Ok(())
 }

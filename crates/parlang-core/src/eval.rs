@@ -184,7 +184,7 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
         // ADR 0001 Decision 4: LetRec builds a RecClosure capturing the
         // CURRENT env WITHOUT pre-inserting the name. Re-binding happens at
         // every App on a RecClosure, enabling arbitrary-depth recursion.
-        Term::LetRec(n, v, b) => {
+        Term::LetRec(n, _ann, v, b) => {
             let Term::Lam(param, _ty, body) = v.as_ref() else {
                 return Err(EvalError::TypeMismatch {
                     expected: "lambda".to_string(),
@@ -408,7 +408,9 @@ fn value_kind(v: &Value) -> &'static str {
 mod tests {
     use super::*;
     use crate::base_type::BaseType;
-    use crate::builder::{app, bool_, char_, con, int, lam, let_, letrec, unit, var};
+    use crate::builder::{
+        app, base_ty, bool_, char_, con, fun_ty, int, lam, let_, letrec, unit, var,
+    };
 
     fn env() -> Environment {
         Environment::new()
@@ -659,8 +661,32 @@ mod tests {
             ],
         )?;
         let fac_lam = lam("n", BaseType::Int, body)?;
-        let t = letrec("fac", fac_lam, app(var("fac")?, int(3)))?;
+        let fac_ty = fun_ty(base_ty(BaseType::Int), base_ty(BaseType::Int));
+        let t = letrec("fac", fac_ty, fac_lam, app(var("fac")?, int(3)))?;
         assert_eq!(eval(&t, &env()), Ok(Value::Int(6)));
+        Ok(())
+    }
+
+    #[test]
+    fn tylam_tyapp_are_erased() -> Result<(), crate::error::BuildError> {
+        use crate::builder::{tvar, tyapp, tylam};
+        // /\\a. \\x: a. x  instantiated at Int applied to 5, and at Bool to true.
+        let poly = tylam("a", lam("x", tvar("a")?, var("x")?)?)?;
+        let at_int = app(tyapp(poly.clone(), base_ty(BaseType::Int)), int(5));
+        assert_eq!(eval(&at_int, &env()), Ok(Value::Int(5)));
+        let at_bool = app(tyapp(poly, base_ty(BaseType::Bool)), bool_(true));
+        assert_eq!(eval(&at_bool, &env()), Ok(Value::Bool(true)));
+        Ok(())
+    }
+
+    #[test]
+    fn typed_con_evaluates_and_ignores_ty_args() -> Result<(), crate::error::BuildError> {
+        use crate::builder::con_at;
+        let t = con_at("Just", vec![base_ty(BaseType::Int)], vec![int(7)])?;
+        assert_eq!(
+            eval(&t, &env()),
+            Ok(Value::Con("Just".to_string(), vec![Value::Int(7)]))
+        );
         Ok(())
     }
 }

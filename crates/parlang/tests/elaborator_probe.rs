@@ -298,8 +298,15 @@ fn elaborate_rec(name: &str, body: &TypedExpr, ctx: &mut Elab) -> Result<Term, E
             "rec whose body is not a lambda".to_string(),
         ));
     }
+    let ann = core_type_of(&body.ty).ok_or_else(|| {
+        ElabError::Unsupported(format!(
+            "letrec binder type outside Core slice: {:?}",
+            body.ty
+        ))
+    })?;
     Ok(Term::LetRec(
         name.to_string(),
+        ann,
         Box::new(lam),
         Box::new(Term::Var(name.to_string())),
     ))

@@ -99,8 +99,10 @@ pub enum Term {
     App(Box<Term>, Box<Term>),
     /// A non-recursive `let`: binder name, bound value, and body.
     Let(String, Box<Term>, Box<Term>),
-    /// A recursive `letrec`: binder name, bound value, and body.
-    LetRec(String, Box<Term>, Box<Term>),
+    /// A recursive `letrec`: binder name, the recursive binder's declared type,
+    /// bound value, and body (explicitly typed Core; see
+    /// `docs/adr/0007-core-explicit-typing-and-lint.md`).
+    LetRec(String, crate::ty::Type, Box<Term>, Box<Term>),
     /// A literal.
     Lit(Lit),
     /// A constructor application: constructor name, explicit type arguments
