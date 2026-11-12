@@ -6,7 +6,9 @@
 //! re-bound at every application (ADR 0001 Decision 4). See
 //! `docs/CORE_OPERATIONAL_SEMANTICS.md` and `docs/adr/0001-arc-c-eval-model.md`.
 
-use crate::term::{Alt, Lit, Term};
+use crate::term::Term;
+#[cfg(test)]
+use crate::term::{Alt, Lit};
 use std::fmt::{self, Display, Formatter};
 
 // ---------------------------------------------------------------------------
@@ -21,6 +23,7 @@ use std::fmt::{self, Display, Formatter};
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClosureData {
     pub(crate) param: String,
+    pub(crate) param_ty: crate::ty::Type,
     pub(crate) body: Box<Term>,
     pub(crate) env: Environment,
 }
@@ -29,6 +32,8 @@ pub struct ClosureData {
 pub struct RecClosureData {
     pub(crate) name: String,
     pub(crate) param: String,
+    pub(crate) param_ty: crate::ty::Type,
+    pub(crate) ann: crate::ty::Type,
     pub(crate) body: Box<Term>,
     pub(crate) env: Environment,
 }
@@ -154,6 +159,8 @@ pub enum EvalError {
     NotComparable(String),
     /// A `Case` scrutinee's constructor matched no alternative.
     NoMatchingAlt(String),
+    /// The machine exhausted its configured transition limit.
+    StepLimit,
 }
 
 impl Display for EvalError {
@@ -172,6 +179,7 @@ impl Display for EvalError {
             Self::NoMatchingAlt(con) => {
                 write!(f, "no matching alternative for constructor {con}")
             }
+            Self::StepLimit => write!(f, "step limit exceeded"),
         }
     }
 }
@@ -189,8 +197,14 @@ pub type EvalResult = Result<Value, EvalError>;
 ///
 /// # Errors
 /// Returns [`EvalError`] on unbound variables, type mismatches, division by
-/// zero, arithmetic overflow, or application of a non-function.
+/// zero, arithmetic overflow, or application of a non-function. Runs
+/// unbounded, replacing native-stack recursion.
 pub fn eval(term: &Term, env: &Environment) -> EvalResult {
+    crate::machine::run(term, env, None)
+}
+
+#[cfg(test)]
+pub(crate) fn reference_eval(term: &Term, env: &Environment) -> EvalResult {
     match term {
         Term::Var(n) => env
             .lookup(n)
@@ -205,22 +219,23 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
             Lit::Char(c) => Value::Char(*c),
         }),
 
-        Term::Lam(p, _ty, body) => Ok(Value::Closure(Box::new(ClosureData {
+        Term::Lam(p, ty, body) => Ok(Value::Closure(Box::new(ClosureData {
             param: p.clone(),
+            param_ty: ty.clone(),
             body: body.clone(),
             env: env.clone(),
         }))),
 
         Term::Let(n, v, b) => {
-            let vv = eval(v, env)?;
-            eval(b, &env.extend(n, vv))
+            let vv = reference_eval(v, env)?;
+            reference_eval(b, &env.extend(n, vv))
         }
 
         // ADR 0001 Decision 4: LetRec builds a RecClosure capturing the
         // CURRENT env WITHOUT pre-inserting the name. Re-binding happens at
         // every App on a RecClosure, enabling arbitrary-depth recursion.
-        Term::LetRec(n, _ann, v, b) => {
-            let Term::Lam(param, _ty, body) = v.as_ref() else {
+        Term::LetRec(n, ann, v, b) => {
+            let Term::Lam(param, ty, body) = v.as_ref() else {
                 return Err(EvalError::TypeMismatch {
                     expected: "lambda".to_string(),
                     found: "non-lambda".to_string(),
@@ -229,27 +244,29 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
             let rc = Value::RecClosure(Box::new(RecClosureData {
                 name: n.clone(),
                 param: param.clone(),
+                param_ty: ty.clone(),
+                ann: ann.clone(),
                 body: body.clone(),
                 env: env.clone(),
             }));
-            eval(b, &env.extend(n, rc))
+            reference_eval(b, &env.extend(n, rc))
         }
 
         // ADR 0001 Decision 4: App re-binds the rec-name at every application.
         Term::App(f, a) => {
-            let callee = eval(f, env)?;
+            let callee = reference_eval(f, env)?;
             match callee {
                 Value::Closure(ref cd) => {
-                    let v_arg = eval(a, env)?;
-                    eval(&cd.body, &cd.env.extend(&cd.param, v_arg))
+                    let v_arg = reference_eval(a, env)?;
+                    reference_eval(&cd.body, &cd.env.extend(&cd.param, v_arg))
                 }
                 Value::RecClosure(ref rcd) => {
-                    let v_arg = eval(a, env)?;
+                    let v_arg = reference_eval(a, env)?;
                     let call_env = rcd
                         .env
                         .extend(&rcd.name, callee.clone())
                         .extend(&rcd.param, v_arg);
-                    eval(&rcd.body, &call_env)
+                    reference_eval(&rcd.body, &call_env)
                 }
                 _ => Err(EvalError::NotAFunction),
             }
@@ -269,7 +286,7 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
                 _ => {
                     let mut vals = Vec::with_capacity(args.len());
                     for a in args {
-                        vals.push(eval(a, env)?);
+                        vals.push(reference_eval(a, env)?);
                     }
                     Ok(Value::Con(name.clone(), vals))
                 }
@@ -277,7 +294,7 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
         }
 
         // ADR 0006: type abstraction/application are erased at runtime.
-        Term::TyLam(_, inner) | Term::TyApp(inner, _) => eval(inner, env),
+        Term::TyLam(_, inner) | Term::TyApp(inner, _) => reference_eval(inner, env),
 
         Term::Case(scrutinee, alts) => eval_case(scrutinee, alts, env),
     }
@@ -286,8 +303,9 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
 /// Evaluates a [`Term::Case`]: the scrutinee must reduce to a `Con`; the alt
 /// whose `con` matches is selected and its positional binders are bound to the
 /// constructor's arguments before its body is evaluated.
+#[cfg(test)]
 fn eval_case(scrutinee: &Term, alts: &[Alt], env: &Environment) -> EvalResult {
-    let value = eval(scrutinee, env)?;
+    let value = reference_eval(scrutinee, env)?;
     let Value::Con(name, args) = value else {
         return Err(EvalError::TypeMismatch {
             expected: "constructor value".to_string(),
@@ -307,13 +325,14 @@ fn eval_case(scrutinee: &Term, alts: &[Alt], env: &Environment) -> EvalResult {
     for (binder, arg) in alt.binders.iter().zip(args) {
         call_env = call_env.extend(binder, arg);
     }
-    eval(&alt.body, &call_env)
+    reference_eval(&alt.body, &call_env)
 }
 
 // ---------------------------------------------------------------------------
 // Primitive helpers
 // ---------------------------------------------------------------------------
 
+#[cfg(test)]
 fn eval_if(args: &[Term], env: &Environment) -> EvalResult {
     if args.len() != 3 {
         return Err(EvalError::TypeMismatch {
@@ -321,9 +340,9 @@ fn eval_if(args: &[Term], env: &Environment) -> EvalResult {
             found: format!("{} arguments", args.len()),
         });
     }
-    match eval(&args[0], env)? {
-        Value::Bool(true) => eval(&args[1], env),
-        Value::Bool(false) => eval(&args[2], env),
+    match reference_eval(&args[0], env)? {
+        Value::Bool(true) => reference_eval(&args[1], env),
+        Value::Bool(false) => reference_eval(&args[2], env),
         other => Err(EvalError::TypeMismatch {
             expected: "bool".to_string(),
             found: value_kind(&other).to_string(),
@@ -331,6 +350,7 @@ fn eval_if(args: &[Term], env: &Environment) -> EvalResult {
     }
 }
 
+#[cfg(test)]
 fn eval_arith(op: char, args: &[Term], env: &Environment) -> EvalResult {
     if args.len() != 2 {
         return Err(EvalError::TypeMismatch {
@@ -338,8 +358,8 @@ fn eval_arith(op: char, args: &[Term], env: &Environment) -> EvalResult {
             found: format!("{} arguments", args.len()),
         });
     }
-    let lhs = eval(&args[0], env)?;
-    let rhs = eval(&args[1], env)?;
+    let lhs = reference_eval(&args[0], env)?;
+    let rhs = reference_eval(&args[1], env)?;
     let (Value::Int(a), Value::Int(b)) = (&lhs, &rhs) else {
         let found = if matches!(lhs, Value::Int(_)) {
             value_kind(&rhs)
@@ -367,6 +387,7 @@ fn eval_arith(op: char, args: &[Term], env: &Environment) -> EvalResult {
     result.map(Value::Int).ok_or(EvalError::ArithmeticOverflow)
 }
 
+#[cfg(test)]
 fn eval_cmp(args: &[Term], env: &Environment) -> EvalResult {
     if args.len() != 2 {
         return Err(EvalError::TypeMismatch {
@@ -374,8 +395,8 @@ fn eval_cmp(args: &[Term], env: &Environment) -> EvalResult {
             found: format!("{} arguments", args.len()),
         });
     }
-    let lhs = eval(&args[0], env)?;
-    let rhs = eval(&args[1], env)?;
+    let lhs = reference_eval(&args[0], env)?;
+    let rhs = reference_eval(&args[1], env)?;
     if let (Value::Int(a), Value::Int(b)) = (&lhs, &rhs) {
         Ok(Value::Bool(a < b))
     } else if let (Value::Char(a), Value::Char(b)) = (&lhs, &rhs) {
@@ -393,6 +414,7 @@ fn eval_cmp(args: &[Term], env: &Environment) -> EvalResult {
     }
 }
 
+#[cfg(test)]
 fn eval_eq(args: &[Term], env: &Environment) -> EvalResult {
     if args.len() != 2 {
         return Err(EvalError::TypeMismatch {
@@ -400,8 +422,8 @@ fn eval_eq(args: &[Term], env: &Environment) -> EvalResult {
             found: format!("{} arguments", args.len()),
         });
     }
-    let lhs = eval(&args[0], env)?;
-    let rhs = eval(&args[1], env)?;
+    let lhs = reference_eval(&args[0], env)?;
+    let rhs = reference_eval(&args[1], env)?;
     // eq is restricted to base-type operands; closures and constructors are
     // not comparable (ADR 0001 Decision 3).
     match (&lhs, &rhs) {
@@ -424,6 +446,7 @@ fn eval_eq(args: &[Term], env: &Environment) -> EvalResult {
 }
 
 /// Maps a [`Value`] to a short type-tag string for error messages.
+#[cfg(test)]
 fn value_kind(v: &Value) -> &'static str {
     match v {
         Value::Int(_) => "int",
