@@ -32,6 +32,7 @@ pub use error::{BuildError, BuildResult};
 pub mod eval;
 pub use eval::{eval, Environment, EvalError, EvalResult, Value};
 pub mod machine;
+pub mod value_display;
 pub use machine::{run, Machine, StepKind, StepOutcome};
 
 pub mod prelude;

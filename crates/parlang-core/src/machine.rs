@@ -77,6 +77,88 @@ pub enum StepKind {
     Erase,
 }
 
+impl std::fmt::Display for StepKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Self::Lookup => "lookup",
+            Self::Construct => "construct",
+            Self::Push => "push",
+            Self::Beta => "beta",
+            Self::Unfold => "unfold",
+            Self::Delta => "delta",
+            Self::Branch => "branch",
+            Self::CaseSelect => "caseselect",
+            Self::LetBind => "letbind",
+            Self::Erase => "erase",
+        };
+        write!(formatter, "{name}")
+    }
+}
+
+impl std::fmt::Display for Control {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Eval(term) => write!(formatter, "eval {term}"),
+            Self::Return(value) => write!(formatter, "return {value}"),
+        }
+    }
+}
+
+impl std::fmt::Display for Frame {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AppArg(argument, _) => write!(formatter, "AppArg({argument})"),
+            Self::AppCall(value) => write!(formatter, "AppCall({value})"),
+            Self::LetBody(name, body, _) => write!(formatter, "LetBody({name}, {body})"),
+            Self::IfBranch(then_term, else_term, _) => {
+                write!(formatter, "IfBranch({then_term}, {else_term})")
+            }
+            Self::PrimArgs(op, done, rest, _) => write!(
+                formatter,
+                "PrimArgs({op}, [{}], [{}])",
+                join_values(done),
+                join_terms(rest)
+            ),
+            Self::ConArgs(name, done, rest, _) => write!(
+                formatter,
+                "ConArgs({name}, [{}], [{}])",
+                join_values(done),
+                join_terms(rest)
+            ),
+            Self::CaseAlts(alts, _) => write!(formatter, "CaseAlts({} alts)", alts.len()),
+        }
+    }
+}
+
+impl std::fmt::Display for State {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let frames = self
+            .kont
+            .iter()
+            .rev()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; ");
+        write!(formatter, "<{} | kont: [{frames}]>", self.control)
+    }
+}
+
+fn join_values(values: &[Value]) -> String {
+    values
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn join_terms(terms: &[Term]) -> String {
+    terms
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// The result of one machine transition.
 #[derive(Debug, Clone)]
 pub enum StepOutcome {
@@ -579,6 +661,22 @@ mod tests {
         alt, app, base_ty, bool_, case_, char_, con, con_at, int, lam, let_, letrec, tvar, tyapp,
         tylam, unit, var,
     };
+
+    #[test]
+    fn displays_machine_state_and_step_kind() -> Result<(), crate::error::BuildError> {
+        assert_eq!(StepKind::Beta.to_string(), "beta");
+        let term = app(
+            lam("x", BaseType::Int, con("+", vec![var("x")?, int(1)])?)?,
+            int(2),
+        );
+        let mut machine = Machine::new(&term, &Environment::new());
+        let initial = machine.state().to_string();
+        assert!(initial.contains("eval"));
+        assert!(initial.contains("kont: []"));
+        assert!(matches!(machine.step(), Ok(StepOutcome::Continue(_))));
+        assert!(machine.state().to_string().contains("AppArg(2)"));
+        Ok(())
+    }
 
     #[test]
     fn machine_matches_reference_smoke() -> Result<(), crate::error::BuildError> {
