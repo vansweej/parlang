@@ -2,11 +2,12 @@
 
 ## Role
 
-The `parlang-core` eval module implements a strict, call-by-value
-tree-walking virtual machine over the Arc B Core `Term` IR. It is the runtime
-counterpart to the Core data model established in Arc B, and its behavior is
-formally specified in [docs/CORE_OPERATIONAL_SEMANTICS.md](CORE_OPERATIONAL_SEMANTICS.md)
-and justified in [docs/adr/0001-arc-c-eval-model.md](adr/0001-arc-c-eval-model.md).
+The `parlang-core` eval module implements a strict, call-by-value CEK machine
+over the Arc B Core `Term` IR. It is the runtime counterpart to the Core data
+model established in Arc B, and its behavior is formally specified in
+[docs/CORE_OPERATIONAL_SEMANTICS.md](CORE_OPERATIONAL_SEMANTICS.md) and
+justified in [docs/adr/0001-arc-c-eval-model.md](adr/0001-arc-c-eval-model.md)
+and [docs/adr/0008-core-cek-machine.md](adr/0008-core-cek-machine.md).
 
 ## Public API
 
@@ -48,6 +49,7 @@ All evaluation error variants:
 - `NotComparable` — `eq` was applied to non-base-type operands (functions or
   constructor values).
 - `NoMatchingAlt` — a `Case` scrutinee's constructor matched no alternative.
+- `StepLimit` — a bounded CEK evaluation exhausted its transition fuel.
 
 ### `EvalResult`
 
@@ -59,8 +61,23 @@ A type alias for `Result<Value, EvalError>`.
 pub fn eval(term: &Term, env: &Environment) -> EvalResult
 ```
 
-Evaluates a Core `Term` under a given `Environment`, following the big-step
-rules in [docs/CORE_OPERATIONAL_SEMANTICS.md](CORE_OPERATIONAL_SEMANTICS.md).
+Loads a Core `Term` and `Environment` into the CEK machine and runs it to
+completion with `run(term, env, None)`. This preserves the semantics and error
+messages of the former big-step evaluator.
+
+### `Machine`, `run`, `trace`, `StepLimit`
+
+`Machine` holds a steppable `State` with `Control`, an `Environment`, and a
+stack of `Frame`s. `StepKind` classifies transitions as `Lookup`, `Construct`,
+`Push`, `Beta`, `Unfold`, `Delta`, `Branch`, `CaseSelect`, `LetBind`, `Erase`,
+or terminal `Halt`. `run` evaluates a machine to completion, while `trace`
+produces `TraceStep` snapshots before each transition and a final `Halt` state.
+Both accept optional fuel and report `EvalError::StepLimit` when it is
+exhausted.
+
+`Value` implements `Display` for raw values. `State::readback` reconstructs a
+Core `Term`, so `reduction_terms` offers a textbook term view alongside the raw
+machine trace. See ADR 0008 for the machine derivation and transition model.
 
 ## Primitive encoding
 
@@ -112,6 +129,7 @@ complementing the strict, direct construction of `Value::Con` values.
 
 - [docs/CORE_OPERATIONAL_SEMANTICS.md](CORE_OPERATIONAL_SEMANTICS.md)
 - [docs/adr/0001-arc-c-eval-model.md](adr/0001-arc-c-eval-model.md)
+- [docs/adr/0008-core-cek-machine.md](adr/0008-core-cek-machine.md)
 - Benjamin C. Pierce, *Types and Programming Languages* (TAPL), Ch. 5, 6, 7.
 - Olivier Danvy, "A Rational Deconstruction of Landin's SECD Machine",
   BRICS-RS-03-13.

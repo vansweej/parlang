@@ -3,6 +3,7 @@
 ## Status
 
 Accepted
+Decision 1's big-step realization was superseded by the CEK machine in ADR 0008 (slice 6f); the strict call-by-value environment semantics is unchanged.
 
 ## Context
 

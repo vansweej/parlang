@@ -20,10 +20,10 @@ from the surface `parlang::ast::Expr`.
   (`Term::to_text` / `Display`), mirroring the surface dumpers.
 - A tiny, dependency-free builder (`builder` module, smart
   constructors) for hand-writing Core in tests.
-- A strict, call-by-value, environment-based evaluator (`eval`, `Value`,
-  `Environment`, `EvalError`) over `Term`, with reserved primitives
-  (`if`, `+`, `-`, `*`, `/`, `<`, `eq`), recursion via
-  `LetRec` / `Value::RecClosure`, and checked arithmetic.
+- A strict, call-by-value CEK abstract machine with a steppable trace and
+  read-back view (`eval`, `Value`, `Environment`, `EvalError`) over `Term`,
+  reserved primitives (`if`, `+`, `-`, `*`, `/`, `<`, `eq`), and recursion via
+  `LetRec` / `Value::RecClosure`. See ADR 0008.
 - A small `prelude()` environment (`not`) built on those primitives.
 
 Core now includes a `Case` tag-switch eliminator (one alternative per

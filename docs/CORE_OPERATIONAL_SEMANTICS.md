@@ -157,6 +157,30 @@ value; the retired primitive-string helpers are recorded in ADR 0004.
 Slice 6e update: mismatched base operands to `eq` reduce to a `TypeMismatch`
 error rather than `false`, consistent with explicitly-typed, lint-clean Core.
 
+## CEK machine transitions
+
+The executable evaluator realizes the rules above as a CEK machine with state
+`<control, rho, k>`, where `control` is `Eval(term)` or `Return(value)`, `rho`
+is an environment, and `k` is a stack of `Frame`s. The frames are `AppArg`,
+`AppCall`, `LetBody`, `IfBranch`, `PrimArgs`, `ConArgs`, and `CaseAlts`.
+
+The representative transitions are:
+
+| State | Transition |
+| --- | --- |
+| `<Eval(x), rho, k>` | `-> <Return(rho(x)), rho, k>` (`Lookup`) |
+| `<Eval(literal or lambda), rho, k>` | `-> <Return(value), rho, k>` (`Construct`) |
+| `<Eval(f a), rho, k>` | `-> <Eval(f), rho, AppArg(a, rho) : k>` (`Push`) |
+| `<Return(callee), rho, AppArg(a, rho0) : k>` | `-> <Eval(a), rho0, AppCall(callee) : k>` (`Push`) |
+| `<Return(closure), rho, AppCall(argument) : k>` | `-> <Eval(body), rho1, k>` (`Beta` or `Unfold`) |
+| `<Return(value), rho, LetBody(x, body, rho0) : k>` | `-> <Eval(body), rho0[x = value], k>` (`LetBind`) |
+| `<Return(bool), rho, IfBranch(t, e, rho0) : k>` | `-> <Eval(t or e), rho0, k>` (`Branch`) |
+| `<Return(value), rho, PrimArgs(...) : k>` | `-> <Return(result), rho, k>` (`Delta`) |
+| `<Return(constructor), rho, CaseAlts(...) : k>` | `-> <Eval(body), rho1, k>` (`CaseSelect`) |
+
+The machine also performs `Erase` for type abstractions and applications and
+records `Halt` only after returning a final value with an empty continuation.
+
 ## References
 
 - Benjamin C. Pierce, *Types and Programming Languages* (TAPL), Ch. 5, 6, 7.
