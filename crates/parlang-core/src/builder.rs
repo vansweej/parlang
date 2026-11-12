@@ -29,11 +29,11 @@ pub fn var(name: &str) -> BuildResult<Term> {
 ///
 /// # Errors
 /// Returns [`BuildError::EmptyName`] if `name` is empty.
-pub fn lam(name: &str, ty: BaseType, body: Term) -> BuildResult<Term> {
+pub fn lam(name: &str, ty: impl Into<Type>, body: Term) -> BuildResult<Term> {
     if name.is_empty() {
         return Err(BuildError::EmptyName);
     }
-    Ok(Term::Lam(name.to_string(), ty, Box::new(body)))
+    Ok(Term::Lam(name.to_string(), ty.into(), Box::new(body)))
 }
 
 /// A single application `func arg`.
@@ -240,7 +240,7 @@ mod tests {
             id,
             Term::Lam(
                 "x".to_string(),
-                BaseType::Int,
+                Type::Base(BaseType::Int),
                 Box::new(Term::Var("x".to_string()))
             )
         );

@@ -90,7 +90,7 @@ mod tests {
     fn identity_lambda_text() {
         let term = Term::Lam(
             "x".to_string(),
-            BaseType::Int,
+            crate::ty::Type::Base(BaseType::Int),
             Box::new(Term::Var("x".to_string())),
         );
         assert_eq!(term.to_text(), "(\\x: Int. x)");
@@ -115,7 +115,7 @@ mod tests {
             "f".to_string(),
             Box::new(Term::Lam(
                 "x".to_string(),
-                BaseType::Unit,
+                crate::ty::Type::Base(BaseType::Unit),
                 Box::new(Term::Var("x".to_string())),
             )),
             Box::new(Term::Lit(Lit::Unit)),

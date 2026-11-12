@@ -94,7 +94,7 @@ pub enum Term {
     /// A variable reference by name.
     Var(String),
     /// A lambda abstraction: binder name, binder type, and body.
-    Lam(String, BaseType, Box<Term>),
+    Lam(String, crate::ty::Type, Box<Term>),
     /// An application of a function term to an argument term.
     App(Box<Term>, Box<Term>),
     /// A non-recursive `let`: binder name, bound value, and body.
@@ -130,12 +130,12 @@ mod tests {
     fn terms_are_structurally_comparable() {
         let a = Term::Lam(
             "x".to_string(),
-            BaseType::Int,
+            crate::ty::Type::Base(BaseType::Int),
             Box::new(Term::Var("x".to_string())),
         );
         let b = Term::Lam(
             "x".to_string(),
-            BaseType::Int,
+            crate::ty::Type::Base(BaseType::Int),
             Box::new(Term::Var("x".to_string())),
         );
         let c = Term::Var("y".to_string());

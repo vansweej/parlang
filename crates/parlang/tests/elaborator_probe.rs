@@ -90,29 +90,20 @@ impl Elab {
     }
 }
 
-/// Maps a surface param `Type` to a Core `BaseType`.
-///
-/// FINDING F1: Core's `Lam` requires a `BaseType`, which cannot express ADT-
-/// or function-typed binders. The probe maps `Int`/`Bool` faithfully and uses
-/// `BaseType::Unit` as a documented placeholder for everything else. The
-/// annotation is inert at runtime, so results are unaffected. Slice 6's
-/// System-F binder types replace `BaseType` on `Lam` and retire this
-/// placeholder.
-fn base_type_of(ty: &Type) -> BaseType {
-    match ty {
-        Type::Int => BaseType::Int,
-        Type::Bool => BaseType::Bool,
-        _ => BaseType::Unit,
-    }
-}
-
-/// Extracts the Core binder type for a `Fun` node from its own `Type::Fun`
-/// domain, falling back to the F1 placeholder when the type is not a function
-/// (which should not happen for a well-typed `Fun`).
-fn fun_param_base_type(fun_ty: &Type) -> BaseType {
+/// Extracts the Core binder `CoreType` for a `Fun` node from its own
+/// `Type::Fun` domain via `core_type_of`. Slice 6c replaced `Lam`'s `BaseType`
+/// annotation with a `CoreType`, retiring the old F1 `BaseType` placeholder.
+/// There is NO silent fallback: a binder type outside the Core slice
+/// (record/tuple), or a non-function node where a `Fun` was expected, is
+/// hard-rejected with `ElabError::Unsupported`.
+fn fun_param_core_type(fun_ty: &Type) -> Result<CoreType, ElabError> {
     match fun_ty {
-        Type::Fun(param, _) => base_type_of(param),
-        _ => BaseType::Unit,
+        Type::Fun(param, _) => core_type_of(param).ok_or_else(|| {
+            ElabError::Unsupported(format!("binder type outside Core slice: {param:?}"))
+        }),
+        other => Err(ElabError::Unsupported(format!(
+            "function node with non-function type: {other:?}"
+        ))),
     }
 }
 
@@ -251,7 +242,7 @@ fn elaborate(expr: &TypedExpr, ctx: &mut Elab) -> Result<Term, ElabError> {
         TypedExprKind::Bool(b) => Ok(Term::Lit(Lit::Bool(*b))),
         TypedExprKind::Var(name) => Ok(Term::Var(name.clone())),
         TypedExprKind::Fun(param, _ann, body) => {
-            let bt = fun_param_base_type(&expr.ty);
+            let bt = fun_param_core_type(&expr.ty)?;
             let body_term = elaborate(body, ctx)?;
             Ok(Term::Lam(param.clone(), bt, Box::new(body_term)))
         }

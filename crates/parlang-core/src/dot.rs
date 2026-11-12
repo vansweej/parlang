@@ -127,7 +127,7 @@ mod tests {
     fn identity_lambda_dumps_expected_nodes() {
         let term = Term::Lam(
             "x".to_string(),
-            BaseType::Int,
+            crate::ty::Type::Base(BaseType::Int),
             Box::new(Term::Var("x".to_string())),
         );
         let dot = core_to_dot(&term);
