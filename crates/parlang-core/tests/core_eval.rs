@@ -438,7 +438,7 @@ fn lint_and_eval_poly_identity() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// List length over Cons @Int / Nil @Int via letrec + Case under prelude_env:
+/// List length over Cons @Int / Nil @Int via letrec + Case under `prelude_env`:
 /// lint-clean at `Int`, evaluates to 2.
 #[test]
 fn lint_and_eval_list_length() -> Result<(), Box<dyn std::error::Error>> {
