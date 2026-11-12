@@ -388,3 +388,85 @@ fn non_ascii_char_roundtrips() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(char_(scalar).to_text(), format!("{scalar:?}"));
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Standing guard: lint explicitly-typed Core, then confirm it still evaluates.
+// ---------------------------------------------------------------------------
+
+/// factorial via letrec: lint-clean at `Int -> Int`, evaluates to 120.
+#[test]
+fn lint_and_eval_factorial() -> Result<(), Box<dyn std::error::Error>> {
+    use parlang_core::{lint, LintEnv};
+    let body = con(
+        "if",
+        vec![
+            con("eq", vec![var("n")?, int(0)])?,
+            int(1),
+            con(
+                "*",
+                vec![
+                    var("n")?,
+                    app(var("fac")?, con("-", vec![var("n")?, int(1)])?),
+                ],
+            )?,
+        ],
+    )?;
+    let fac_lam = lam("n", BaseType::Int, body)?;
+    let t = letrec(
+        "fac",
+        fun_ty(base_ty(BaseType::Int), base_ty(BaseType::Int)),
+        fac_lam,
+        app(var("fac")?, int(5)),
+    )?;
+    assert_eq!(lint(&t, &LintEnv::new())?, base_ty(BaseType::Int));
+    assert_eq!(eval(&t, &env())?, Value::Int(120));
+    Ok(())
+}
+
+/// Polymorphic identity instantiated at two types: lint-clean, evaluates.
+#[test]
+fn lint_and_eval_poly_identity() -> Result<(), Box<dyn std::error::Error>> {
+    use parlang_core::builder::{tyapp, tylam};
+    use parlang_core::{lint, LintEnv};
+    let poly = tylam("a", lam("x", tvar("a")?, var("x")?)?)?;
+    let at_int = app(tyapp(poly.clone(), base_ty(BaseType::Int)), int(5));
+    assert_eq!(lint(&at_int, &LintEnv::new())?, base_ty(BaseType::Int));
+    assert_eq!(eval(&at_int, &env())?, Value::Int(5));
+    let at_bool = app(tyapp(poly, base_ty(BaseType::Bool)), bool_(true));
+    assert_eq!(lint(&at_bool, &LintEnv::new())?, base_ty(BaseType::Bool));
+    assert_eq!(eval(&at_bool, &env())?, Value::Bool(true));
+    Ok(())
+}
+
+/// List length over Cons @Int / Nil @Int via letrec + Case under prelude_env:
+/// lint-clean at `Int`, evaluates to 2.
+#[test]
+fn lint_and_eval_list_length() -> Result<(), Box<dyn std::error::Error>> {
+    use parlang_core::builder::con_at;
+    use parlang_core::{lint, prelude_env};
+    let list_int = tapp(tcon("List")?, base_ty(BaseType::Int));
+    let body = case_(
+        var("xs")?,
+        vec![
+            alt(
+                "Cons",
+                &["h", "t"],
+                con("+", vec![int(1), app(var("len")?, var("t")?)])?,
+            )?,
+            alt("Nil", &[], int(0))?,
+        ],
+    );
+    let len_lam = lam("xs", list_int.clone(), body)?;
+    let nil = con_at("Nil", vec![base_ty(BaseType::Int)], vec![])?;
+    let inner = con_at("Cons", vec![base_ty(BaseType::Int)], vec![int(8), nil])?;
+    let list = con_at("Cons", vec![base_ty(BaseType::Int)], vec![int(7), inner])?;
+    let t = letrec(
+        "len",
+        fun_ty(list_int, base_ty(BaseType::Int)),
+        len_lam,
+        app(var("len")?, list),
+    )?;
+    assert_eq!(lint(&t, &prelude_env())?, base_ty(BaseType::Int));
+    assert_eq!(eval(&t, &env())?, Value::Int(2));
+    Ok(())
+}
