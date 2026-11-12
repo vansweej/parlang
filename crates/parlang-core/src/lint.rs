@@ -790,7 +790,10 @@ pub fn prelude_env() -> LintEnv {
 mod tests {
     use super::*;
     use crate::base_type::BaseType;
-    use crate::builder::{int, lam, var};
+    use crate::builder::{
+        app, bool_, char_, con, con_at, forall, fun_ty, int, lam, let_, letrec, tvar, tyapp, tylam,
+        var,
+    };
 
     #[test]
     fn lint_int_literal() {
@@ -823,5 +826,244 @@ mod tests {
             )
         );
         Ok(())
+    }
+
+    #[test]
+    fn app_of_identity_lints_to_int() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let id = lam("x", BaseType::Int, var("x")?)?;
+        let term = app(id, int(5));
+        assert_eq!(lint(&term, &env), Ok(Type::Base(BaseType::Int)));
+        Ok(())
+    }
+
+    #[test]
+    fn app_with_wrong_arg_type_mismatches() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let id = lam("x", BaseType::Int, var("x")?)?;
+        let term = app(id, bool_(true));
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::ArgTypeMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn let_binding_lints_to_int() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = let_("x", int(5), var("x")?)?;
+        assert_eq!(lint(&term, &env), Ok(Type::Base(BaseType::Int)));
+        Ok(())
+    }
+
+    fn factorial_term() -> Result<Term, Box<dyn std::error::Error>> {
+        let body = con(
+            "*",
+            vec![
+                var("n")?,
+                app(var("fac")?, con("-", vec![var("n")?, int(1)])?),
+            ],
+        )?;
+        let fac_lam = lam("n", BaseType::Int, body)?;
+        Ok(letrec(
+            "fac",
+            fun_ty(Type::Base(BaseType::Int), Type::Base(BaseType::Int)),
+            fac_lam,
+            app(var("fac")?, int(3)),
+        )?)
+    }
+
+    #[test]
+    fn letrec_lints_to_arrow() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = factorial_term()?;
+        assert_eq!(lint(&term, &env), Ok(Type::Base(BaseType::Int)));
+        Ok(())
+    }
+
+    #[test]
+    fn letrec_wrong_annotation_mismatches() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let fac_lam = lam("n", BaseType::Int, int(1))?;
+        let term = letrec(
+            "fac",
+            fun_ty(Type::Base(BaseType::Int), Type::Base(BaseType::Bool)),
+            fac_lam,
+            var("fac")?,
+        )?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::LetRecAnnotationMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn letrec_non_lambda_value_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = letrec("x", Type::Base(BaseType::Int), int(5), var("x")?)?;
+        assert_eq!(lint(&term, &env), Err(LintError::LetRecValueNotLam));
+        Ok(())
+    }
+
+    #[test]
+    fn if_lints_to_int() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = con("if", vec![bool_(true), int(1), int(2)])?;
+        assert_eq!(lint(&term, &env), Ok(Type::Base(BaseType::Int)));
+        Ok(())
+    }
+
+    #[test]
+    fn if_branch_type_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = con("if", vec![bool_(true), int(1), bool_(false)])?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::BranchTypeMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn if_non_bool_cond_mismatches() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = con("if", vec![int(1), int(1), int(2)])?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::PrimArgMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn add_int_int_lints_to_int() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = con("+", vec![int(1), int(2)])?;
+        assert_eq!(lint(&term, &env), Ok(Type::Base(BaseType::Int)));
+        Ok(())
+    }
+
+    #[test]
+    fn add_int_bool_mismatches() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = con("+", vec![int(1), bool_(true)])?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::PrimArgMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn add_with_one_arg_errors_on_count() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = con("+", vec![int(1)])?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::PrimArgCount { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn lt_char_char_lints_to_bool() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = con("<", vec![char_('a'), char_('b')])?;
+        assert_eq!(lint(&term, &env), Ok(Type::Base(BaseType::Bool)));
+        Ok(())
+    }
+
+    #[test]
+    fn eq_int_int_lints_to_bool() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = con("eq", vec![int(1), int(2)])?;
+        assert_eq!(lint(&term, &env), Ok(Type::Base(BaseType::Bool)));
+        Ok(())
+    }
+
+    #[test]
+    fn eq_int_bool_mismatches() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = con("eq", vec![int(1), bool_(true)])?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::EqTypeMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn eq_on_non_base_data_values_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let env = prelude_env();
+        let nil1 = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
+        let nil2 = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
+        let term = con("eq", vec![nil1, nil2])?;
+        assert!(matches!(lint(&term, &env), Err(LintError::NonBaseEq(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn reserved_prim_with_type_args_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = con_at(
+            "if",
+            vec![Type::Base(BaseType::Int)],
+            vec![bool_(true), int(1), int(2)],
+        )?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::ReservedPrimWithTypeArgs(_))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn tylam_lints_to_forall() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = tylam("a", lam("x", tvar("a")?, var("x")?)?)?;
+        let ty = lint(&term, &env)?;
+        assert!(matches!(ty, Type::Forall(_, _)));
+        Ok(())
+    }
+
+    #[test]
+    fn tyapp_instantiates_forall() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let poly = tylam("a", lam("x", tvar("a")?, var("x")?)?)?;
+        let term = tyapp(poly, Type::Base(BaseType::Int));
+        assert_eq!(
+            lint(&term, &env),
+            Ok(Type::Fun(
+                Box::new(Type::Base(BaseType::Int)),
+                Box::new(Type::Base(BaseType::Int))
+            ))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn tyapp_on_non_forall_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = tyapp(int(1), Type::Base(BaseType::Int));
+        assert!(matches!(lint(&term, &env), Err(LintError::NotAForall(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn nested_tylam_shadowing_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new();
+        let term = tylam("a", tylam("a", var("x")?)?)?;
+        assert_eq!(
+            lint(&term, &env),
+            Err(LintError::ShadowedTypeVar("a".to_string()))
+        );
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    fn unused_forall_helper() -> Result<Type, Box<dyn std::error::Error>> {
+        Ok(forall("a", tvar("a")?)?)
     }
 }
