@@ -11,8 +11,9 @@ from the surface `parlang::ast::Expr`.
   `Unit` / `Char`), used to annotate lambda binders and classify literals.
 - A System-F-shaped Core type (`Type`: `Base` / `Var` / `Con` / `Fun` /
   `App` / `Forall`) with ASCII `Display`, `free_vars`, and type builders.
-  `BaseType` is absorbed as the `Base` leaf. `Term` still annotates binders
-  with `BaseType` until slice 6c. See `docs/adr/0005-core-type-enum.md`.
+  `BaseType` is absorbed as the `Base` leaf and renders capitalized (`Int`,
+  `Bool`, ...). As of slice 6c `Term::Lam` annotates its binder with a full
+  `Type`. See `docs/adr/0005-core-type-enum.md`.
 - DOT dumper (`core_to_dot`, header `digraph Core`) and a text dump
   (`Term::to_text` / `Display`), mirroring the surface dumpers.
 - A tiny, dependency-free builder (`builder` module, smart

@@ -74,6 +74,11 @@ mechanical sweep from `BaseType` to the new `Type` cheap.
   Unifying the casing is deferred to slice 6c, when `Lam`'s annotation switches
   from `BaseType` to `Type`.
 
+  Status update (slice 6c): done. `BaseType::as_str` now renders capitalized
+  (`Int`/`Bool`/`Float`/`Unit`/`Char`), and `Term::Lam`'s annotation is now
+  `Type`, so a binder renders `\x: Int. x` and types render `List Int`. The
+  lowercase-for-goldens rationale above is historical.
+
 ## Rejected alternatives
 
 - GHC-style absorption: make `Int` a nullary `Con` and retire `BaseType`.

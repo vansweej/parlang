@@ -34,8 +34,10 @@ the prelude:
 One function is defined purely in terms of Core's `Lam`/`Con`/`App`
 constructs, with no new evaluator primitives:
 
-- **`not : Bool -> Bool`** — `\b: bool. if b then false else true`, built as
+- **`not : Bool -> Bool`** - `\b: Bool. if b then false else true`, built as
   `lam("b", BaseType::Bool, con("if", vec![var("b")?, bool_(false), bool_(true)])?)`.
+  As of slice 6c the `lam` builder takes `impl Into<Type>`, so `BaseType::Bool`
+  still works and the binder now renders capitalized as `\b: Bool. ...`.
 
 ## Strings
 
@@ -67,6 +69,10 @@ covers `Int`, `Bool`, `Float`, `Unit`, and `Char` — so a prelude function
 whose parameter or result is itself a function cannot yet be given a faithful
 binder type annotation. This module's only Core-defined function, `not`, has
 a first-order (`Bool`-typed) binder, which is why it is expressible today.
+
+As of slice 6c `Term::Lam` carries a full Core `Type`, so a function-typed
+binder is now representable; the remaining gap is a Core definition and (slice
+6e) a Lint pass to check it.
 
 ## References
 

@@ -59,6 +59,10 @@ This supersedes ADR 0002's deferral of constructor deconstruction: a tag-switch
   `BaseType::Unit` as an inert placeholder otherwise. Slice 6's System-F binder
   types replace `BaseType` on `Lam` and retire this placeholder. Results are
   unaffected because the annotation is inert at runtime.
+
+  Status update (slice 6c): resolved. `Term::Lam` now carries a `Type`; the
+  probe maps binder types through `core_type_of` and HARD-REJECTS any binder
+  type outside the Core slice (no inert placeholder remains).
 - **Finding F2 (definite):** the backtracking-free, column-wise specialisation
   keeps default rows in every alternative, so a shared arm body is duplicated
   across `Case` alternatives. This is acceptable for a spike; the real
