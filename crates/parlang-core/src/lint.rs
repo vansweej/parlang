@@ -4,8 +4,7 @@
 //! This module performs no inference: every `Term` node either carries
 //! enough annotation to synthesize its type directly, or its type is
 //! determined by its children's synthesized types. See
-//! `docs/adr/0007-core-explicit-typing-and-lint.md` for the design
-//! rationale (not yet written in this slice; referenced for future readers).
+//! `docs/adr/0007-core-explicit-typing-and-lint.md` for the design rationale.
 
 use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
@@ -160,6 +159,8 @@ pub enum LintError {
     },
     /// A primitive argument had an unexpected type.
     PrimArgMismatch {
+        /// The primitive's name.
+        prim: String,
         /// The expected argument type.
         expected: Type,
         /// The synthesized argument type.
@@ -271,10 +272,14 @@ impl Display for LintError {
                 f,
                 "primitive {prim}: expected {expected} arguments, found {found}"
             ),
-            Self::PrimArgMismatch { expected, found } => {
+            Self::PrimArgMismatch {
+                prim,
+                expected,
+                found,
+            } => {
                 write!(
                     f,
-                    "primitive argument mismatch: expected {expected}, found {found}"
+                    "primitive {prim}: argument mismatch: expected {expected}, found {found}"
                 )
             }
             Self::NotAForall(t) => write!(f, "not a forall: {t}"),
@@ -360,11 +365,14 @@ fn well_formed(env: &mut LintEnv, ty: &Type) -> Result<(), LintError> {
         Type::Con(_) | Type::App(_, _) => {
             let (head, args) = spine(ty);
             let Type::Con(name) = head else {
-                // A bare `Var` head with zero args is handled by the `Var`
-                // arm above; `App` can only ever flatten to a `Con` head
-                // here because `Var`/`Base`/`Fun`/`Forall` cannot appear as
-                // the head of an `App` chain produced by `spine`.
-                return well_formed(env, head);
+                // Core currently has only kind `*`, so application heads must
+                // be registered type constructors rather than type variables
+                // or other kinds of type.
+                return Err(LintError::ArityMismatch {
+                    tycon: head.to_string(),
+                    expected: 0,
+                    found: args.len(),
+                });
             };
             let dt = env
                 .types
@@ -519,6 +527,7 @@ fn synth_prim(env: &mut LintEnv, name: &str, args: &[Term]) -> Result<Type, Lint
             let tc = synth(env, &args[0])?;
             if tc != Type::Base(crate::base_type::BaseType::Bool) {
                 return Err(LintError::PrimArgMismatch {
+                    prim: name.to_string(),
                     expected: Type::Base(crate::base_type::BaseType::Bool),
                     found: tc,
                 });
@@ -545,6 +554,7 @@ fn synth_prim(env: &mut LintEnv, name: &str, args: &[Term]) -> Result<Type, Lint
                 let t = synth(env, arg)?;
                 if t != Type::Base(crate::base_type::BaseType::Int) {
                     return Err(LintError::PrimArgMismatch {
+                        prim: name.to_string(),
                         expected: Type::Base(crate::base_type::BaseType::Int),
                         found: t,
                     });
@@ -567,6 +577,7 @@ fn synth_prim(env: &mut LintEnv, name: &str, args: &[Term]) -> Result<Type, Lint
             let ok = (t0 == int_ty && t1 == int_ty) || (t0 == char_ty && t1 == char_ty);
             if !ok {
                 return Err(LintError::PrimArgMismatch {
+                    prim: name.to_string(),
                     expected: t0.clone(),
                     found: t1,
                 });
@@ -597,7 +608,7 @@ fn synth_prim(env: &mut LintEnv, name: &str, args: &[Term]) -> Result<Type, Lint
             }
             Ok(Type::Base(crate::base_type::BaseType::Bool))
         }
-        _ => unreachable!("synth_prim called with non-reserved name: {name}"),
+        _ => Err(LintError::UnknownConstructor(name.to_string())),
     }
 }
 
@@ -616,7 +627,7 @@ fn synth_data_con(
         .types
         .get(&owner)
         .cloned()
-        .expect("owner must be registered");
+        .ok_or_else(|| LintError::UnknownType(owner.clone()))?;
 
     if ty_args.len() != dt.params.len() {
         return Err(LintError::TypeArgCountMismatch {
@@ -633,7 +644,7 @@ fn synth_data_con(
         .ctors
         .iter()
         .find(|c| c.name == name)
-        .expect("ctor_owner must point to a ctor present in the data type");
+        .ok_or_else(|| LintError::UnknownConstructor(name.to_string()))?;
 
     if args.len() != dc.fields.len() {
         return Err(LintError::FieldCountMismatch {
@@ -670,9 +681,7 @@ fn substitute_params(params: &[String], ty_args: &[Type], ty: &Type) -> Type {
 }
 
 fn synth_case(env: &mut LintEnv, scrutinee: &Term, alts: &[Alt]) -> Result<Type, LintError> {
-    if alts.is_empty() {
-        return Err(LintError::EmptyCase);
-    }
+    let (first_alt, remaining_alts) = alts.split_first().ok_or(LintError::EmptyCase)?;
 
     let scrut_ty = synth(env, scrutinee)?;
     let (head, ty_args_refs) = spine(&scrut_ty);
@@ -710,43 +719,46 @@ fn synth_case(env: &mut LintEnv, scrutinee: &Term, alts: &[Alt]) -> Result<Type,
         return Err(LintError::NonExhaustiveCase { missing });
     }
 
-    let mut result_ty: Option<Type> = None;
-    for alt in alts {
-        let dc = dt
-            .ctors
-            .iter()
-            .find(|c| c.name == alt.con)
-            .expect("alt.con validated against dt.ctors above");
-        if alt.binders.len() != dc.fields.len() {
-            return Err(LintError::BinderCountMismatch {
-                ctor: alt.con.clone(),
-                expected: dc.fields.len(),
-                found: alt.binders.len(),
+    let expected = synth_alt(env, &dt, &ty_args, first_alt)?;
+    for alt in remaining_alts {
+        let body_ty = synth_alt(env, &dt, &ty_args, alt)?;
+        if !expected.alpha_eq(&body_ty) {
+            return Err(LintError::BranchTypeMismatch {
+                expected: expected.clone(),
+                found: body_ty,
             });
-        }
-        for (binder, field) in alt.binders.iter().zip(&dc.fields) {
-            let field_substituted = substitute_params(&dt.params, &ty_args, field);
-            env.push_term(binder, field_substituted);
-        }
-        let body_result = synth(env, &alt.body);
-        for _ in &alt.binders {
-            env.pop_term();
-        }
-        let body_ty = body_result?;
-        match &result_ty {
-            None => result_ty = Some(body_ty),
-            Some(expected) => {
-                if !expected.alpha_eq(&body_ty) {
-                    return Err(LintError::BranchTypeMismatch {
-                        expected: expected.clone(),
-                        found: body_ty,
-                    });
-                }
-            }
         }
     }
 
-    Ok(result_ty.expect("non-empty alts must produce a result type"))
+    Ok(expected)
+}
+
+fn synth_alt(
+    env: &mut LintEnv,
+    dt: &DataType,
+    ty_args: &[Type],
+    alt: &Alt,
+) -> Result<Type, LintError> {
+    let dc = dt
+        .ctors
+        .iter()
+        .find(|ctor| ctor.name == alt.con)
+        .ok_or_else(|| LintError::UnknownConstructor(alt.con.clone()))?;
+    if alt.binders.len() != dc.fields.len() {
+        return Err(LintError::BinderCountMismatch {
+            ctor: alt.con.clone(),
+            expected: dc.fields.len(),
+            found: alt.binders.len(),
+        });
+    }
+    for (binder, field) in alt.binders.iter().zip(&dc.fields) {
+        env.push_term(binder, substitute_params(&dt.params, ty_args, field));
+    }
+    let result = synth(env, &alt.body);
+    for _ in &alt.binders {
+        env.pop_term();
+    }
+    result
 }
 
 /// Checks `term` against `env`, returning its synthesized type.
@@ -791,8 +803,8 @@ mod tests {
     use super::*;
     use crate::base_type::BaseType;
     use crate::builder::{
-        app, bool_, char_, con, con_at, forall, fun_ty, int, lam, let_, letrec, tvar, tyapp, tylam,
-        var,
+        alt, app, bool_, case_, char_, con, con_at, fun_ty, int, lam, let_, letrec, tvar, tyapp,
+        tylam, var,
     };
 
     #[test]
@@ -957,6 +969,16 @@ mod tests {
     }
 
     #[test]
+    fn prim_arg_mismatch_names_the_primitive() -> Result<(), Box<dyn std::error::Error>> {
+        let term = con("+", vec![int(1), bool_(true)])?;
+        assert!(matches!(
+            lint(&term, &LintEnv::new()),
+            Err(LintError::PrimArgMismatch { prim, .. }) if prim == "+"
+        ));
+        Ok(())
+    }
+
+    #[test]
     fn add_with_one_arg_errors_on_count() -> Result<(), Box<dyn std::error::Error>> {
         let env = LintEnv::new();
         let term = con("+", vec![int(1)])?;
@@ -1044,11 +1066,10 @@ mod tests {
     }
 
     #[test]
-    fn tyapp_on_non_forall_rejected() -> Result<(), Box<dyn std::error::Error>> {
+    fn tyapp_on_non_forall_rejected() {
         let env = LintEnv::new();
         let term = tyapp(int(1), Type::Base(BaseType::Int));
         assert!(matches!(lint(&term, &env), Err(LintError::NotAForall(_))));
-        Ok(())
     }
 
     #[test]
@@ -1062,9 +1083,18 @@ mod tests {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    fn unused_forall_helper() -> Result<Type, Box<dyn std::error::Error>> {
-        Ok(forall("a", tvar("a")?)?)
+    #[test]
+    fn type_var_headed_application_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let ill_kinded_binder = Type::App(
+            Box::new(Type::Var("a".to_string())),
+            Box::new(Type::Base(BaseType::Int)),
+        );
+        let term = tylam("a", lam("x", ill_kinded_binder, int(1))?)?;
+        assert!(matches!(
+            lint(&term, &LintEnv::new()),
+            Err(LintError::ArityMismatch { .. })
+        ));
+        Ok(())
     }
 
     fn list_env() -> LintEnv {
@@ -1136,6 +1166,24 @@ mod tests {
     fn con_unknown_constructor_rejected() -> Result<(), Box<dyn std::error::Error>> {
         let env = list_env();
         let term = con_at("Foo", vec![Type::Base(BaseType::Int)], vec![int(1)])?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::UnknownConstructor(_))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn stale_ctor_owner_is_an_error_not_a_panic() -> Result<(), Box<dyn std::error::Error>> {
+        let env = list_env().with_data(DataType {
+            name: "List".to_string(),
+            params: vec!["a".to_string()],
+            ctors: vec![DataCon {
+                name: "Empty".to_string(),
+                fields: vec![],
+            }],
+        });
+        let term = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
         assert!(matches!(
             lint(&term, &env),
             Err(LintError::UnknownConstructor(_))
