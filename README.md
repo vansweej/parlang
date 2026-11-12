@@ -827,7 +827,7 @@ For detailed architecture information, see [docs/ARCHITECTURE.md](docs/ARCHITECT
 
 ```bash
 systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
-  env CARGO_TARGET_DIR=/tmp/parlang-cargo nix develop . --command cargo test
+  env CARGO_TARGET_DIR=/tmp/parlang-cargo nix develop . --command cargo test --workspace
 ```
 
 ### Code Coverage

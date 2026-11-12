@@ -269,7 +269,7 @@ fn test_parse_i64_min_literal() {
 ### Run All Tests
 
 ```bash
-cargo test
+cargo test --workspace
 ```
 
 ### Run Specific Test File
@@ -510,8 +510,8 @@ Tests are run automatically on:
 Ensure all tests pass before submitting a PR:
 
 ```bash
-cargo test --all-features
-cargo clippy --all-targets --all-features
+cargo test --workspace --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo fmt -- --check
 ```
 

@@ -35,7 +35,7 @@ Thank you for your interest in contributing to ParLang! This document provides g
 
 3. **Run tests**:
    ```bash
-   cargo test
+   cargo test --workspace
    ```
 
 4. **Run the REPL**:
@@ -252,7 +252,7 @@ kill the login session. The project guidance in `AGENTS.md` has the full rationa
 
 ```bash
 systemd-run --user --scope -p MemoryAccounting=1 -p MemoryMax=70% -p MemorySwapMax=0 \
-  env CARGO_TARGET_DIR=/tmp/parlang-cargo nix develop . --command cargo test
+  env CARGO_TARGET_DIR=/tmp/parlang-cargo nix develop . --command cargo test --workspace
 ```
 
 Use the same wrapper for clippy, formatting checks, and coverage commands.
@@ -337,12 +337,12 @@ Each documentation file should include:
 
 1. **Run tests**: Ensure all tests pass
    ```bash
-   cargo test
+   cargo test --workspace
    ```
 
 2. **Run clippy**: Fix any warnings
    ```bash
-   cargo clippy --all-targets --all-features
+   cargo clippy --workspace --all-targets --all-features -- -D warnings
    ```
 
 3. **Format code**: Use rustfmt

@@ -420,7 +420,7 @@ Before production deployment:
 
 ```bash
 # Run all tests
-cargo test
+cargo test --workspace
 
 # Run with sanitizers (detect memory issues)
 RUSTFLAGS="-Z sanitizer=address" cargo test
