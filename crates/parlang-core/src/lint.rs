@@ -1066,4 +1066,190 @@ mod tests {
     fn unused_forall_helper() -> Result<Type, Box<dyn std::error::Error>> {
         Ok(forall("a", tvar("a")?)?)
     }
+
+    fn list_env() -> LintEnv {
+        let list = DataType {
+            name: "List".to_string(),
+            params: vec!["a".to_string()],
+            ctors: vec![
+                DataCon {
+                    name: "Nil".to_string(),
+                    fields: vec![],
+                },
+                DataCon {
+                    name: "Cons".to_string(),
+                    fields: vec![
+                        Type::Var("a".to_string()),
+                        Type::App(
+                            Box::new(Type::Con("List".to_string())),
+                            Box::new(Type::Var("a".to_string())),
+                        ),
+                    ],
+                },
+            ],
+        };
+        LintEnv::new().with_data(list)
+    }
+
+    #[test]
+    fn con_lints_to_list_int() -> Result<(), Box<dyn std::error::Error>> {
+        let env = list_env();
+        let nil = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
+        let term = con_at("Cons", vec![Type::Base(BaseType::Int)], vec![int(1), nil])?;
+        let expected = Type::App(
+            Box::new(Type::Con("List".to_string())),
+            Box::new(Type::Base(BaseType::Int)),
+        );
+        assert_eq!(lint(&term, &env), Ok(expected));
+        Ok(())
+    }
+
+    #[test]
+    fn con_wrong_field_type_mismatches() -> Result<(), Box<dyn std::error::Error>> {
+        let env = list_env();
+        let nil = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
+        let term = con_at(
+            "Cons",
+            vec![Type::Base(BaseType::Int)],
+            vec![bool_(true), nil],
+        )?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::ArgTypeMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn con_wrong_type_arg_count_mismatches() -> Result<(), Box<dyn std::error::Error>> {
+        let env = list_env();
+        let nil = con_at("Nil", vec![], vec![])?;
+        let term = con_at("Cons", vec![], vec![int(1), nil])?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::TypeArgCountMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn con_unknown_constructor_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let env = list_env();
+        let term = con_at("Foo", vec![Type::Base(BaseType::Int)], vec![int(1)])?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::UnknownConstructor(_))
+        ));
+        Ok(())
+    }
+
+    fn list_int_case(nil_body: Term, cons_body: Term) -> Result<Term, Box<dyn std::error::Error>> {
+        let nil = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
+        let cons = con_at("Cons", vec![Type::Base(BaseType::Int)], vec![int(1), nil])?;
+        let scrutinee = let_("xs", cons, var("xs")?)?;
+        Ok(case_(
+            scrutinee,
+            vec![
+                alt("Cons", &["h", "t"], cons_body)?,
+                alt("Nil", &[], nil_body)?,
+            ],
+        ))
+    }
+
+    #[test]
+    fn case_list_int_lints_to_int() -> Result<(), Box<dyn std::error::Error>> {
+        let env = list_env();
+        let term = list_int_case(int(0), var("h")?)?;
+        assert_eq!(lint(&term, &env), Ok(Type::Base(BaseType::Int)));
+        Ok(())
+    }
+
+    #[test]
+    fn case_missing_nil_alt_non_exhaustive() -> Result<(), Box<dyn std::error::Error>> {
+        let env = list_env();
+        let nil = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
+        let cons = con_at("Cons", vec![Type::Base(BaseType::Int)], vec![int(1), nil])?;
+        let scrutinee = let_("xs", cons, var("xs")?)?;
+        let term = case_(scrutinee, vec![alt("Cons", &["h", "t"], var("h")?)?]);
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::NonExhaustiveCase { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn case_foreign_alt_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let env = list_env();
+        let nil = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
+        let cons = con_at("Cons", vec![Type::Base(BaseType::Int)], vec![int(1), nil])?;
+        let scrutinee = let_("xs", cons, var("xs")?)?;
+        let term = case_(
+            scrutinee,
+            vec![
+                alt("Cons", &["h", "t"], var("h")?)?,
+                alt("Foo", &[], int(0))?,
+            ],
+        );
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::ForeignAlt { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn case_empty_alts_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let env = list_env();
+        let nil = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
+        let term = case_(nil, vec![]);
+        assert_eq!(lint(&term, &env), Err(LintError::EmptyCase));
+        Ok(())
+    }
+
+    #[test]
+    fn case_binder_count_mismatch_rejected() -> Result<(), Box<dyn std::error::Error>> {
+        let env = list_env();
+        let nil = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
+        let cons = con_at(
+            "Cons",
+            vec![Type::Base(BaseType::Int)],
+            vec![int(1), nil.clone()],
+        )?;
+        let scrutinee = let_("xs", cons, var("xs")?)?;
+        let term = case_(
+            scrutinee,
+            vec![alt("Cons", &["only"], int(0))?, alt("Nil", &[], int(0))?],
+        );
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::BinderCountMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn prelude_not_lints_to_bool_arrow() -> Result<(), Box<dyn std::error::Error>> {
+        let not_term = lam(
+            "b",
+            BaseType::Bool,
+            con("if", vec![var("b")?, bool_(false), bool_(true)])?,
+        )?;
+        assert_eq!(
+            lint(&not_term, &LintEnv::new()),
+            Ok(Type::Fun(
+                Box::new(Type::Base(BaseType::Bool)),
+                Box::new(Type::Base(BaseType::Bool))
+            ))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn prelude_env_case_list_int_lints_to_int() -> Result<(), Box<dyn std::error::Error>> {
+        let env = prelude_env();
+        let term = list_int_case(int(0), var("h")?)?;
+        assert_eq!(lint(&term, &env), Ok(Type::Base(BaseType::Int)));
+        Ok(())
+    }
 }
