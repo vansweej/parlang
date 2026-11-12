@@ -381,8 +381,10 @@ fn eval_eq(args: &[Term], env: &Environment) -> EvalResult {
         | (_, Value::Closure(_) | Value::RecClosure(_) | Value::Con(_, _)) => {
             Err(EvalError::NotComparable(value_kind(&lhs).to_string()))
         }
-        // Mismatched base types — not equal rather than a hard error.
-        _ => Ok(Value::Bool(false)),
+        _ => Err(EvalError::TypeMismatch {
+            expected: value_kind(&lhs).to_string(),
+            found: value_kind(&rhs).to_string(),
+        }),
     }
 }
 
@@ -583,6 +585,18 @@ mod tests {
     fn char_cmp_less_than() -> Result<(), crate::error::BuildError> {
         let t = con("<", vec![char_('a'), char_('b')])?;
         assert_eq!(eval(&t, &env()), Ok(Value::Bool(true)));
+        Ok(())
+    }
+
+    #[test]
+    fn eq_mismatched_base_is_type_error() -> Result<(), crate::error::BuildError> {
+        // Lint-clean Core never compares mismatched base types (slice 6e), so
+        // eval rejects them as a hard type error instead of returning false.
+        let t = con("eq", vec![int(1), bool_(true)])?;
+        assert!(matches!(
+            eval(&t, &env()),
+            Err(EvalError::TypeMismatch { .. })
+        ));
         Ok(())
     }
 
