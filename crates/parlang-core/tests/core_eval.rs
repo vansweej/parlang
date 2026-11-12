@@ -5,7 +5,7 @@
 //! Core VM in Arc C.
 
 use parlang_core::builder::{
-    alt, app, apps, bool_, case_, char_, con, int, lam, let_, letrec, unit, var,
+    alt, app, apps, bool_, case_, char_, con, int, lam, let_, letrec, tapp, tcon, tvar, unit, var,
 };
 use parlang_core::{eval, BaseType, Environment, EvalError, Value};
 
@@ -148,7 +148,9 @@ fn higher_order_application() -> Result<(), Box<dyn std::error::Error>> {
 /// ```
 #[test]
 fn church_encoded_list_sum() -> Result<(), Box<dyn std::error::Error>> {
-    // nil = \c. \n. n  (BaseType::Int used as placeholder; evaluator ignores it)
+    // Intentionally un-retyped placeholder annotations on function-typed
+    // binders (BaseType::Int is inert at runtime); a faithful polymorphic
+    // retype is deferred until TyLam lands (slice 6d).
     let nil = lam("c", BaseType::Int, lam("n", BaseType::Int, var("n")?)?)?;
 
     // cons = \h. \t. \c. \n.  c h (t c n)
@@ -289,7 +291,7 @@ fn case_list_length_via_letrec() -> Result<(), parlang_core::BuildError> {
             alt("Nil", &[], int(0))?,
         ],
     );
-    let len_lam = lam("xs", BaseType::Unit, body)?;
+    let len_lam = lam("xs", tapp(tcon("List")?, tvar("a")?), body)?;
     let list = con(
         "Cons",
         vec![int(7), con("Cons", vec![int(8), con("Nil", vec![])?])?],
@@ -350,7 +352,7 @@ fn string_as_list_char_length_is_two() -> Result<(), Box<dyn std::error::Error>>
             alt("Nil", &[], int(0))?,
         ],
     );
-    let len_lam = lam("xs", BaseType::Unit, body)?;
+    let len_lam = lam("xs", tapp(tcon("List")?, tcon("Char")?), body)?;
     let term = letrec("len", len_lam, app(var("len")?, s))?;
     assert_eq!(eval(&term, &env())?, Value::Int(2));
     Ok(())
