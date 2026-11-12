@@ -174,9 +174,9 @@ impl Type {
             (Type::Fun(a1, a2), Type::Fun(b1, b2)) | (Type::App(a1, a2), Type::App(b1, b2)) => {
                 a1.alpha_eq_env(b1, pairs) && a2.alpha_eq_env(b2, pairs)
             }
-            (Type::Forall(ba, bodya), Type::Forall(bb, bodyb)) => {
-                pairs.push((ba.clone(), bb.clone()));
-                let ok = bodya.alpha_eq_env(bodyb, pairs);
+            (Type::Forall(left_binder, left_body), Type::Forall(right_binder, right_body)) => {
+                pairs.push((left_binder.clone(), right_binder.clone()));
+                let ok = left_body.alpha_eq_env(right_body, pairs);
                 pairs.pop();
                 ok
             }
