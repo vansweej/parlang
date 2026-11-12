@@ -102,6 +102,87 @@ impl Type {
             }
         }
     }
+
+    /// Capture-avoiding substitution of `replacement` for the free variable
+    /// `var` in `self`. Under a `Forall` whose binder would capture a free
+    /// variable of `replacement`, the binder is renamed fresh first (TAPL 6
+    /// on-the-fly renaming over the named representation; ADR 0006).
+    #[must_use]
+    pub fn subst(&self, var: &str, replacement: &Type) -> Type {
+        match self {
+            Type::Base(_) | Type::Con(_) => self.clone(),
+            Type::Var(name) => {
+                if name == var {
+                    replacement.clone()
+                } else {
+                    self.clone()
+                }
+            }
+            Type::Fun(a, b) => Type::Fun(
+                Box::new(a.subst(var, replacement)),
+                Box::new(b.subst(var, replacement)),
+            ),
+            Type::App(a, b) => Type::App(
+                Box::new(a.subst(var, replacement)),
+                Box::new(b.subst(var, replacement)),
+            ),
+            Type::Forall(binder, body) => {
+                if binder == var {
+                    return self.clone();
+                }
+                if replacement.free_vars().contains(binder) {
+                    let fresh = Type::fresh_for(binder, replacement, body);
+                    let renamed = body.subst(binder, &Type::Var(fresh.clone()));
+                    Type::Forall(fresh, Box::new(renamed.subst(var, replacement)))
+                } else {
+                    Type::Forall(binder.clone(), Box::new(body.subst(var, replacement)))
+                }
+            }
+        }
+    }
+
+    /// Produces a name based on `base` free in neither `replacement` nor `body`.
+    fn fresh_for(base: &str, replacement: &Type, body: &Type) -> String {
+        let taken_r = replacement.free_vars();
+        let taken_b = body.free_vars();
+        let mut candidate = format!("{base}'");
+        while taken_r.contains(&candidate) || taken_b.contains(&candidate) {
+            candidate.push('\'');
+        }
+        candidate
+    }
+
+    /// Alpha-equivalence: structural equality up to consistent renaming of
+    /// `Forall` binders. `Base`, `Con` and free variables match by name.
+    #[must_use]
+    pub fn alpha_eq(&self, other: &Type) -> bool {
+        self.alpha_eq_env(other, &mut Vec::new())
+    }
+
+    fn alpha_eq_env(&self, other: &Type, pairs: &mut Vec<(String, String)>) -> bool {
+        match (self, other) {
+            (Type::Base(a), Type::Base(b)) => a == b,
+            (Type::Con(a), Type::Con(b)) => a == b,
+            (Type::Var(a), Type::Var(b)) => {
+                for (l, r) in pairs.iter().rev() {
+                    if l == a || r == b {
+                        return l == a && r == b;
+                    }
+                }
+                a == b
+            }
+            (Type::Fun(a1, a2), Type::Fun(b1, b2)) | (Type::App(a1, a2), Type::App(b1, b2)) => {
+                a1.alpha_eq_env(b1, pairs) && a2.alpha_eq_env(b2, pairs)
+            }
+            (Type::Forall(ba, bodya), Type::Forall(bb, bodyb)) => {
+                pairs.push((ba.clone(), bb.clone()));
+                let ok = bodya.alpha_eq_env(bodyb, pairs);
+                pairs.pop();
+                ok
+            }
+            _ => false,
+        }
+    }
 }
 
 impl Display for Type {
@@ -262,5 +343,64 @@ mod tests {
     fn base_and_con_have_no_free_vars() {
         assert!(Type::Base(BaseType::Int).free_vars().is_empty());
         assert!(Type::Con("List".to_string()).free_vars().is_empty());
+    }
+
+    #[test]
+    fn subst_replaces_free_var() {
+        let ty = Type::Fun(
+            Box::new(Type::Var("a".to_string())),
+            Box::new(Type::Var("a".to_string())),
+        );
+        assert_eq!(
+            ty.subst("a", &Type::Base(BaseType::Int)).to_string(),
+            "Int -> Int"
+        );
+    }
+
+    #[test]
+    fn subst_skips_shadowed_var() {
+        let ty = Type::Forall("a".to_string(), Box::new(Type::Var("a".to_string())));
+        assert_eq!(
+            ty.subst("a", &Type::Base(BaseType::Int)).to_string(),
+            "forall a. a"
+        );
+    }
+
+    #[test]
+    fn subst_is_capture_avoiding() {
+        // (forall a. b)[b := a] must rename the binder so `a` stays free.
+        let ty = Type::Forall("a".to_string(), Box::new(Type::Var("b".to_string())));
+        let out = ty.subst("b", &Type::Var("a".to_string()));
+        assert!(out.free_vars().contains("a"), "a was captured: {out}");
+        let Type::Forall(binder, _) = &out else {
+            panic!("expected a Forall, got {out}");
+        };
+        assert_ne!(binder, "a", "binder was not renamed: {out}");
+    }
+
+    #[test]
+    fn alpha_eq_renamed_foralls_are_equal() {
+        let a = Type::Forall("a".to_string(), Box::new(Type::Var("a".to_string())));
+        let b = Type::Forall("x".to_string(), Box::new(Type::Var("x".to_string())));
+        assert!(a.alpha_eq(&b));
+    }
+
+    #[test]
+    fn alpha_eq_distinguishes_free_vars() {
+        assert!(!Type::Var("a".to_string()).alpha_eq(&Type::Var("b".to_string())));
+    }
+
+    #[test]
+    fn alpha_eq_is_structural_under_forall() {
+        let mk = |x: &str| {
+            Type::Forall(
+                x.to_string(),
+                Box::new(Type::Fun(
+                    Box::new(Type::Var(x.to_string())),
+                    Box::new(Type::Var("b".to_string())),
+                )),
+            )
+        };
+        assert!(mk("a").alpha_eq(&mk("c")));
     }
 }
