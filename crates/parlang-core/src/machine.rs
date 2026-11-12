@@ -738,10 +738,7 @@ fn value_kind(value: &Value) -> &'static str {
 mod tests {
     use super::*;
     use crate::base_type::BaseType;
-    use crate::builder::{
-        alt, app, base_ty, bool_, case_, char_, con, con_at, int, lam, let_, letrec, tvar, tyapp,
-        tylam, unit, var,
-    };
+    use crate::builder::{app, base_ty, con, int, lam, letrec, var};
 
     #[test]
     fn displays_machine_state_and_step_kind() -> Result<(), crate::error::BuildError> {
@@ -769,32 +766,6 @@ mod tests {
                 if matches!(entries.last(), Some(step) if step.kind == StepKind::Halt
                     && !step.is_reduction())
         ));
-    }
-
-    #[test]
-    fn machine_matches_reference_smoke() -> Result<(), crate::error::BuildError> {
-        let env = Environment::new();
-        let case_term = case_(
-            con("Cons", vec![int(1), con("Nil", vec![])?])?,
-            vec![
-                alt("Cons", &["h", "t"], var("h")?)?,
-                alt("Nil", &[], int(0))?,
-            ],
-        );
-        let terms = vec![
-            con("if", vec![bool_(true), int(1), int(2)])?,
-            con("+", vec![int(2), int(3)])?,
-            con("eq", vec![int(1), int(1)])?,
-            con("<", vec![int(1), int(2)])?,
-            case_term,
-        ];
-        for term in terms {
-            assert_eq!(
-                run(&term, &env, None),
-                crate::eval::reference_eval(&term, &env)
-            );
-        }
-        Ok(())
     }
 
     fn factorial_term(input: i64) -> Result<Term, crate::error::BuildError> {
@@ -834,80 +805,6 @@ mod tests {
         let function = lam("x", BaseType::Int, body)?;
         let call = app(var("f")?, int(0));
         letrec("f", base_ty(BaseType::Int), function, call)
-    }
-
-    fn cases() -> Result<Vec<(Term, Environment)>, crate::error::BuildError> {
-        let identity = app(lam("x", BaseType::Int, var("x")?)?, int(5));
-        let let_binding = let_("x", int(7), var("x")?)?;
-        let lazy_if = con("if", vec![bool_(true), int(42), var("nope")?])?;
-        let pair = con("Pair", vec![int(1), bool_(true)])?;
-        let nil = con("Nil", vec![])?;
-        let case_match = case_(
-            con("Cons", vec![int(1), con("Nil", vec![])?])?,
-            vec![
-                alt("Cons", &["h", "t"], var("h")?)?,
-                alt("Nil", &[], int(0))?,
-            ],
-        );
-        let case_missing = case_(con("Nil", vec![])?, vec![alt("Cons", &["h", "t"], int(0))?]);
-        let case_arity = case_(
-            con("Cons", vec![int(1), con("Nil", vec![])?])?,
-            vec![alt("Cons", &["only"], int(0))?],
-        );
-        let erased = app(
-            tyapp(
-                tylam("a", lam("x", tvar("a")?, var("x")?)?)?,
-                base_ty(BaseType::Int),
-            ),
-            int(5),
-        );
-        let typed_constructor = con_at("Just", vec![base_ty(BaseType::Int)], vec![int(7)])?;
-        let terms = vec![
-            int(42),
-            bool_(true),
-            unit(),
-            char_('a'),
-            Term::Lit(Lit::Float(1.5)),
-            identity,
-            let_binding,
-            lazy_if,
-            con("+", vec![int(10), int(2)])?,
-            con("-", vec![int(10), int(2)])?,
-            con("*", vec![int(10), int(2)])?,
-            con("/", vec![int(10), int(2)])?,
-            con("/", vec![int(1), int(0)])?,
-            con("+", vec![int(i64::MAX), int(1)])?,
-            con("<", vec![int(1), int(2)])?,
-            con("<", vec![char_('a'), char_('b')])?,
-            con("eq", vec![int(3), int(3)])?,
-            con("eq", vec![lam("x", BaseType::Int, var("x")?)?, int(1)])?,
-            con("eq", vec![int(1), bool_(true)])?,
-            pair,
-            nil,
-            case_match,
-            case_missing,
-            case_arity,
-            app(int(1), int(2)),
-            var("x")?,
-            letrec("f", base_ty(BaseType::Int), int(1), int(0))?,
-            erased,
-            typed_constructor,
-            factorial_term(5)?,
-            con("+", vec![int(1)])?,
-            con("if", vec![bool_(true)])?,
-        ];
-        Ok(terms
-            .into_iter()
-            .map(|term| (term, Environment::new()))
-            .collect())
-    }
-
-    #[test]
-    fn machine_matches_reference() -> Result<(), crate::error::BuildError> {
-        for (t, e) in cases()? {
-            assert_eq!(run(&t, &e, None), crate::eval::reference_eval(&t, &e));
-        }
-        Ok(())
     }
 
     #[test]

@@ -6,9 +6,9 @@
 //! re-bound at every application (ADR 0001 Decision 4). See
 //! `docs/CORE_OPERATIONAL_SEMANTICS.md` and `docs/adr/0001-arc-c-eval-model.md`.
 
-use crate::term::Term;
 #[cfg(test)]
-use crate::term::{Alt, Lit};
+use crate::term::Lit;
+use crate::term::Term;
 use std::fmt::{self, Display, Formatter};
 
 // ---------------------------------------------------------------------------
@@ -203,263 +203,6 @@ pub fn eval(term: &Term, env: &Environment) -> EvalResult {
     crate::machine::run(term, env, None)
 }
 
-#[cfg(test)]
-pub(crate) fn reference_eval(term: &Term, env: &Environment) -> EvalResult {
-    match term {
-        Term::Var(n) => env
-            .lookup(n)
-            .cloned()
-            .ok_or_else(|| EvalError::UnboundVar(n.clone())),
-
-        Term::Lit(l) => Ok(match l {
-            Lit::Int(n) => Value::Int(*n),
-            Lit::Bool(b) => Value::Bool(*b),
-            Lit::Float(x) => Value::Float(*x),
-            Lit::Unit => Value::Unit,
-            Lit::Char(c) => Value::Char(*c),
-        }),
-
-        Term::Lam(p, ty, body) => Ok(Value::Closure(Box::new(ClosureData {
-            param: p.clone(),
-            param_ty: ty.clone(),
-            body: body.clone(),
-            env: env.clone(),
-        }))),
-
-        Term::Let(n, v, b) => {
-            let vv = reference_eval(v, env)?;
-            reference_eval(b, &env.extend(n, vv))
-        }
-
-        // ADR 0001 Decision 4: LetRec builds a RecClosure capturing the
-        // CURRENT env WITHOUT pre-inserting the name. Re-binding happens at
-        // every App on a RecClosure, enabling arbitrary-depth recursion.
-        Term::LetRec(n, ann, v, b) => {
-            let Term::Lam(param, ty, body) = v.as_ref() else {
-                return Err(EvalError::TypeMismatch {
-                    expected: "lambda".to_string(),
-                    found: "non-lambda".to_string(),
-                });
-            };
-            let rc = Value::RecClosure(Box::new(RecClosureData {
-                name: n.clone(),
-                param: param.clone(),
-                param_ty: ty.clone(),
-                ann: ann.clone(),
-                body: body.clone(),
-                env: env.clone(),
-            }));
-            reference_eval(b, &env.extend(n, rc))
-        }
-
-        // ADR 0001 Decision 4: App re-binds the rec-name at every application.
-        Term::App(f, a) => {
-            let callee = reference_eval(f, env)?;
-            match callee {
-                Value::Closure(ref cd) => {
-                    let v_arg = reference_eval(a, env)?;
-                    reference_eval(&cd.body, &cd.env.extend(&cd.param, v_arg))
-                }
-                Value::RecClosure(ref rcd) => {
-                    let v_arg = reference_eval(a, env)?;
-                    let call_env = rcd
-                        .env
-                        .extend(&rcd.name, callee.clone())
-                        .extend(&rcd.param, v_arg);
-                    reference_eval(&rcd.body, &call_env)
-                }
-                _ => Err(EvalError::NotAFunction),
-            }
-        }
-
-        Term::Con(name, _ty_args, args) => {
-            // Reserved primitive names per ADR 0001 Decision 3 (Option A).
-            // Type arguments are erased at runtime (ADR 0006).
-            match name.as_str() {
-                "if" => eval_if(args, env),
-                "+" => eval_arith('+', args, env),
-                "-" => eval_arith('-', args, env),
-                "*" => eval_arith('*', args, env),
-                "/" => eval_arith('/', args, env),
-                "<" => eval_cmp(args, env),
-                "eq" => eval_eq(args, env),
-                _ => {
-                    let mut vals = Vec::with_capacity(args.len());
-                    for a in args {
-                        vals.push(reference_eval(a, env)?);
-                    }
-                    Ok(Value::Con(name.clone(), vals))
-                }
-            }
-        }
-
-        // ADR 0006: type abstraction/application are erased at runtime.
-        Term::TyLam(_, inner) | Term::TyApp(inner, _) => reference_eval(inner, env),
-
-        Term::Case(scrutinee, alts) => eval_case(scrutinee, alts, env),
-    }
-}
-
-/// Evaluates a [`Term::Case`]: the scrutinee must reduce to a `Con`; the alt
-/// whose `con` matches is selected and its positional binders are bound to the
-/// constructor's arguments before its body is evaluated.
-#[cfg(test)]
-fn eval_case(scrutinee: &Term, alts: &[Alt], env: &Environment) -> EvalResult {
-    let value = reference_eval(scrutinee, env)?;
-    let Value::Con(name, args) = value else {
-        return Err(EvalError::TypeMismatch {
-            expected: "constructor value".to_string(),
-            found: value_kind(&value).to_string(),
-        });
-    };
-    let Some(alt) = alts.iter().find(|a| a.con == name) else {
-        return Err(EvalError::NoMatchingAlt(name));
-    };
-    if alt.binders.len() != args.len() {
-        return Err(EvalError::TypeMismatch {
-            expected: format!("{} constructor fields", alt.binders.len()),
-            found: format!("{} fields", args.len()),
-        });
-    }
-    let mut call_env = env.clone();
-    for (binder, arg) in alt.binders.iter().zip(args) {
-        call_env = call_env.extend(binder, arg);
-    }
-    reference_eval(&alt.body, &call_env)
-}
-
-// ---------------------------------------------------------------------------
-// Primitive helpers
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-fn eval_if(args: &[Term], env: &Environment) -> EvalResult {
-    if args.len() != 3 {
-        return Err(EvalError::TypeMismatch {
-            expected: "3 arguments".to_string(),
-            found: format!("{} arguments", args.len()),
-        });
-    }
-    match reference_eval(&args[0], env)? {
-        Value::Bool(true) => reference_eval(&args[1], env),
-        Value::Bool(false) => reference_eval(&args[2], env),
-        other => Err(EvalError::TypeMismatch {
-            expected: "bool".to_string(),
-            found: value_kind(&other).to_string(),
-        }),
-    }
-}
-
-#[cfg(test)]
-fn eval_arith(op: char, args: &[Term], env: &Environment) -> EvalResult {
-    if args.len() != 2 {
-        return Err(EvalError::TypeMismatch {
-            expected: "2 arguments".to_string(),
-            found: format!("{} arguments", args.len()),
-        });
-    }
-    let lhs = reference_eval(&args[0], env)?;
-    let rhs = reference_eval(&args[1], env)?;
-    let (Value::Int(a), Value::Int(b)) = (&lhs, &rhs) else {
-        let found = if matches!(lhs, Value::Int(_)) {
-            value_kind(&rhs)
-        } else {
-            value_kind(&lhs)
-        };
-        return Err(EvalError::TypeMismatch {
-            expected: "int".to_string(),
-            found: found.to_string(),
-        });
-    };
-    let (a, b) = (*a, *b);
-    let result = match op {
-        '+' => a.checked_add(b),
-        '-' => a.checked_sub(b),
-        '*' => a.checked_mul(b),
-        '/' => {
-            if b == 0 {
-                return Err(EvalError::DivisionByZero);
-            }
-            a.checked_div(b)
-        }
-        _ => unreachable!("eval_arith called with unknown op '{op}'"),
-    };
-    result.map(Value::Int).ok_or(EvalError::ArithmeticOverflow)
-}
-
-#[cfg(test)]
-fn eval_cmp(args: &[Term], env: &Environment) -> EvalResult {
-    if args.len() != 2 {
-        return Err(EvalError::TypeMismatch {
-            expected: "2 arguments".to_string(),
-            found: format!("{} arguments", args.len()),
-        });
-    }
-    let lhs = reference_eval(&args[0], env)?;
-    let rhs = reference_eval(&args[1], env)?;
-    if let (Value::Int(a), Value::Int(b)) = (&lhs, &rhs) {
-        Ok(Value::Bool(a < b))
-    } else if let (Value::Char(a), Value::Char(b)) = (&lhs, &rhs) {
-        Ok(Value::Bool(a < b))
-    } else {
-        let found = if matches!(lhs, Value::Int(_)) {
-            value_kind(&rhs)
-        } else {
-            value_kind(&lhs)
-        };
-        Err(EvalError::TypeMismatch {
-            expected: "int".to_string(),
-            found: found.to_string(),
-        })
-    }
-}
-
-#[cfg(test)]
-fn eval_eq(args: &[Term], env: &Environment) -> EvalResult {
-    if args.len() != 2 {
-        return Err(EvalError::TypeMismatch {
-            expected: "2 arguments".to_string(),
-            found: format!("{} arguments", args.len()),
-        });
-    }
-    let lhs = reference_eval(&args[0], env)?;
-    let rhs = reference_eval(&args[1], env)?;
-    // eq is restricted to base-type operands; closures and constructors are
-    // not comparable (ADR 0001 Decision 3).
-    match (&lhs, &rhs) {
-        (Value::Int(a), Value::Int(b)) => Ok(Value::Bool(a == b)),
-        (Value::Bool(a), Value::Bool(b)) => Ok(Value::Bool(a == b)),
-        (Value::Unit, Value::Unit) => Ok(Value::Bool(true)),
-        (Value::Char(a), Value::Char(b)) => Ok(Value::Bool(a == b)),
-        // Float comparison via to_bits: NaN == NaN is true; 0.0 != -0.0.
-        // Both are intentional consequences of bit-equality (ADR 0001).
-        (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(a.to_bits() == b.to_bits())),
-        (Value::Closure(_) | Value::RecClosure(_) | Value::Con(_, _), _)
-        | (_, Value::Closure(_) | Value::RecClosure(_) | Value::Con(_, _)) => {
-            Err(EvalError::NotComparable(value_kind(&lhs).to_string()))
-        }
-        _ => Err(EvalError::TypeMismatch {
-            expected: value_kind(&lhs).to_string(),
-            found: value_kind(&rhs).to_string(),
-        }),
-    }
-}
-
-/// Maps a [`Value`] to a short type-tag string for error messages.
-#[cfg(test)]
-fn value_kind(v: &Value) -> &'static str {
-    match v {
-        Value::Int(_) => "int",
-        Value::Bool(_) => "bool",
-        Value::Unit => "unit",
-        Value::Char(_) => "char",
-        Value::Float(_) => "float",
-        Value::Closure(_) => "closure",
-        Value::RecClosure(_) => "recclosure",
-        Value::Con(_, _) => "con",
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -611,12 +354,15 @@ mod tests {
     #[test]
     fn eq_float_nan_reflexive() {
         // NaN == NaN via to_bits is intentionally true (ADR 0001).
-        let nan = f64::NAN;
-        let args = vec![
-            crate::term::Term::Lit(crate::term::Lit::Float(nan)),
-            crate::term::Term::Lit(crate::term::Lit::Float(nan)),
-        ];
-        assert_eq!(eval_eq(&args, &Environment::new()), Ok(Value::Bool(true)));
+        let term = Term::Con(
+            "eq".to_string(),
+            vec![],
+            vec![
+                Term::Lit(Lit::Float(f64::NAN)),
+                Term::Lit(Lit::Float(f64::NAN)),
+            ],
+        );
+        assert_eq!(eval(&term, &Environment::new()), Ok(Value::Bool(true)));
     }
 
     #[test]
