@@ -647,7 +647,7 @@ fn typed_node_label(expr: &TypedExpr) -> String {
         TypedExprKind::Var(name, _) => format!("Var\n{name}"),
         TypedExprKind::BinOp(op, _, _) => format!("BinOp\n{}", binop_label(*op)),
         TypedExprKind::If(_, _, _) => "If".to_string(),
-        TypedExprKind::Let(name, _, _, _) => format!("Let\n{name}"),
+        TypedExprKind::Let(name, ..) => format!("Let\n{name}"),
         TypedExprKind::Fun(name, _, _) => format!("Fun\n{name}"),
         TypedExprKind::App(_, _) => "App".to_string(),
         TypedExprKind::Load(path, _) => format!("Load\n{path}"),
@@ -724,7 +724,7 @@ fn typed_edge(parent: &str, expr: &TypedExpr, output: &mut String, gen: &mut Nod
             let _ = writeln!(output, "  {parent} -> {t_id} [label=\"then\"];");
             let _ = writeln!(output, "  {parent} -> {e_id} [label=\"else\"];");
         }
-        TypedExprKind::Let(_, _, v, b) => {
+        TypedExprKind::Let(_, _, _, v, b) => {
             let v_id = typed_expr_to_dot(v, output, gen);
             let b_id = typed_expr_to_dot(b, output, gen);
             let _ = writeln!(output, "  {parent} -> {v_id} [label=\"value\"];");

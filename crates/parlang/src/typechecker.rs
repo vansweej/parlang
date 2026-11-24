@@ -803,7 +803,7 @@ fn infer_let(
 
         let unified_ty = apply_subst(&s1, &value_typed.ty);
         let scheme = env1.generalize(&unified_ty);
-        env1.bind(name.to_string(), scheme);
+        env1.bind(name.to_string(), scheme.clone());
 
         let (body_typed, s2) = infer_typed(body, &mut env1)?;
         advance_next_var_from_inference(&mut env1, &body_typed.ty, &s2);
@@ -816,6 +816,7 @@ fn infer_let(
                 kind: TypedExprKind::Let(
                     name.to_string(),
                     ty_ann_opt.cloned(),
+                    scheme,
                     Box::new(value_typed),
                     Box::new(body_typed),
                 ),
@@ -827,8 +828,8 @@ fn infer_let(
         let mut env1 = env.clone();
         apply_subst_env(&s1, &mut env1);
 
-        let scheme = env1.generalize(&value_typed.ty);
-        env1.bind(name.to_string(), scheme);
+        let scheme = env1.generalize(&apply_subst(&s1, &value_typed.ty));
+        env1.bind(name.to_string(), scheme.clone());
 
         let (body_typed, s2) = infer_typed(body, &mut env1)?;
         advance_next_var_from_inference(&mut env1, &body_typed.ty, &s2);
@@ -841,6 +842,7 @@ fn infer_let(
                 kind: TypedExprKind::Let(
                     name.to_string(),
                     ty_ann_opt.cloned(),
+                    scheme,
                     Box::new(value_typed),
                     Box::new(body_typed),
                 ),
@@ -1540,9 +1542,10 @@ fn resolve_typed(subst: &Substitution, typed: &TypedExpr) -> TypedExpr {
             Box::new(resolve_typed(subst, t)),
             Box::new(resolve_typed(subst, e)),
         ),
-        K::Let(n, ann, v, b) => K::Let(
+        K::Let(n, ann, scheme, v, b) => K::Let(
             n.clone(),
             ann.clone(),
+            resolve_scheme(subst, scheme),
             Box::new(resolve_typed(subst, v)),
             Box::new(resolve_typed(subst, b)),
         ),
@@ -1598,6 +1601,16 @@ fn resolve_typed(subst: &Substitution, typed: &TypedExpr) -> TypedExpr {
         kind,
         ty: apply_subst(subst, &typed.ty),
     }
+}
+
+/// Apply `subst` to a let-generalized `scheme`, leaving its quantified
+/// variables untouched so they still name the `Type::Var`s of the value.
+fn resolve_scheme(subst: &Substitution, scheme: &TypeScheme) -> TypeScheme {
+    let mut inner = subst.clone();
+    for var in &scheme.vars {
+        inner.remove(var);
+    }
+    TypeScheme::poly(scheme.vars.clone(), apply_subst(&inner, &scheme.ty))
 }
 
 /// Type check an expression, returning the fully resolved typed AST.
@@ -1862,7 +1875,7 @@ mod tests {
         use crate::typed_ast::TypedExprKind as K;
         let typed = check_typed("let id = fun x -> x in id 1").unwrap();
         assert_eq!(typed.ty, Type::Int);
-        let K::Let(_, _, value, _) = &typed.kind else {
+        let K::Let(_, _, _, value, _) = &typed.kind else {
             panic!("expected Let")
         };
         let K::Fun(_, _, body) = &value.kind else {
@@ -1963,7 +1976,7 @@ mod tests {
         let K::BinOp(_, _, right) = &body.kind else {
             panic!("expected BinOp body")
         };
-        let K::Let(_, _, value, _) = &right.kind else {
+        let K::Let(_, _, _, value, _) = &right.kind else {
             panic!("expected Let right")
         };
         let K::Fun(_, _, _) = &value.kind else {
@@ -1974,6 +1987,112 @@ mod tests {
         };
         assert!(matches!(**param, Type::Var(_)), "param should stay a Var");
         assert_eq!(**ret, Type::Int);
+    }
+
+    /// Walk `expr` and assert that every expression-level `Let` scheme
+    /// quantifies exactly the free type vars of its resolved value type
+    /// (valid for lets whose value captures no monomorphic outer variable).
+    fn assert_closed_let_schemes(expr: &crate::typed_ast::TypedExpr) {
+        use crate::typed_ast::TypedExprKind as K;
+        match &expr.kind {
+            K::Let(_, _, scheme, value, body) => {
+                let vars: std::collections::HashSet<TypeVar> =
+                    scheme.vars.iter().cloned().collect();
+                assert_eq!(
+                    free_type_vars(&value.ty),
+                    vars,
+                    "let scheme/value vars differ"
+                );
+                assert_closed_let_schemes(value);
+                assert_closed_let_schemes(body);
+            }
+            K::Fun(_, _, inner) | K::Rec(_, inner) => assert_closed_let_schemes(inner),
+            K::App(left, right) | K::BinOp(_, left, right) => {
+                assert_closed_let_schemes(left);
+                assert_closed_let_schemes(right);
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn test_typed_let_scheme_one_var() {
+        use crate::typed_ast::TypedExprKind as K;
+        let typed = check_typed("let id = fun x -> x in id 1").unwrap();
+        let K::Let(_, _, scheme, value, body) = &typed.kind else {
+            panic!("expected Let")
+        };
+        assert_eq!(scheme.vars.len(), 1);
+        let var = Type::Var(scheme.vars[0].clone());
+        assert_eq!(value.ty, Type::Fun(Box::new(var.clone()), Box::new(var)));
+        let K::App(func, _) = &body.kind else {
+            panic!("expected App body")
+        };
+        let K::Var(_, args) = &func.kind else {
+            panic!("expected Var func")
+        };
+        assert_eq!(args, &vec![Type::Int]);
+    }
+
+    #[test]
+    fn test_typed_let_scheme_two_vars_args_order() {
+        use crate::typed_ast::TypedExprKind as K;
+        let typed = check_typed("let k = fun x -> fun y -> x in k 1 true").unwrap();
+        let K::Let(_, _, scheme, _, body) = &typed.kind else {
+            panic!("expected Let")
+        };
+        assert_eq!(scheme.vars.len(), 2);
+        let Type::Fun(x_ty, _) = &scheme.ty else {
+            panic!("expected Fun scheme")
+        };
+        let Type::Var(x_var) = &**x_ty else {
+            panic!("expected Var param")
+        };
+        let pos_x = scheme.vars.iter().position(|v| v == x_var).unwrap();
+        let K::App(inner, _) = &body.kind else {
+            panic!("expected outer App")
+        };
+        let K::App(func, _) = &inner.kind else {
+            panic!("expected inner App")
+        };
+        let K::Var(_, args) = &func.kind else {
+            panic!("expected Var func")
+        };
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[pos_x], Type::Int);
+        assert_eq!(args[1 - pos_x], Type::Bool);
+    }
+
+    #[test]
+    fn test_typed_let_scheme_monomorphic() {
+        use crate::typed_ast::TypedExprKind as K;
+        let typed = check_typed("let n = 1 in n").unwrap();
+        let K::Let(_, _, scheme, _, _) = &typed.kind else {
+            panic!("expected Let")
+        };
+        assert!(scheme.vars.is_empty());
+        assert_eq!(scheme.ty, Type::Int);
+    }
+
+    #[test]
+    fn test_typed_let_schemes_match_value_vars() {
+        let typed = check_typed("let id = fun x -> x in id 1").unwrap();
+        assert_closed_let_schemes(&typed);
+        let source = "let f = fun x -> let g = fun y -> y in g x in f 1";
+        let typed = check_typed(source).unwrap();
+        assert_closed_let_schemes(&typed);
+    }
+
+    #[test]
+    fn test_typed_decl_scheme_matches_value_vars() {
+        use crate::typed_ast::TypedDecl;
+        let program = check_program("let id = fun x -> x;\nid 'c'");
+        let TypedDecl::Let { scheme, value, .. } = &program.decls[0] else {
+            panic!("expected Let decl")
+        };
+        assert_eq!(value.ty, scheme.ty);
+        let vars: std::collections::HashSet<TypeVar> = scheme.vars.iter().cloned().collect();
+        assert_eq!(free_type_vars(&value.ty), vars);
     }
 
     #[test]

@@ -31,9 +31,13 @@ pub enum TypedExprKind {
     Var(String, Vec<Type>),
     BinOp(crate::ast::BinOp, Box<TypedExpr>, Box<TypedExpr>),
     If(Box<TypedExpr>, Box<TypedExpr>, Box<TypedExpr>),
+    /// `let name [: ann] = value in body`; the `TypeScheme` is the one
+    /// generalized at this let, resolved except for its quantified variables,
+    /// which stay `Type::Var` and name the unresolved vars of `value`.
     Let(
         String,
         Option<TypeAnnotation>,
+        TypeScheme,
         Box<TypedExpr>,
         Box<TypedExpr>,
     ),
@@ -195,7 +199,7 @@ fn node_label(expr: &TypedExpr) -> String {
         TypedExprKind::Var(name, _) => format!("Var {name}"),
         TypedExprKind::BinOp(op, _, _) => format!("BinOp {op}"),
         TypedExprKind::If(_, _, _) => "If".to_string(),
-        TypedExprKind::Let(name, ann, _, _) => {
+        TypedExprKind::Let(name, ann, ..) => {
             format!("Let {name}{}", opt_ann(ann.as_ref()))
         }
         TypedExprKind::Fun(name, ann, _) => {
@@ -255,7 +259,7 @@ fn write_children(out: &mut String, expr: &TypedExpr, depth: usize) {
             write_expr(out, "then", t, depth);
             write_expr(out, "else", e, depth);
         }
-        TypedExprKind::Let(_, _, v, b) => {
+        TypedExprKind::Let(_, _, _, v, b) => {
             write_expr(out, "value", v, depth);
             write_expr(out, "body", b, depth);
         }

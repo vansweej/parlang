@@ -65,7 +65,7 @@ fn typed_children(node: &TypedExpr) -> Vec<&TypedExpr> {
     use TypedExprKind as K;
     match &node.kind {
         K::Int(_) | K::Bool(_) | K::Char(_) | K::Float(_) | K::Var(..) | K::Load(_, _) => vec![],
-        K::BinOp(_, l, r) | K::App(l, r) | K::Let(_, _, l, r) => vec![&**l, &**r],
+        K::BinOp(_, l, r) | K::App(l, r) | K::Let(_, _, _, l, r) => vec![&**l, &**r],
         K::If(c, t, e) => vec![&**c, &**t, &**e],
         K::Fun(_, _, b)
         | K::Rec(_, b)
@@ -92,7 +92,7 @@ fn node_rule_ok(node: &TypedExpr) -> Result<(), String> {
         }
         K::BinOp(..) => node.ty == Type::Bool,
         K::If(c, t, e) => c.ty == Type::Bool && t.ty == node.ty && e.ty == node.ty,
-        K::Let(_, _, _, b) | K::Rec(_, b) => node.ty == b.ty,
+        K::Let(.., b) | K::Rec(_, b) => node.ty == b.ty,
         K::Fun(_, _, b) => matches!(&node.ty, Type::Fun(_, bt) if **bt == b.ty),
         K::App(f, a) => f.ty == Type::Fun(Box::new(a.ty.clone()), Box::new(node.ty.clone())),
         K::Match(_, arms) => arms.iter().all(|arm| arm.body.ty == node.ty),
