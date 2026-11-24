@@ -1,393 +1,72 @@
-# Pattern Matching Exhaustiveness Checking
+# Exhaustiveness Checking
 
-ParLang includes exhaustiveness checking for pattern matching expressions. This feature helps catch bugs early by warning you when a `match` expression doesn't cover all possible cases. Coverage is partial -- see the Limitations section below for the specific cases that are not analyzed.
+## Overview
 
-## Table of Contents
+ParLang checks every `match` expression for exhaustiveness during type
+checking. `infer_match` calls `check_match` in
+`crates/parlang/src/match_coverage.rs`. The check is sound: a match it accepts
+always has an arm for every value of the scrutinee's type. A non-exhaustive
+match is rejected with `TypeError::NonExhaustiveMatch { missing }`, and the
+program is not evaluated. No runtime warning is ever printed.
 
-- [What is Exhaustiveness Checking?](#what-is-exhaustiveness-checking)
-- [How It Works](#how-it-works)
-- [Pattern Types](#pattern-types)
-- [Examples](#examples)
-- [Warnings](#warnings)
-- [Best Practices](#best-practices)
-- [Technical Details](#technical-details)
+## How coverage is decided
 
-## What is Exhaustiveness Checking?
+Coverage is decided per type:
 
-Exhaustiveness checking analyzes your pattern matching expressions to determine if they handle all possible values. It is an approximate, best-effort check and is unsound: it can report a match as exhaustive when it is not. When a `match` expression is **non-exhaustive** (doesn't cover all cases), the checker prints a warning to stderr as the match is evaluated; execution then continues regardless.
+- `Bool`: both `true` and `false` must be covered.
+- `Unit`: `()` covers the type.
+- Tuples and records each have a single constructor. Their components are
+  checked position by position. A partial record pattern covers the fields it
+  omits.
+- Data types are covered by their declared constructors, each with its
+  payload covered.
+- `Int`, `Char` and `Float` literals never complete a match. Add a variable or
+  `_` arm.
+- Nested patterns are checked position by position, so `Some (Some n)` plus
+  `None` still misses `Some None`.
 
-### Benefits
+## Witnesses
 
-- **Catch bugs sooner**: Many missing cases are reported as a warning when the match is evaluated (the check is best-effort and can miss some)
-- **Better code quality**: Warns when a match may miss cases among the pattern kinds the checker analyzes
-- **Documentation**: Patterns serve as documentation of possible values
-- **Refactoring safety**: Adding new constructors will trigger warnings in existing matches
-
-## How It Works
-
-The exhaustiveness checker is not a separate static pass run ahead of execution: it is called only from `eval_match`, so it re-runs on every evaluation of a given `match` node. It performs an approximate, best-effort analysis of the patterns and is unsound (it can report a match as exhaustive when it is not); on a non-exhaustive verdict it only prints a warning to stderr, after which execution continues regardless.
-
-```parlang
-data Option a = Some a | None in
-match myOption with
-| Some n -> n
-| None -> 0
-# ✓ Exhaustive: Both Some and None are covered
-```
-
-```parlang
-data Option a = Some a | None in
-match myOption with
-| Some n -> n
-# ⚠ Warning: pattern match is non-exhaustive
-# Missing cases: None
-```
-
-## Pattern Types
-
-The exhaustiveness checker treats each pattern kind in ParLang differently. It fully analyzes flat sum-type constructors and Boolean literals; other kinds receive coarser or no analysis, as noted per-kind below and summarized in Limitations:
-
-### 1. Literal Patterns
-
-**Boolean literals** must cover both `true` and `false`:
-
-```parlang
-# Exhaustive
-match flag with
-| true -> 1
-| false -> 0
-```
-
-```parlang
-# Non-exhaustive
-match flag with
-| true -> 1
-# Warning: Missing cases: false
-```
-
-**Integer literals** are infinite, so they require a catch-all pattern:
-
-```parlang
-# Non-exhaustive
-match n with
-| 0 -> 1
-| 1 -> 2
-# Warning: Missing cases: <other integers>
-```
-
-```parlang
-# Exhaustive with wildcard
-match n with
-| 0 -> 1
-| 1 -> 2
-| _ -> 999
-```
-
-### 2. Variable and Wildcard Patterns
-
-These patterns match everything and make the match exhaustive:
-
-```parlang
-# Variable pattern (exhaustive)
-match x with
-| n -> n + 1
-```
-
-```parlang
-# Wildcard pattern (exhaustive)
-match x with
-| 0 -> 1
-| _ -> 999
-```
-
-### 3. Constructor Patterns (Sum Types)
-
-For sum types, **all constructors** must be covered:
-
-```parlang
-data Option a = Some a | None in
-
-# Exhaustive
-match x with
-| Some n -> n
-| None -> 0
-```
-
-```parlang
-data Either a b = Left a | Right b in
-
-# Non-exhaustive
-match x with
-| Left n -> n
-# Warning: Missing cases: Right
-```
-
-```parlang
-data List a = Nil | Cons a (List a) in
-
-# Exhaustive
-match list with
-| Nil -> 0
-| Cons head tail -> head
-```
-
-### 4. Tuple Patterns
-
-Tuple patterns alone (without a catch-all) are considered non-exhaustive:
-
-```parlang
-# Non-exhaustive
-match (x, y) with
-| (0, 0) -> 1
-| (1, 1) -> 2
-# Warning: Missing cases: _
-```
-
-```parlang
-# Exhaustive with wildcard
-match (x, y) with
-| (0, 0) -> 1
-| _ -> 999
-```
-
-### 5. Record Patterns
-
-Record patterns alone (without a catch-all) are considered non-exhaustive:
-
-```parlang
-# Non-exhaustive
-match person with
-| { name: 0 } -> 1
-# Warning: Missing cases: _
-```
-
-```parlang
-# Exhaustive with wildcard
-match person with
-| { name: 0 } -> 1
-| _ -> 999
-```
-
-### 6. Nested Patterns
-
-The checker descends into nested constructors, but flattens them without tracking position -- see Nested Pattern Analysis below for the gaps this leaves:
-
-```parlang
-data Option a = Some a | None in
-
-# Exhaustive
-match x with
-| Some (Some n) -> n
-| Some None -> 0
-| None -> 0
-```
-
-```parlang
-# Non-exhaustive - missing None at top level
-match x with
-| Some (Some n) -> n
-| Some None -> 0
-# Warning: Missing cases: None
-```
+`missing` lists example patterns that no arm matches, for instance `_`,
+`true`, `()`, `Some None`, `Cons _ _`, `Some (Some _)`, `(Nil, Cons _ _)` and
+`{x: _, y: _}`.
 
 ## Examples
 
-### Option Type
+Rejected:
 
 ```parlang
-data Option a = Some a | None in
-
-# Good: Exhaustive match
-let safeDivide = fun x -> fun y ->
-  if y == 0 then None else Some (x / y)
-in
-match safeDivide 10 2 with
-| Some result -> result
+data Option a = Some a | None;
+let f = fun o -> match o with
+| Some (Some n) -> n
 | None -> 0
-# Result: 5
+in f None
 ```
 
-### Either Type (Error Handling)
+Error: `Non-exhaustive match: missing Some None`
+
+Accepted:
 
 ```parlang
-data Either a b = Left a | Right b in
-
-# Good: Exhaustive match
-let parseNumber = fun x ->
-  if x > 0 then Right x else Left 0
-in
-match parseNumber 5 with
-| Right n -> n * 2
-| Left err -> err
-# Result: 10
-```
-
-### List Type (Recursive Data)
-
-```parlang
-data List a = Nil | Cons a (List a) in
-
-# Good: Exhaustive match
-let rec sum -> fun list ->
-  match list with
-  | Nil -> 0
-  | Cons head tail -> head + sum tail
-in
-sum (Cons 1 (Cons 2 (Cons 3 Nil)))
-# Result: 6
-```
-
-### Result Type
-
-```parlang
-data Result a b = Ok a | Err b in
-
-# Good: Exhaustive match
-let divide = fun x -> fun y ->
-  if y == 0 then Err false else Ok (x / y)
-in
-match divide 10 5 with
-| Ok value -> value
-| Err _ -> 0
-# Result: 2
-```
-
-### Tree Type
-
-```parlang
-data Tree a = Leaf | Node a (Tree a) (Tree a) in
-
-# Good: Exhaustive match
-let tree = Node 5 (Node 3 Leaf Leaf) (Node 7 Leaf Leaf) in
-match tree with
-| Leaf -> 0
-| Node value _ _ -> value
-# Result: 5
-```
-
-## Warnings
-
-When a match is non-exhaustive, you'll see a warning like this:
-
-```
-Warning: pattern match is non-exhaustive
-  Missing cases: None
-```
-
-or
-
-```
-Warning: pattern match is non-exhaustive
-  Missing cases: Right
-```
-
-These warnings appear before evaluation but don't stop the program from running. However, if the runtime encounters a value that doesn't match any pattern, you'll get a runtime error:
-
-```
-Type error: No pattern matched in match expression
-```
-
-## Best Practices
-
-### 1. Always Handle All Cases
-
-For sum types, explicitly handle all constructors:
-
-```parlang
-# Good
-data Option a = Some a | None in
-match x with
-| Some n -> n
+data Option a = Some a | None;
+let f = fun o -> match o with
+| Some (Some n) -> n
+| Some None -> 1
 | None -> 0
+in f None
 ```
 
-### 2. Use Wildcards for Catch-All Cases
+## Unknown constructors
 
-When you don't care about specific values, use wildcards:
+Every constructor in a pattern or expression needs a `data` declaration in
+scope. Otherwise type checking fails with `UnknownConstructor`.
 
-```parlang
-# Good: Clear intent that we only care about Some
-data Option a = Some a | None in
-match x with
-| Some n -> n
-| _ -> 0
-```
+## Runtime
 
-### 3. Keep Pattern Order in Mind
+`EvalError::PatternMatchNonExhaustive` can only occur when code is evaluated
+without type checking, through the library `eval` API.
 
-Patterns are matched top to bottom. Put specific patterns first:
+## See also
 
-```parlang
-# Good order
-match n with
-| 0 -> 1
-| 1 -> 2
-| _ -> 999
-```
-
-### 4. Use Variable Patterns for Binding
-
-When you need the matched value, use a variable pattern:
-
-```parlang
-match n with
-| 0 -> 1
-| m -> m * 2  # 'm' binds the value for use
-```
-
-### 5. Document Missing Cases
-
-If you intentionally omit cases (and use a wildcard), add a comment:
-
-```parlang
-data Status = Active | Inactive | Pending | Archived in
-match status with
-| Active -> handleActive()
-| Inactive -> handleInactive()
-| _ -> 0  # Pending and Archived treated the same
-```
-
-## Technical Details
-
-### Algorithm
-
-The exhaustiveness checker collects a flat bag of pattern-head symbols and then applies a fixed decision cascade. It:
-
-1. Returns exhaustive immediately if any top-level pattern is a wildcard or variable
-2. Walks every pattern node once, recording covered data constructors, whether `true` and `false` appear, seen integer literals, and whether any tuple or record pattern appears — all into shared flat accumulators, with no positional or per-column tracking
-3. Applies a fixed cascade: check sum-type constructor coverage against the environment, then require both Boolean cases, then treat any integer literal, or any tuple or record pattern, as non-exhaustive (a top-level catch-all would already have short-circuited in step 1)
-4. Reports the missing cases: constructor names for sum types, or a placeholder witness (`true`/`false`, `<other integers>`, or `_`) for the other kinds
-
-### Constructor Coverage
-
-For sum types, the checker:
-- Identifies the type from an arbitrary one of the covered constructors, so only one type is ever checked
-- Retrieves all constructors for that type from the environment
-- Checks if all constructors appear in the patterns
-- Reports any missing constructors
-
-### Nested Pattern Analysis
-
-The checker descends into constructor payloads, but does not track position. Nested handling is deliberately imprecise:
-
-- Constructor names from every nesting depth are inserted into a single shared set, so inner positions are not distinguished from outer ones
-- A nested gap can be masked by outer coverage: for `Some (Some n)` and `None` over `Option`, the flattened set `{Some, None}` is judged complete even though `Some None` matches no arm and fails at runtime
-- The type examined for constructor coverage is an arbitrary element of that shared set, so when constructors of two types are mixed only one type is checked, and which one is not deterministic
-
-### Limitations
-
-Current limitations (potential future enhancements):
-
-1. **Integer patterns**: Considered non-exhaustive without a catch-all (integers are infinite)
-2. **Tuple patterns**: Reported non-exhaustive unless a catch-all pattern is present; individual tuple-component combinations are not analyzed
-3. **Record patterns**: Reported non-exhaustive unless a catch-all pattern is present; individual field-value combinations are not analyzed
-4. **Guard patterns**: Not supported
-5. **Character patterns**: Character literal patterns are not checked for exhaustiveness
-6. **Nested constructor patterns**: Constructor payloads are flattened into a shared set rather than analyzed positionally, so nested coverage is not decided precisely
-
-## See Also
-
-- [Sum Types Documentation](SUM_TYPES.md) - Learn about algebraic data types
-- [Pattern Matching Examples](EXAMPLES.md) - More pattern matching examples
-- [Language Specification](LANGUAGE_SPEC.md) - Formal pattern matching grammar
-- [Type System](TYPE_SYSTEM.md) - Type inference and checking
+- [Sum Types](SUM_TYPES.md)
+- [Typechecker Module](MODULE_TYPECHECKER.md)

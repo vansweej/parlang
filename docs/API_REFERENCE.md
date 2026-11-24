@@ -96,7 +96,6 @@ pub use eval::{
     run_on_evaluator_stack, Environment, EvalError, EvaluatorStackError, Value,
     EVALUATOR_STACK_SIZE,
 };
-pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
 pub use parser::{parse_expr, parse_program};
 pub use typechecker::{
     typecheck, typecheck_program, typecheck_program_with_env, TypeEnv, TypeError,
@@ -123,7 +122,6 @@ pub use eval::{
     run_on_evaluator_stack, Environment, EvalError, EvaluatorStackError, Value,
     EVALUATOR_STACK_SIZE,
 };
-pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
 pub use parser::{parse_expr, parse_program};
 pub use typechecker::{
     typecheck, typecheck_program, typecheck_program_with_env, TypeEnv, TypeError,

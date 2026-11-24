@@ -19,7 +19,7 @@ ParLang is a simple functional programming language with:
 - **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
 - **Pattern Matching**: Match expressions for cleaner multi-branch logic (supports records, tuples, literals, and sum types)
-- **Exhaustiveness Checking**: Automatic warnings for non-exhaustive pattern matches, helping catch bugs early
+- **Exhaustiveness Checking**: Sound check during type checking; a non-exhaustive match is a type error listing the missing patterns
 - **Binary Operations**: Arithmetic (`+`, `-`, `*`, `/`) and comparison (`==`, `!=`, `<`, `<=`, `>`, `>=`)
 - **Function Application**: Call functions with arguments
 - **Currying**: Functions naturally support partial application
@@ -163,17 +163,17 @@ Pattern matching evaluates patterns from top to bottom and executes the first ma
 
 ### Exhaustiveness Checking
 
-The exhaustiveness checker warns you when a `match` expression doesn't cover all possible cases:
+The type checker rejects a `match` expression that doesn't cover all possible cases:
 
 ```
 data Option a = Some a | None in
 match x with
 | Some n -> n
-# Warning: pattern match is non-exhaustive
-# Missing cases: None
+# Type error: Non-exhaustive match: missing None
+# (the program is not evaluated)
 ```
 
-**Exhaustive match (no warning):**
+**Exhaustive match (accepted):**
 ```
 data Option a = Some a | None in
 match x with
@@ -788,7 +788,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Type Annotations](docs/TYPE_ANNOTATIONS.md)** - Explicit type annotations for better documentation and error detection
 - **[Generic Types](docs/GENERIC_TYPES.md)** - Parameterized types and type inference for generic data structures
 - **[Sum Types](docs/SUM_TYPES.md)** - Algebraic data types with pattern matching
-- **[Exhaustiveness Checking](docs/EXHAUSTIVENESS_CHECKING.md)** - Warnings for non-exhaustive sum-type and Bool matches
+- **[Exhaustiveness Checking](docs/EXHAUSTIVENESS_CHECKING.md)** - Sound type-check-time match exhaustiveness
 - **[Examples Guide](docs/EXAMPLES.md)** - Tutorial-style examples from basic to advanced
 - **[Security & Performance](docs/SECURITY.md)** - Security considerations and performance best practices
 - **[Error Handling](docs/ERROR_HANDLING.md)** - Error types, patterns, and debugging strategies
@@ -819,7 +819,7 @@ The language implementation consists of:
 5. **Evaluator** (`crates/parlang/src/eval.rs`): Interpreter that evaluates expressions
 6. **DOT** (`crates/parlang/src/dot.rs`): AST visualization in Graphviz DOT format
 7. **REPL/CLI** (`crates/parlang/src/main.rs`): Command-line interface using clap
-8. **Exhaustiveness** (`crates/parlang/src/exhaustiveness.rs`): Pattern-match exhaustiveness checker
+8. **Exhaustiveness** (`crates/parlang/src/match_coverage.rs`): Sound match exhaustiveness checker run by the type checker
 
 For detailed architecture information, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

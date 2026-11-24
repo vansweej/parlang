@@ -4,7 +4,7 @@ The Type Checker module implements Hindley-Milner type inference for ParLang.
 
 ## Overview
 
-This module implements Algorithm W, the classic type inference algorithm for functional languages. It infers types for most expressions without requiring type annotations and supports polymorphic types through let-polymorphism. Tuples (`Type::Tuple`), strict tuple projection, and match expressions are now type-checked: patterns are typed against the scrutinee and arm bodies are unified. Module loading (`load`) still receives a fresh type variable and is not type-checked; a constructor used without a `data` declaration (including the `Cons`/`Nil` that string literals desugar to) is an `UnknownConstructor` type error; exhaustiveness is still checked at evaluation time only. Inferred type errors are caught before runtime.
+This module implements Algorithm W, the classic type inference algorithm for functional languages. It infers types for most expressions without requiring type annotations and supports polymorphic types through let-polymorphism. Tuples (`Type::Tuple`), strict tuple projection, and match expressions are now type-checked: patterns are typed against the scrutinee and arm bodies are unified. Module loading (`load`) still receives a fresh type variable and is not type-checked; a constructor used without a `data` declaration (including the `Cons`/`Nil` that string literals desugar to) is an `UnknownConstructor` type error; a non-exhaustive `match` is a `NonExhaustiveMatch` type error. Inferred type errors are caught before runtime.
 
 ## Core Components
 
@@ -48,6 +48,7 @@ pub enum TypeError {
     TupleIndexOutOfBounds(usize, usize),
     TupleExpected(String),
     UnknownConstructor(String),
+    NonExhaustiveMatch { missing: Vec<String> },
 }
 ```
 
@@ -66,6 +67,7 @@ pub enum TypeError {
 - `TupleIndexOutOfBounds(index, arity)`: Tuple projection index was out of range for the tuple's arity
 - `TupleExpected(found)`: Expected a tuple type but got something else (e.g. an unresolved type variable)
 - `UnknownConstructor(name)`: A constructor (in an expression or pattern) has no `data` declaration in scope; string literals need `data List a = Nil | Cons a (List a)`
+- `NonExhaustiveMatch { missing }`: a `match` does not cover every value; `missing` lists witness patterns
 
 ### `Substitution` Type
 
@@ -380,11 +382,11 @@ assert!(typecheck(&expr).is_err());  // f expects Int but gets Bool
 
 ### Tuples and Pattern Matching
 
-Tuples, tuple projection, and match expressions are type-checked. Patterns are typed against the scrutinee and arm bodies are unified into one result type. Remaining leniencies: constructors without a `data` declaration are typed with a fresh type variable; a record pattern requires an already-known record type; tuple projection requires an already-known tuple type (use a tuple pattern otherwise); and `load` is not type-checked.
+Tuples, tuple projection, and match expressions are type-checked, and a non-exhaustive match is a `NonExhaustiveMatch` type error. Patterns are typed against the scrutinee and arm bodies are unified into one result type. A constructor without a `data` declaration is an `UnknownConstructor` type error. Remaining leniencies: a record pattern requires an already-known record type; tuple projection requires an already-known tuple type (use a tuple pattern otherwise); and `load` is not type-checked.
 
-Exhaustiveness is not a type-checker concern: it is analysed at evaluation
-time in `check_exhaustiveness` (called from `eval_match`), which prints a
-warning to stderr and continues rather than raising a type error.
+Exhaustiveness is checked during inference: `infer_match` calls the sound
+checker `check_match` (`match_coverage.rs`), and a non-exhaustive match is
+rejected with `TypeError::NonExhaustiveMatch { missing }`.
 
 ## Testing
 

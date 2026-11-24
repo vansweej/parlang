@@ -295,7 +295,7 @@ parlang/                          # Cargo workspace root
 │   │   │   ├── types.rs          # Type representations
 │   │   │   ├── typechecker.rs    # Hindley-Milner inference
 │   │   │   ├── typed_ast.rs      # Typed AST produced by inference
-│   │   │   ├── exhaustiveness.rs # Pattern-match exhaustiveness checking
+│   │   │   ├── match_coverage.rs # Sound match exhaustiveness checking
 │   │   │   ├── eval.rs           # Tree-walking evaluator
 │   │   │   ├── dot.rs            # AST -> Graphviz DOT
 │   │   │   └── main.rs           # CLI interface

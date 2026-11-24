@@ -74,7 +74,7 @@ integration tests.
 | `types.rs` | Type representations (`Type`, `TypeScheme`, `TypeVar`) |
 | `typechecker.rs` | Algorithm W inference; entrypoint `typecheck()` |
 | `typed_ast.rs` | Typed AST produced by `typecheck_typed` and friends; `typed_program_to_text` renders it |
-| `exhaustiveness.rs` | Pattern-match exhaustiveness checker (`check_exhaustiveness`) |
+| `match_coverage.rs` | Sound type-check-time match exhaustiveness checker (`check_match`); non-exhaustive matches are a `NonExhaustiveMatch` type error |
 | `eval.rs` | Tree-walking interpreter; `eval()`, `Value`, `Environment` |
 | `dot.rs` | AST → Graphviz DOT |
 | `main.rs` | `clap` CLI + `rustyline` REPL |

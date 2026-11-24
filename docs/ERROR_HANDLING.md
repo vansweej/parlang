@@ -58,6 +58,7 @@ pub enum TypeError {
     TupleIndexOutOfBounds(usize, usize),
     TupleExpected(String),
     UnknownConstructor(String),
+    NonExhaustiveMatch { missing: Vec<String> },
 }
 ```
 
@@ -334,7 +335,7 @@ data Option a = Some a | None in
 let x = None in
 match x with
 | Some n -> n
-# Runtime error: Pattern match is non-exhaustive
+# Type error: Non-exhaustive match: missing None (rejected before evaluation)
 ```
 
 **Solution:** Add a catch-all pattern:
