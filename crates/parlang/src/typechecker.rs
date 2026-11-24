@@ -54,6 +54,14 @@ impl TypeEnv {
         Some(self.instantiate(&scheme))
     }
 
+    /// Look up a variable, instantiate its type scheme, and also return the
+    /// fresh instantiation types, one per quantified variable in
+    /// `TypeScheme::vars` order (empty for a monomorphic binding).
+    pub fn lookup_instantiated(&mut self, name: &str) -> Option<(Type, Vec<Type>)> {
+        let scheme = self.bindings.get(name)?.clone();
+        Some(self.instantiate_with_args(&scheme))
+    }
+
     /// Bind a variable to a type scheme
     pub fn bind(&mut self, name: String, scheme: TypeScheme) {
         self.bindings.insert(name, scheme);
@@ -79,6 +87,20 @@ impl TypeEnv {
         }
 
         apply_subst(&subst, &scheme.ty)
+    }
+
+    /// Like `instantiate`, but also returns the fresh type variables used,
+    /// in `TypeScheme::vars` order. Issues the same fresh variables in the
+    /// same order as `instantiate`.
+    fn instantiate_with_args(&mut self, scheme: &TypeScheme) -> (Type, Vec<Type>) {
+        let args: Vec<Type> = scheme.vars.iter().map(|_| self.fresh_var()).collect();
+        let subst: Substitution = scheme
+            .vars
+            .iter()
+            .cloned()
+            .zip(args.iter().cloned())
+            .collect();
+        (apply_subst(&subst, &scheme.ty), args)
     }
 
     /// Generalize a type by quantifying free type variables
@@ -1453,10 +1475,10 @@ fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitutio
         Expr::Char(c) => Ok(leaf(TypedExprKind::Char(*c), Type::Char)),
         Expr::Float(x) => Ok(leaf(TypedExprKind::Float(*x), Type::Float)),
         Expr::Var(name) => {
-            let ty = env
-                .lookup(name)
+            let (ty, args) = env
+                .lookup_instantiated(name)
                 .ok_or_else(|| TypeError::UnboundVariable(name.clone()))?;
-            Ok(leaf(TypedExprKind::Var(name.clone()), ty))
+            Ok(leaf(TypedExprKind::Var(name.clone(), args), ty))
         }
         Expr::BinOp(op, left, right) => infer_binop(*op, left, right, env),
         Expr::If(cond, then_br, else_br) => infer_if(cond, then_br, else_br, env),
@@ -1503,9 +1525,11 @@ pub fn infer(expr: &Expr, env: &mut TypeEnv) -> Result<(Type, Substitution), Typ
 fn resolve_typed(subst: &Substitution, typed: &TypedExpr) -> TypedExpr {
     use TypedExprKind as K;
     let kind = match &typed.kind {
-        K::Int(_) | K::Bool(_) | K::Char(_) | K::Float(_) | K::Var(_) | K::Load(_, _) => {
-            typed.kind.clone()
-        }
+        K::Int(_) | K::Bool(_) | K::Char(_) | K::Float(_) | K::Load(_, _) => typed.kind.clone(),
+        K::Var(name, args) => K::Var(
+            name.clone(),
+            args.iter().map(|arg| apply_subst(subst, arg)).collect(),
+        ),
         K::BinOp(op, l, r) => K::BinOp(
             *op,
             Box::new(resolve_typed(subst, l)),
@@ -1850,6 +1874,64 @@ mod tests {
         assert!(matches!(**param, Type::Var(_)), "param should stay a Var");
         assert_eq!(**param, **ret);
         assert_eq!(body.ty, **ret);
+    }
+
+    fn check_program(source: &str) -> crate::typed_ast::TypedProgram {
+        let program = crate::parser::parse_program(source).unwrap();
+        typecheck_program_typed(&program).unwrap()
+    }
+
+    #[test]
+    fn test_typed_var_poly_instantiation_args() {
+        use crate::typed_ast::TypedExprKind as K;
+        let typed = check_typed("let id = fun x -> x in id 1").unwrap();
+        let K::Let(.., body) = &typed.kind else {
+            panic!("expected Let")
+        };
+        let K::App(func, _) = &body.kind else {
+            panic!("expected App body")
+        };
+        let K::Var(name, args) = &func.kind else {
+            panic!("expected Var func")
+        };
+        assert_eq!(name, "id");
+        assert_eq!(args, &vec![Type::Int]);
+    }
+
+    #[test]
+    fn test_typed_var_monomorphic_args_empty() {
+        use crate::typed_ast::TypedExprKind as K;
+        let typed = check_typed("(fun x -> x) 1").unwrap();
+        let K::App(func, _) = &typed.kind else {
+            panic!("expected App")
+        };
+        let K::Fun(_, _, body) = &func.kind else {
+            panic!("expected Fun")
+        };
+        assert!(matches!(&body.kind, K::Var(n, args) if n == "x" && args.is_empty()));
+        let typed = check_typed("let n = 1 in n").unwrap();
+        let K::Let(.., body) = &typed.kind else {
+            panic!("expected Let")
+        };
+        assert!(matches!(&body.kind, K::Var(n, args) if n == "n" && args.is_empty()));
+    }
+
+    #[test]
+    fn test_typed_var_top_level_decl_args() {
+        use crate::typed_ast::{TypedDecl, TypedExprKind as K};
+        let program = check_program("let id = fun x -> x;\nid 'c'");
+        let TypedDecl::Let { scheme, .. } = &program.decls[0] else {
+            panic!("expected Let decl")
+        };
+        assert_eq!(scheme.vars.len(), 1);
+        let body = program.body.unwrap();
+        let K::App(func, _) = &body.kind else {
+            panic!("expected App")
+        };
+        let K::Var(_, args) = &func.kind else {
+            panic!("expected Var")
+        };
+        assert_eq!(args, &vec![Type::Char]);
     }
 
     #[test]

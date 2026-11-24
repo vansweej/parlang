@@ -64,7 +64,7 @@ fn example_rels() -> Vec<String> {
 fn typed_children(node: &TypedExpr) -> Vec<&TypedExpr> {
     use TypedExprKind as K;
     match &node.kind {
-        K::Int(_) | K::Bool(_) | K::Char(_) | K::Float(_) | K::Var(_) | K::Load(_, _) => vec![],
+        K::Int(_) | K::Bool(_) | K::Char(_) | K::Float(_) | K::Var(..) | K::Load(_, _) => vec![],
         K::BinOp(_, l, r) | K::App(l, r) | K::Let(_, _, l, r) => vec![&**l, &**r],
         K::If(c, t, e) => vec![&**c, &**t, &**e],
         K::Fun(_, _, b)
@@ -113,7 +113,7 @@ fn node_rule_ok(node: &TypedExpr) -> Result<(), String> {
         | K::Bool(_)
         | K::Char(_)
         | K::Float(_)
-        | K::Var(_)
+        | K::Var(..)
         | K::Load(_, _)
         | K::TypeAlias(..)
         | K::FieldAccess(..)

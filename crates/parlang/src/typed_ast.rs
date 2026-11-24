@@ -25,7 +25,10 @@ pub enum TypedExprKind {
     Bool(bool),
     Char(char),
     Float(f64),
-    Var(String),
+    /// A variable occurrence plus the instantiation type arguments of its
+    /// scheme: one per quantified variable, in `TypeScheme::vars` order, fully
+    /// resolved. Empty for monomorphic bindings.
+    Var(String, Vec<Type>),
     BinOp(crate::ast::BinOp, Box<TypedExpr>, Box<TypedExpr>),
     If(Box<TypedExpr>, Box<TypedExpr>, Box<TypedExpr>),
     Let(
@@ -189,7 +192,7 @@ fn node_label(expr: &TypedExpr) -> String {
         TypedExprKind::Bool(b) => format!("Bool {b}"),
         TypedExprKind::Char(c) => format!("Char {}", crate::ast::Literal::Char(*c)),
         TypedExprKind::Float(fl) => format!("Float {fl}"),
-        TypedExprKind::Var(name) => format!("Var {name}"),
+        TypedExprKind::Var(name, _) => format!("Var {name}"),
         TypedExprKind::BinOp(op, _, _) => format!("BinOp {op}"),
         TypedExprKind::If(_, _, _) => "If".to_string(),
         TypedExprKind::Let(name, ann, _, _) => {
@@ -298,7 +301,7 @@ fn write_children(out: &mut String, expr: &TypedExpr, depth: usize) {
         | TypedExprKind::Bool(_)
         | TypedExprKind::Char(_)
         | TypedExprKind::Float(_)
-        | TypedExprKind::Var(_) => {}
+        | TypedExprKind::Var(..) => {}
     }
 }
 

@@ -644,7 +644,7 @@ fn typed_node_label(expr: &TypedExpr) -> String {
         TypedExprKind::Bool(b) => format!("Bool\n{b}"),
         TypedExprKind::Char(c) => format!("Char\n{}", Literal::Char(*c)),
         TypedExprKind::Float(fl) => format!("Float\n{fl}"),
-        TypedExprKind::Var(name) => format!("Var\n{name}"),
+        TypedExprKind::Var(name, _) => format!("Var\n{name}"),
         TypedExprKind::BinOp(op, _, _) => format!("BinOp\n{}", binop_label(*op)),
         TypedExprKind::If(_, _, _) => "If".to_string(),
         TypedExprKind::Let(name, _, _, _) => format!("Let\n{name}"),
@@ -785,7 +785,7 @@ fn typed_edge(parent: &str, expr: &TypedExpr, output: &mut String, gen: &mut Nod
         | TypedExprKind::Bool(_)
         | TypedExprKind::Char(_)
         | TypedExprKind::Float(_)
-        | TypedExprKind::Var(_) => {}
+        | TypedExprKind::Var(..) => {}
     }
 }
 
