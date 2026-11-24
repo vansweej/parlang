@@ -1,0 +1,28 @@
+-- Closed records: construction, field access, functions over records,
+-- full and partial record patterns, a record holding a string, and a
+-- record carried inside a data constructor.
+data List a = Nil | Cons a (List a);
+data Box a = Box a;
+let origin = { x: 0, y: 0 } in
+let asPoint = fun p -> if true then p else origin in
+let make = fun a -> fun b -> asPoint ({ x: a, y: b }) in
+let manhattan = fun p -> (asPoint p).x + (asPoint p).y in
+let swap = fun p -> match asPoint p with
+  | { x: a, y: b } -> { x: b, y: a }
+in
+let getX = fun p -> match asPoint p with
+  | { x: a } -> a
+in
+let strlen = rec strlen -> fun s ->
+  match s with
+  | Nil -> 0
+  | Cons _ rest -> 1 + strlen rest
+in
+let p1 = make 3 4 in
+let p2 = swap p1 in
+let person = { name: "ada", age: 36 } in
+let boxed = Box p2 in
+let unboxed = match boxed with
+  | Box ({ x: bx, y: by }) -> bx * 10 + by
+in
+{ dist: manhattan p1, first: getX p2, label: person.name, packed: unboxed, size: strlen person.name + person.age }

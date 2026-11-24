@@ -3,6 +3,7 @@ use parlang::{
     typecheck_program_typed, BinOp, Environment, Type, TypedDecl, TypedExpr, TypedExprKind, Value,
 };
 use parlang_core::Value as CoreValue;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -273,6 +274,94 @@ fn executes_use_strings_example() {
 #[test]
 fn executes_use_recursion_example() {
     assert!(run_example("examples/use_recursion.par").is_ok());
+}
+
+/// The surface value of a string literal: a `Cons`/`Nil` list of chars.
+fn surface_string(text: &str) -> Value {
+    text.chars()
+        .rev()
+        .fold(Value::Variant("Nil".to_string(), vec![]), |tail, ch| {
+            Value::Variant("Cons".to_string(), vec![Value::Char(ch), tail])
+        })
+}
+
+/// Expected surface value of `examples/records.par`.
+fn expected_records() -> Value {
+    Value::Record(HashMap::from([
+        ("dist".to_string(), Value::Int(7)),
+        ("first".to_string(), Value::Int(4)),
+        ("label".to_string(), surface_string("ada")),
+        ("packed".to_string(), Value::Int(43)),
+        ("size".to_string(), Value::Int(39)),
+    ]))
+}
+
+/// Expected surface value of `examples/mvp.par`.
+fn expected_mvp() -> Value {
+    surface_string("aglnpr")
+}
+
+/// Run an example on the surface evaluator and compare its final value with
+/// `expected()`. The surface `Value` is not `Send`, so the expected value is
+/// built and compared inside the worker and only `String`s cross the thread
+/// boundary.
+fn example_value_matches(relative_path: &str, expected: fn() -> Value) -> Result<(), String> {
+    let source = example_source(relative_path)?;
+    run_on_evaluator_stack(move || -> Result<(), String> {
+        let program = parse_program(&source)?;
+        typecheck_program(&program).map_err(|error| error.to_string())?;
+        let actual =
+            eval_program(&program, &Environment::new()).map_err(|error| error.to_string())?;
+        let expected = expected();
+        if actual == expected {
+            Ok(())
+        } else {
+            Err(format!("{actual:?} != {expected:?}"))
+        }
+    })
+    .map_err(|error| error.to_string())?
+}
+
+/// Run an example through the Core pipeline and return the rendered result.
+fn example_core_output(relative_path: &str) -> Result<String, String> {
+    let source = example_source(relative_path)?;
+    run_on_evaluator_stack(move || -> Result<String, String> {
+        let program = parse_program(&source)?;
+        parlang::pipeline::run_core(&program)
+    })
+    .map_err(|error| error.to_string())?
+}
+
+#[test]
+fn executes_records_example() {
+    assert_eq!(
+        example_value_matches("examples/records.par", expected_records),
+        Ok(())
+    );
+}
+
+#[test]
+fn records_example_runs_on_core() {
+    assert_eq!(
+        example_core_output("examples/records.par"),
+        Ok("{dist: 7, first: 4, label: \"ada\", packed: 43, size: 39}\n".to_string())
+    );
+}
+
+#[test]
+fn executes_mvp_example() {
+    assert_eq!(
+        example_value_matches("examples/mvp.par", expected_mvp),
+        Ok(())
+    );
+}
+
+#[test]
+fn mvp_example_runs_on_core() {
+    assert_eq!(
+        example_core_output("examples/mvp.par"),
+        Ok("\"aglnpr\"\n".to_string())
+    );
 }
 
 #[test]
