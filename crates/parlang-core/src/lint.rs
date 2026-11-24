@@ -1,5 +1,6 @@
-//! Core Lint: a minimal bidirectional type checker (well-formedness +
-//! synthesis) for the explicitly typed Core `Term` IR.
+//! Core Lint: a minimal synthesis-only type checker (type well-formedness
+//! plus type synthesis, with no separate checking mode) for the explicitly
+//! typed Core `Term` IR.
 //!
 //! This module performs no inference: every `Term` node either carries
 //! enough annotation to synthesize its type directly, or its type is

@@ -738,7 +738,7 @@ fn value_kind(value: &Value) -> &'static str {
 mod tests {
     use super::*;
     use crate::base_type::BaseType;
-    use crate::builder::{app, base_ty, con, int, lam, letrec, var};
+    use crate::builder::{app, base_ty, con, fun_ty, int, lam, letrec, var};
 
     #[test]
     fn displays_machine_state_and_step_kind() -> Result<(), crate::error::BuildError> {
@@ -776,7 +776,8 @@ mod tests {
         let body = con("if", vec![is_zero, int(1), product])?;
         let function = lam("n", BaseType::Int, body)?;
         let call = app(var("fac")?, int(input));
-        letrec("fac", base_ty(BaseType::Int), function, call)
+        let int_to_int = fun_ty(base_ty(BaseType::Int), base_ty(BaseType::Int));
+        letrec("fac", int_to_int, function, call)
     }
 
     fn countdown_term(input: i64) -> Result<Term, crate::error::BuildError> {
@@ -786,7 +787,8 @@ mod tests {
         let body = con("if", vec![is_zero, int(0), recursive_call])?;
         let function = lam("n", BaseType::Int, body)?;
         let call = app(var("f")?, int(input));
-        letrec("f", base_ty(BaseType::Int), function, call)
+        let int_to_int = fun_ty(base_ty(BaseType::Int), base_ty(BaseType::Int));
+        letrec("f", int_to_int, function, call)
     }
 
     fn sum_term(input: i64) -> Result<Term, crate::error::BuildError> {
@@ -797,14 +799,31 @@ mod tests {
         let body = con("if", vec![is_zero, int(0), sum])?;
         let function = lam("n", BaseType::Int, body)?;
         let call = app(var("s")?, int(input));
-        letrec("s", base_ty(BaseType::Int), function, call)
+        let int_to_int = fun_ty(base_ty(BaseType::Int), base_ty(BaseType::Int));
+        letrec("s", int_to_int, function, call)
     }
 
     fn divergent_term() -> Result<Term, crate::error::BuildError> {
         let body = app(var("f")?, var("x")?);
         let function = lam("x", BaseType::Int, body)?;
         let call = app(var("f")?, int(0));
-        letrec("f", base_ty(BaseType::Int), function, call)
+        let int_to_int = fun_ty(base_ty(BaseType::Int), base_ty(BaseType::Int));
+        letrec("f", int_to_int, function, call)
+    }
+
+    #[test]
+    fn recursive_helper_terms_lint_at_int() -> Result<(), crate::error::BuildError> {
+        let env = crate::lint::LintEnv::new();
+        let terms = [
+            factorial_term(3)?,
+            countdown_term(3)?,
+            sum_term(3)?,
+            divergent_term()?,
+        ];
+        for term in &terms {
+            assert_eq!(crate::lint::lint(term, &env), Ok(base_ty(BaseType::Int)));
+        }
+        Ok(())
     }
 
     #[test]

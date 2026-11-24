@@ -1,15 +1,19 @@
 //! `parlang-core` — the `ParLang` compiler core (Arc B IR + Arc C VM).
 //!
-//! Defines the small-Core [`Term`] IR (Arc B) and a strict, call-by-value
-//! tree-walking VM (Arc C) that evaluates it: see [`eval`], [`Value`],
+//! Defines the small-Core [`Term`] IR (Arc B): an explicitly typed,
+//! System-F-style calculus with type abstraction and application
+//! (`TyLam`/`TyApp`), checked by Core Lint (the `lint` module, see
+//! [`LintEnv`] and [`LintError`]). Evaluation is strict and call-by-value and
+//! runs on a CEK machine (the `machine` module, ADR 0008) that can also
+//! record a step-by-step [`trace`]: see [`eval`], [`run`], [`Value`],
 //! [`Environment`], and [`EvalError`]. Branching and primitives use reserved
-//! constructor names dispatched by the VM (`if`, `+`, `-`, `*`, `/`, `<`,
+//! constructor names dispatched by the machine (`if`, `+`, `-`, `*`, `/`, `<`,
 //! `eq`); recursion uses [`Value::RecClosure`]. Strings are `List Char` under
 //! ADR 0002's `Cons`/`Nil` encoding (see `docs/adr/0004-core-char-and-strings.md`).
 //! The evaluation model is
 //! specified in `docs/CORE_OPERATIONAL_SEMANTICS.md` and
-//! `docs/adr/0001-arc-c-eval-model.md`. The `parlang-driver` crate does NOT
-//! depend on this crate yet.
+//! `docs/adr/0001-arc-c-eval-model.md`. No other workspace crate depends on
+//! this crate yet; the surface-to-Core elaborator lands in roadmap slice 7.
 
 pub mod base_type;
 pub mod term;

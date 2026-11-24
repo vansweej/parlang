@@ -151,36 +151,45 @@ fn higher_order_application() -> Result<(), Box<dyn std::error::Error>> {
 /// purely with lambdas and the reserved `+` primitive.
 ///
 /// ```text
-/// nil  = \c. \n. n
-/// cons = \h. \t. \c. \n.  c h (t c n)
-/// sum  = \l.  l (\h. \acc. + h acc) 0
+/// list = forall r. (Int -> r -> r) -> r -> r
+/// nil  = /\r. \c:(Int -> r -> r). \n:r. n
+/// cons = \h:Int. \t:list. /\r. \c:(Int -> r -> r). \n:r.  c h (t [r] c n)
+/// sum  = \l:list.  l [Int] (\h:Int. \acc:Int. + h acc) 0
 ///
 /// sum (cons 1 (cons 2 (cons 3 nil)))  =>  Int(6)
 /// ```
 #[test]
 fn church_encoded_list_sum() -> Result<(), Box<dyn std::error::Error>> {
-    // Intentionally un-retyped placeholder annotations on function-typed
-    // binders (BaseType::Int is inert at runtime); a faithful polymorphic
-    // retype is deferred until TyLam lands (slice 6d).
-    let nil = lam("c", BaseType::Int, lam("n", BaseType::Int, var("n")?)?)?;
+    use parlang_core::builder::{forall, tyapp, tylam};
+    use parlang_core::{lint, LintEnv};
+    // step = Int -> r -> r;  list = forall r. step -> r -> r
+    let step_ty = fun_ty(base_ty(BaseType::Int), fun_ty(tvar("r")?, tvar("r")?));
+    let list_ty = forall("r", fun_ty(step_ty.clone(), fun_ty(tvar("r")?, tvar("r")?)))?;
 
-    // cons = \h. \t. \c. \n.  c h (t c n)
-    let t_c_n = apps(var("t")?, vec![var("c")?, var("n")?]);
+    // nil = /\r. \c:step. \n:r. n
+    let nil = tylam(
+        "r",
+        lam("c", step_ty.clone(), lam("n", tvar("r")?, var("n")?)?)?,
+    )?;
+
+    // cons = \h:Int. \t:list. /\r. \c:step. \n:r.  c h (t [r] c n)
+    let t_c_n = apps(tyapp(var("t")?, tvar("r")?), vec![var("c")?, var("n")?]);
     let c_h_tcn = apps(var("c")?, vec![var("h")?, t_c_n]);
+    let handler = lam("c", step_ty, lam("n", tvar("r")?, c_h_tcn)?)?;
     let cons = lam(
         "h",
         BaseType::Int,
-        lam(
-            "t",
-            BaseType::Int,
-            lam("c", BaseType::Int, lam("n", BaseType::Int, c_h_tcn)?)?,
-        )?,
+        lam("t", list_ty.clone(), tylam("r", handler)?)?,
     )?;
 
-    // sum = \l. l (\h. \acc. + h acc) 0
+    // sum = \l:list. l [Int] (\h:Int. \acc:Int. + h acc) 0
     let add_h_acc = con("+", vec![var("h")?, var("acc")?])?;
     let combiner = lam("h", BaseType::Int, lam("acc", BaseType::Int, add_h_acc)?)?;
-    let sum = lam("l", BaseType::Int, apps(var("l")?, vec![combiner, int(0)]))?;
+    let folded = apps(
+        tyapp(var("l")?, base_ty(BaseType::Int)),
+        vec![combiner, int(0)],
+    );
+    let sum = lam("l", list_ty, folded)?;
 
     // list: cons 1 (cons 2 (cons 3 nil))
     let list = apps(
@@ -192,6 +201,7 @@ fn church_encoded_list_sum() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let t = app(sum, list);
+    assert_eq!(lint(&t, &LintEnv::new())?, base_ty(BaseType::Int));
     assert_eq!(eval(&t, &env())?, Value::Int(6));
     Ok(())
 }
@@ -288,9 +298,13 @@ fn case_selects_matching_alt() -> Result<(), parlang_core::BuildError> {
 }
 
 #[test]
-fn case_list_length_via_letrec() -> Result<(), parlang_core::BuildError> {
-    // letrec len = \xs. case xs of Cons(h, t) -> 1 + len t | Nil -> 0
-    // in len (Cons 7 (Cons 8 Nil))  ==> 2
+fn case_list_length_via_letrec() -> Result<(), Box<dyn std::error::Error>> {
+    use parlang_core::builder::{con_at, tyapp, tylam};
+    use parlang_core::{lint, prelude_env};
+    // len = /\a. letrec len : List a -> Int =
+    //         \xs:List a. case xs of Cons(h, t) -> 1 + len t | Nil -> 0
+    //       in len
+    // len [Int] (Cons @Int 7 (Cons @Int 8 (Nil @Int)))  ==> 2
     let body = case_(
         var("xs")?,
         vec![
@@ -303,16 +317,18 @@ fn case_list_length_via_letrec() -> Result<(), parlang_core::BuildError> {
         ],
     );
     let len_lam = lam("xs", tapp(tcon("List")?, tvar("a")?), body)?;
-    let list = con(
-        "Cons",
-        vec![int(7), con("Cons", vec![int(8), con("Nil", vec![])?])?],
-    )?;
-    let term = letrec(
+    let mono_len = letrec(
         "len",
         fun_ty(tapp(tcon("List")?, tvar("a")?), base_ty(BaseType::Int)),
         len_lam,
-        app(var("len")?, list),
+        var("len")?,
     )?;
+    let poly_len = tylam("a", mono_len)?;
+    let nil = con_at("Nil", vec![base_ty(BaseType::Int)], vec![])?;
+    let inner = con_at("Cons", vec![base_ty(BaseType::Int)], vec![int(8), nil])?;
+    let list = con_at("Cons", vec![base_ty(BaseType::Int)], vec![int(7), inner])?;
+    let term = app(tyapp(poly_len, base_ty(BaseType::Int)), list);
+    assert_eq!(lint(&term, &prelude_env())?, base_ty(BaseType::Int));
     assert_eq!(eval(&term, &Environment::new()), Ok(Value::Int(2)));
     Ok(())
 }
@@ -348,13 +364,15 @@ fn case_binder_arity_mismatch_errors() -> Result<(), parlang_core::BuildError> {
 /// its length is computed with the ordinary `Case` eliminator.
 #[test]
 fn string_as_list_char_length_is_two() -> Result<(), Box<dyn std::error::Error>> {
-    // "ab" = Cons('a', Cons('b', Nil))
-    let s = con(
+    use parlang_core::builder::con_at;
+    use parlang_core::{lint, prelude_env};
+    // "ab" = Cons @Char 'a' (Cons @Char 'b' (Nil @Char))
+    let nil = con_at("Nil", vec![base_ty(BaseType::Char)], vec![])?;
+    let inner = con_at("Cons", vec![base_ty(BaseType::Char)], vec![char_('b'), nil])?;
+    let s = con_at(
         "Cons",
-        vec![
-            char_('a'),
-            con("Cons", vec![char_('b'), con("Nil", vec![])?])?,
-        ],
+        vec![base_ty(BaseType::Char)],
+        vec![char_('a'), inner],
     )?;
     // letrec len = \xs. case xs of Cons(h, t) -> 1 + len t | Nil -> 0 in len s
     let body = case_(
@@ -368,13 +386,15 @@ fn string_as_list_char_length_is_two() -> Result<(), Box<dyn std::error::Error>>
             alt("Nil", &[], int(0))?,
         ],
     );
-    let len_lam = lam("xs", tapp(tcon("List")?, tcon("Char")?), body)?;
+    let list_char = tapp(tcon("List")?, base_ty(BaseType::Char));
+    let len_lam = lam("xs", list_char.clone(), body)?;
     let term = letrec(
         "len",
-        fun_ty(tapp(tcon("List")?, tcon("Char")?), base_ty(BaseType::Int)),
+        fun_ty(list_char, base_ty(BaseType::Int)),
         len_lam,
         app(var("len")?, s),
     )?;
+    assert_eq!(lint(&term, &prelude_env())?, base_ty(BaseType::Int));
     assert_eq!(eval(&term, &env())?, Value::Int(2));
     Ok(())
 }
