@@ -138,6 +138,12 @@ impl LintEnv {
         self
     }
 
+    /// Looks up a registered data type by its type name, for example `List`.
+    #[must_use]
+    pub fn data_type(&self, name: &str) -> Option<&DataType> {
+        self.types.get(name)
+    }
+
     /// Pushes a term-variable binding onto the context stack.
     fn push_term(&mut self, name: &str, ty: Type) {
         self.terms.push((name.to_string(), ty));
