@@ -128,8 +128,8 @@ tables produced by elaboration cover the complete constructor family (Wadler
   evaluator. Mixed or other operands yield `TypeMismatch`.
 - **`Con("<", [a, b])`**: `Int`, `Char`, or `Float` operands (both the same),
   result is `Bool`; `Float` uses IEEE ordering, so a NaN operand gives `false`.
-  `Char` operands compare by scalar (code-point) ordering. Other operand
-  types yield `TypeMismatch` (there is no float comparison).
+  `Char` operands compare by scalar (code-point) ordering. Mixed or other
+  operand types yield `TypeMismatch`.
 - **`Con("eq", [a, b])`**: base-type operands only. `Float` operands are
   compared via `f64::to_bits` bit-equality; `Char` operands by scalar
   equality. `Closure`/`RecClosure`/`Con` operands yield `NotComparable`.

@@ -1,10 +1,13 @@
-//! Strict, call-by-value, environment-based tree-walking VM over [`Term`].
+//! Runtime values, environments and errors for strict, call-by-value Core
+//! evaluation, plus the [`eval`] entry point.
 //!
-//! Evaluates Arc B Core IR terms to runtime [`Value`]s. Branching and
-//! arithmetic are encoded as reserved constructor names dispatched here
-//! (ADR 0001 Decision 3 Option A). Recursion uses [`Value::RecClosure`]
-//! re-bound at every application (ADR 0001 Decision 4). See
-//! `docs/CORE_OPERATIONAL_SEMANTICS.md` and `docs/adr/0001-arc-c-eval-model.md`.
+//! [`eval`] runs a Core [`Term`] to a [`Value`] on the CEK machine in the
+//! `machine` module (ADR 0008); it does not walk the tree itself. Branching
+//! and arithmetic are encoded as reserved constructor names dispatched by the
+//! machine (ADR 0001 Decision 3 Option A). Recursion uses
+//! [`Value::RecClosure`] re-bound at every application (ADR 0001 Decision 4).
+//! See `docs/CORE_OPERATIONAL_SEMANTICS.md`, `docs/adr/0001-arc-c-eval-model.md`
+//! and `docs/adr/0008-core-cek-machine.md`.
 
 #[cfg(test)]
 use crate::term::Lit;
