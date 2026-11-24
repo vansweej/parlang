@@ -628,48 +628,8 @@ fn synth_prim(env: &mut LintEnv, name: &str, args: &[Term]) -> Result<Type, Lint
             }
             Ok(t1)
         }
-        "+" | "-" | "*" | "/" => {
-            if args.len() != 2 {
-                return Err(LintError::PrimArgCount {
-                    prim: name.to_string(),
-                    expected: 2,
-                    found: args.len(),
-                });
-            }
-            for arg in args {
-                let t = synth(env, arg)?;
-                if t != Type::Base(crate::base_type::BaseType::Int) {
-                    return Err(LintError::PrimArgMismatch {
-                        prim: name.to_string(),
-                        expected: Type::Base(crate::base_type::BaseType::Int),
-                        found: t,
-                    });
-                }
-            }
-            Ok(Type::Base(crate::base_type::BaseType::Int))
-        }
-        "<" => {
-            if args.len() != 2 {
-                return Err(LintError::PrimArgCount {
-                    prim: name.to_string(),
-                    expected: 2,
-                    found: args.len(),
-                });
-            }
-            let t0 = synth(env, &args[0])?;
-            let t1 = synth(env, &args[1])?;
-            let int_ty = Type::Base(crate::base_type::BaseType::Int);
-            let char_ty = Type::Base(crate::base_type::BaseType::Char);
-            let ok = (t0 == int_ty && t1 == int_ty) || (t0 == char_ty && t1 == char_ty);
-            if !ok {
-                return Err(LintError::PrimArgMismatch {
-                    prim: name.to_string(),
-                    expected: t0.clone(),
-                    found: t1,
-                });
-            }
-            Ok(Type::Base(crate::base_type::BaseType::Bool))
-        }
+        "+" | "-" | "*" | "/" => synth_arith(env, name, args),
+        "<" => synth_lt(env, name, args),
         "eq" => {
             if args.len() != 2 {
                 return Err(LintError::PrimArgCount {
@@ -696,6 +656,70 @@ fn synth_prim(env: &mut LintEnv, name: &str, args: &[Term]) -> Result<Type, Lint
         }
         _ => Err(LintError::UnknownConstructor(name.to_string())),
     }
+}
+
+/// Types `+`, `-`, `*`, `/`: both operands `Int` or both `Float`; the result
+/// is the operand type. On mismatch, `expected` is the first operand's type
+/// when it is numeric, else `Int`.
+fn synth_arith(env: &mut LintEnv, name: &str, args: &[Term]) -> Result<Type, LintError> {
+    if args.len() != 2 {
+        return Err(LintError::PrimArgCount {
+            prim: name.to_string(),
+            expected: 2,
+            found: args.len(),
+        });
+    }
+    let t0 = synth(env, &args[0])?;
+    let t1 = synth(env, &args[1])?;
+    let numeric = matches!(
+        t0,
+        Type::Base(crate::base_type::BaseType::Int | crate::base_type::BaseType::Float)
+    );
+    if !numeric {
+        return Err(LintError::PrimArgMismatch {
+            prim: name.to_string(),
+            expected: Type::Base(crate::base_type::BaseType::Int),
+            found: t0,
+        });
+    }
+    if t1 != t0 {
+        return Err(LintError::PrimArgMismatch {
+            prim: name.to_string(),
+            expected: t0,
+            found: t1,
+        });
+    }
+    Ok(t0)
+}
+
+/// Types `<`: both operands `Int`, both `Char`, or both `Float`; the result
+/// is `Bool`.
+fn synth_lt(env: &mut LintEnv, name: &str, args: &[Term]) -> Result<Type, LintError> {
+    if args.len() != 2 {
+        return Err(LintError::PrimArgCount {
+            prim: name.to_string(),
+            expected: 2,
+            found: args.len(),
+        });
+    }
+    let t0 = synth(env, &args[0])?;
+    let t1 = synth(env, &args[1])?;
+    let ordered = matches!(
+        t0,
+        Type::Base(
+            crate::base_type::BaseType::Int
+                | crate::base_type::BaseType::Char
+                | crate::base_type::BaseType::Float
+        )
+    );
+    if !ordered || t1 != t0 {
+        return Err(LintError::PrimArgMismatch {
+            prim: name.to_string(),
+            expected: t0,
+            found: t1,
+        });
+    }
+    Ok(Type::Base(crate::base_type::BaseType::Bool))
 }
 
 fn synth_data_con(
@@ -1071,6 +1095,54 @@ mod tests {
         assert!(matches!(
             lint(&term, &env),
             Err(LintError::PrimArgCount { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn float_arith_lints_to_float() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::builder::float;
+        for op in ["+", "-", "*", "/"] {
+            let term = con(op, vec![float(1.5), float(2.0)])?;
+            assert_eq!(
+                lint(&term, &LintEnv::new()),
+                Ok(Type::Base(BaseType::Float))
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn mixed_int_float_arith_mismatches() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::builder::float;
+        let int_first = con("+", vec![int(1), float(2.0)])?;
+        let float_first = con("*", vec![float(2.0), int(1)])?;
+        assert!(matches!(
+            lint(&int_first, &LintEnv::new()),
+            Err(LintError::PrimArgMismatch { .. })
+        ));
+        assert!(matches!(
+            lint(&float_first, &LintEnv::new()),
+            Err(LintError::PrimArgMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn lt_float_float_lints_to_bool() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::builder::float;
+        let term = con("<", vec![float(1.5), float(2.5)])?;
+        assert_eq!(lint(&term, &LintEnv::new()), Ok(Type::Base(BaseType::Bool)));
+        Ok(())
+    }
+
+    #[test]
+    fn lt_mixed_int_float_mismatches() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::builder::float;
+        let term = con("<", vec![int(1), float(2.5)])?;
+        assert!(matches!(
+            lint(&term, &LintEnv::new()),
+            Err(LintError::PrimArgMismatch { .. })
         ));
         Ok(())
     }

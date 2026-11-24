@@ -648,26 +648,62 @@ fn apply_arith(op: &str, values: &[Value]) -> Result<Value, EvalError> {
     let [lhs, rhs] = values else {
         return Err(arity_error(2, values.len()));
     };
-    let (Value::Int(lhs), Value::Int(rhs)) = (lhs, rhs) else {
-        let found = if matches!(lhs, Value::Int(_)) {
-            value_kind(rhs)
-        } else {
-            value_kind(lhs)
-        };
-        return Err(EvalError::TypeMismatch {
-            expected: "int".to_string(),
-            found: found.to_string(),
-        });
-    };
-    let result = match op {
-        "+" => lhs.checked_add(*rhs),
-        "-" => lhs.checked_sub(*rhs),
-        "*" => lhs.checked_mul(*rhs),
+    match (lhs, rhs) {
+        (Value::Int(lhs), Value::Int(rhs)) => apply_int_arith(op, *lhs, *rhs),
+        (Value::Float(lhs), Value::Float(rhs)) => apply_float_arith(op, *lhs, *rhs),
+        _ => {
+            let expected = if matches!(lhs, Value::Float(_)) {
+                "float"
+            } else {
+                "int"
+            };
+            let found = if matches!(lhs, Value::Int(_) | Value::Float(_)) {
+                value_kind(rhs)
+            } else {
+                value_kind(lhs)
+            };
+            Err(EvalError::TypeMismatch {
+                expected: expected.to_string(),
+                found: found.to_string(),
+            })
+        }
+    }
+}
+
+/// `Float` arithmetic, mirroring the surface evaluator's `eval_binop`
+/// (`crates/parlang/src/eval.rs`): plain IEEE 754 `+`, `-`, `*`, and `/`,
+/// except that dividing by `0.0` (or `-0.0`) is [`EvalError::DivisionByZero`].
+fn apply_float_arith(op: &str, lhs: f64, rhs: f64) -> Result<Value, EvalError> {
+    match op {
+        "+" => Ok(Value::Float(lhs + rhs)),
+        "-" => Ok(Value::Float(lhs - rhs)),
+        "*" => Ok(Value::Float(lhs * rhs)),
         "/" => {
-            if *rhs == 0 {
+            if rhs == 0.0 {
+                Err(EvalError::DivisionByZero)
+            } else {
+                Ok(Value::Float(lhs / rhs))
+            }
+        }
+        _ => Err(EvalError::TypeMismatch {
+            expected: "primitive".to_string(),
+            found: op.to_string(),
+        }),
+    }
+}
+
+/// Checked `Int` arithmetic: overflow is [`EvalError::ArithmeticOverflow`]
+/// and dividing by zero is [`EvalError::DivisionByZero`].
+fn apply_int_arith(op: &str, lhs: i64, rhs: i64) -> Result<Value, EvalError> {
+    let result = match op {
+        "+" => lhs.checked_add(rhs),
+        "-" => lhs.checked_sub(rhs),
+        "*" => lhs.checked_mul(rhs),
+        "/" => {
+            if rhs == 0 {
                 return Err(EvalError::DivisionByZero);
             }
-            lhs.checked_div(*rhs)
+            lhs.checked_div(rhs)
         }
         _ => {
             return Err(EvalError::TypeMismatch {
@@ -686,6 +722,7 @@ fn apply_cmp(values: &[Value]) -> Result<Value, EvalError> {
     match (lhs, rhs) {
         (Value::Int(lhs), Value::Int(rhs)) => Ok(Value::Bool(lhs < rhs)),
         (Value::Char(lhs), Value::Char(rhs)) => Ok(Value::Bool(lhs < rhs)),
+        (Value::Float(lhs), Value::Float(rhs)) => Ok(Value::Bool(lhs < rhs)),
         _ => {
             let found = if matches!(lhs, Value::Int(_)) {
                 value_kind(rhs)
@@ -809,6 +846,88 @@ mod tests {
         let call = app(var("f")?, int(0));
         let int_to_int = fun_ty(base_ty(BaseType::Int), base_ty(BaseType::Int));
         letrec("f", int_to_int, function, call)
+    }
+
+    fn run_prim(op: &str, args: Vec<Term>) -> Result<Value, EvalError> {
+        let term = con(op, args).map_err(|e| EvalError::TypeMismatch {
+            expected: "buildable term".to_string(),
+            found: e.to_string(),
+        })?;
+        run(&term, &Environment::new(), None)
+    }
+
+    #[test]
+    fn float_arithmetic_matches_surface_semantics() {
+        use crate::builder::float;
+        assert_eq!(
+            run_prim("+", vec![float(1.5), float(2.0)]),
+            Ok(Value::Float(3.5))
+        );
+        assert_eq!(
+            run_prim("-", vec![float(5.5), float(2.0)]),
+            Ok(Value::Float(3.5))
+        );
+        assert_eq!(
+            run_prim("*", vec![float(1.5), float(3.0)]),
+            Ok(Value::Float(4.5))
+        );
+        assert_eq!(
+            run_prim("/", vec![float(7.0), float(2.0)]),
+            Ok(Value::Float(3.5))
+        );
+    }
+
+    #[test]
+    fn float_division_by_zero_errors_like_surface() {
+        use crate::builder::float;
+        assert_eq!(
+            run_prim("/", vec![float(1.0), float(0.0)]),
+            Err(EvalError::DivisionByZero)
+        );
+        assert_eq!(
+            run_prim("/", vec![float(1.0), float(-0.0)]),
+            Err(EvalError::DivisionByZero)
+        );
+    }
+
+    #[test]
+    fn float_less_than_follows_ieee() {
+        use crate::builder::float;
+        assert_eq!(
+            run_prim("<", vec![float(1.5), float(2.5)]),
+            Ok(Value::Bool(true))
+        );
+        assert_eq!(
+            run_prim("<", vec![float(2.5), float(1.5)]),
+            Ok(Value::Bool(false))
+        );
+        assert_eq!(
+            run_prim("<", vec![float(f64::NAN), float(1.0)]),
+            Ok(Value::Bool(false))
+        );
+    }
+
+    #[test]
+    fn mixed_int_float_arithmetic_is_type_mismatch() {
+        use crate::builder::float;
+        assert_eq!(
+            run_prim("+", vec![int(1), float(2.0)]),
+            Err(EvalError::TypeMismatch {
+                expected: "int".to_string(),
+                found: "float".to_string()
+            })
+        );
+        assert_eq!(
+            run_prim("+", vec![float(2.0), int(1)]),
+            Err(EvalError::TypeMismatch {
+                expected: "float".to_string(),
+                found: "int".to_string()
+            })
+        );
+        assert!(matches!(
+            run_prim("<", vec![float(1.0), int(2)]),
+            Err(EvalError::TypeMismatch { .. })
+        ));
     }
 
     #[test]
