@@ -73,7 +73,7 @@ type String = List Char
 
 ### Desugaring
 
-String literals desugar to nested `Cons` and `Nil` constructors:
+String literals desugar to nested `Cons` and `Nil` constructors. These are not built in: a program that uses string literals must declare `data List a = Nil | Cons a (List a)` itself, otherwise type checking fails with `Unknown constructor: Cons` (or `Nil` for `""`):
 
 ```parlang
 "abc"

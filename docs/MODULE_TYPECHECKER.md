@@ -4,7 +4,7 @@ The Type Checker module implements Hindley-Milner type inference for ParLang.
 
 ## Overview
 
-This module implements Algorithm W, the classic type inference algorithm for functional languages. It infers types for most expressions without requiring type annotations and supports polymorphic types through let-polymorphism. Tuples (`Type::Tuple`), strict tuple projection, and match expressions are now type-checked: patterns are typed against the scrutinee and arm bodies are unified. Module loading (`load`) still receives a fresh type variable and is not type-checked; constructors used without a `data` declaration (including the `Cons`/`Nil` that string literals desugar to) are typed leniently with a fresh type variable; exhaustiveness is still checked at evaluation time only. Inferred type errors are caught before runtime.
+This module implements Algorithm W, the classic type inference algorithm for functional languages. It infers types for most expressions without requiring type annotations and supports polymorphic types through let-polymorphism. Tuples (`Type::Tuple`), strict tuple projection, and match expressions are now type-checked: patterns are typed against the scrutinee and arm bodies are unified. Module loading (`load`) still receives a fresh type variable and is not type-checked; a constructor used without a `data` declaration (including the `Cons`/`Nil` that string literals desugar to) is an `UnknownConstructor` type error; exhaustiveness is still checked at evaluation time only. Inferred type errors are caught before runtime.
 
 ## Core Components
 
@@ -47,6 +47,7 @@ pub enum TypeError {
     DuplicateConstructor(String),
     TupleIndexOutOfBounds(usize, usize),
     TupleExpected(String),
+    UnknownConstructor(String),
 }
 ```
 
@@ -64,6 +65,7 @@ pub enum TypeError {
 - `DuplicateConstructor(name)`: A top-level constructor name was declared more than once
 - `TupleIndexOutOfBounds(index, arity)`: Tuple projection index was out of range for the tuple's arity
 - `TupleExpected(found)`: Expected a tuple type but got something else (e.g. an unresolved type variable)
+- `UnknownConstructor(name)`: A constructor (in an expression or pattern) has no `data` declaration in scope; string literals need `data List a = Nil | Cons a (List a)`
 
 ### `Substitution` Type
 
@@ -137,7 +139,7 @@ Alongside `typecheck`, three entrypoints produce a typed tree:
 
 **Always-free cases.** Some nodes keep free type variables:
 - the `Load` node carries its body untyped and gets a fresh type variable;
-- an unregistered `Constructor` node gets a fresh type variable;
+- (constructors without a `data` declaration are rejected with `UnknownConstructor`, so they never reach the typed tree);
 - a generalized let-value's internal type variables stay `Var` after root resolution.
 
 **`next_var` sync invariant.** Every inference run on a cloned-env child must `max`-sync `next_var` back into the parent, so variables allocated inside the subtree are never reissued. This is why the syncs in `infer_binop` and `infer_type_alias` were added, and why `infer_app` syncs again after allocating its result variable.

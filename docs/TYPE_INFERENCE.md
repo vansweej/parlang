@@ -352,7 +352,7 @@ explicit type annotations on the recursive binding.
 ### 2. Pattern Matching
 
 Pattern matching is partially supported:
-- Patterns are type-checked against the scrutinee type and arm bodies are unified; constructors without a `data` declaration are typed leniently
+- Patterns are type-checked against the scrutinee type and arm bodies are unified; a constructor without a `data` declaration is an `UnknownConstructor` type error
 - Exhaustiveness is checked at evaluation time only (never by the type
   checker); it prints a warning to stderr and never halts evaluation, and it
   analyses only booleans and sum-type constructors (integers, tuples, and

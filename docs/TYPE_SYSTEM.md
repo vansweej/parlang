@@ -673,7 +673,7 @@ Type error: Cannot unify types: Bool and Int
 
 ### Tuples and Pattern Matching
 
-Tuples, tuple projection, and match expressions are type-checked: tuple construction infers a `Type::Tuple`, projection requires an already-known tuple type, and each match arm's pattern is typed against the scrutinee while arm bodies are unified into one result type. Constructors without a `data` declaration are still typed leniently with a fresh type variable, and `load` is not type-checked.
+Tuples, tuple projection, and match expressions are type-checked: tuple construction infers a `Type::Tuple`, projection requires an already-known tuple type, and each match arm's pattern is typed against the scrutinee while arm bodies are unified into one result type. A constructor without a `data` declaration is an `UnknownConstructor` type error, and `load` is not type-checked.
 
 ## Usage
 
@@ -791,7 +791,7 @@ binding), which currently requires an explicit annotation elsewhere.
 ### 2. Pattern Matching Type Checking is Incomplete
 
 While pattern matching works at runtime, the type checker has limited support:
-- Patterns are type-checked against the scrutinee type; constructors without a `data` declaration are typed leniently
+- Patterns are type-checked against the scrutinee type; a constructor without a `data` declaration is an `UnknownConstructor` type error
 - Exhaustiveness is checked at evaluation time only (never by the type
   checker): a warning is printed to stderr and evaluation always continues.
   Coverage is analysed only for booleans and sum-type constructors; integer

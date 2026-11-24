@@ -57,6 +57,7 @@ pub enum TypeError {
     DuplicateConstructor(String),
     TupleIndexOutOfBounds(usize, usize),
     TupleExpected(String),
+    UnknownConstructor(String),
 }
 ```
 
