@@ -142,6 +142,10 @@ parlang <FILE> --dump-dot     # Dump AST as Graphviz DOT to stdout, then exit
 parlang script.par --dump-dot > ast.dot  # Example: produce a DOT file
 parlang <FILE> --dump --stage typed      # Dump the typed AST (indented tree), then exit
 parlang <FILE> --dump-dot --stage typed  # Dump the typed AST as Graphviz DOT, then exit
+parlang <FILE> --dump --stage core       # Dump the elaborated Core term (no Core lint)
+parlang <FILE> --dump --stage lint       # Run Core lint; prints `lint ok: <core type>`
+parlang <FILE> --core                    # Evaluate on Core (temporary type-directed renderer)
+parlang trace <FILE> [--fuel N] [--raw]  # Trace Core reductions, then `result: <value>`
 ```
 
 **Help and Version**:
@@ -170,7 +174,8 @@ Arguments:
 Options:
   --dump                 Dump the parsed AST as text IR to stdout, then exit
   --dump-dot             Dump the parsed AST as Graphviz DOT to stdout, then exit
-  --stage <STAGE>        Pipeline stage to dump [possible values: parsed, typed]
+  --stage <STAGE>        Pipeline stage to dump [possible values: parsed, typed, core, lint]
+  --core                 Evaluate on the Core CEK machine instead of the surface evaluator
   -h, --help             Print help
   -V, --version          Print version
 ```

@@ -58,6 +58,10 @@ cargo run                                       # REPL
 cargo run -- crates/parlang/examples/simple.par               # run a file
 cargo run -- crates/parlang/examples/simple.par --dump-dot > ast.dot  # dump AST as DOT to stdout
 cargo run -- crates/parlang/examples/simple.par --dump --stage typed  # dump typed AST as indented text
+cargo run -- crates/parlang/examples/simple.par --dump --stage core   # dump elaborated Core term (no lint)
+cargo run -- crates/parlang/examples/simple.par --dump --stage lint   # Core lint: prints `lint ok: <type>`
+cargo run -- crates/parlang/examples/simple.par --core                # evaluate on Core (temporary renderer)
+cargo run -- trace crates/parlang/examples/simple.par --fuel 10000    # Core reduction trace (--raw for all steps)
 cargo run                                       # HM type checking runs automatically
 ```
 

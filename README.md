@@ -707,7 +707,13 @@ cargo run -- examples/simple.par --dump --stage typed
 cargo run -- examples/simple.par --dump-dot --stage typed
 ```
 
-`--stage` selects which pipeline stage is dumped: `parsed` (the default) prints the AST straight from the parser, while `typed` runs type inference first and annotates every expression node with its inferred type.
+`--stage` selects which pipeline stage is dumped: `parsed` (the default) prints the AST straight from the parser, while `typed` runs type inference first and annotates every expression node with its inferred type. `core` prints the elaborated Core term (elaboration only, no Core lint, so a lint failure can still be inspected) and `lint` runs Core lint and prints `lint ok: <core type>` (or the Core term as DOT with `--dump-dot`); together these are `--stage core|lint`.
+
+Running on Core:
+
+- `cargo run -- examples/simple.par --core` evaluates the program on the Core CEK machine and prints the value with a temporary type-directed renderer (strings as `"ab"`, lists as `[1, 2]`, functions as `<function>`); the default surface evaluator output is unchanged (it still prints strings as `Cons(...)` chains). The renderer will be replaced by a Show class later.
+- `cargo run -- trace examples/simple.par [--fuel N] [--raw]` prints the Core reduction sequence as numbered entries (an entry may span several lines; `--raw` shows every machine step), then `result: <value>`; the default fuel is 10000 steps and exceeding it fails with `step limit of N exceeded`.
+- `parlang-driver` accepts the same `--core`, `--stage core|lint` and `trace` options.
 
 Then render the DOT file to an image using Graphviz:
 
