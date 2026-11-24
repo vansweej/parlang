@@ -197,3 +197,111 @@ fn stage_requires_dump() {
 
     assert!(!output.status.success());
 }
+
+fn run_driver(args: &[&str], name: &str) -> std::process::Output {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let fixture = format!("{manifest}/tests/fixtures/{name}");
+
+    Command::cargo_bin("parlang-driver")
+        .expect("driver binary should be built")
+        .args(args)
+        .arg(&fixture)
+        .output()
+        .expect("driver should run")
+}
+
+#[test]
+fn core_arithmetic() {
+    run_fixture_with_flags("arithmetic.par", &["--core"], "7");
+}
+
+#[test]
+fn core_string() {
+    run_fixture_with_flags("core_list.par", &["--core"], "\"ab\"");
+}
+
+#[test]
+fn core_polymorphic_tuple() {
+    run_fixture_with_flags("core_poly.par", &["--core"], "(1, true)");
+}
+
+#[test]
+fn dump_core_text_identity() {
+    let output = run_driver(&["--dump", "--stage", "core"], "identity.par");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout is valid utf-8");
+    assert!(stdout.contains("100"), "stdout was: {stdout}");
+    assert!(stdout.contains('x'), "stdout was: {stdout}");
+}
+
+#[test]
+fn dump_lint_arithmetic() {
+    run_fixture_with_flags(
+        "arithmetic.par",
+        &["--dump", "--stage", "lint"],
+        "lint ok: Int",
+    );
+}
+
+#[test]
+fn core_conflicts_with_dump() {
+    let output = run_driver(&["--core", "--dump"], "arithmetic.par");
+    assert!(!output.status.success());
+}
+
+#[test]
+fn trace_arithmetic() {
+    let output = run_driver(&["trace"], "arithmetic.par");
+    assert!(
+        output.status.success(),
+        "driver failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout is valid utf-8");
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+    assert!(lines[0].starts_with("0: "), "lines were: {lines:?}");
+    assert!(
+        lines.iter().any(|l| l.starts_with("1: ")),
+        "lines were: {lines:?}"
+    );
+    let last = *lines.last().expect("non-empty trace");
+    assert_eq!(last, "result: 7");
+    assert!(
+        lines[..lines.len() - 1].iter().any(|l| l.contains('7')),
+        "lines were: {lines:?}"
+    );
+}
+
+#[test]
+fn trace_raw_arithmetic() {
+    let output = run_driver(&["trace", "--raw"], "arithmetic.par");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("stdout is valid utf-8");
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+    assert!(lines[0].starts_with("0: ["), "lines were: {lines:?}");
+    assert!(
+        lines.iter().any(|l| l.starts_with("1: [")),
+        "lines were: {lines:?}"
+    );
+    let last = *lines.last().expect("non-empty trace");
+    assert_eq!(last, "result: 7");
+}
+
+#[test]
+fn trace_step_limit() {
+    let output = run_driver(&["trace", "--fuel", "1"], "arithmetic.par");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr is valid utf-8");
+    assert!(stderr.contains("step limit"), "stderr was: {stderr}");
+}
+
+#[test]
+fn core_unsupported_load() {
+    let output = run_driver(&["--core"], "core_load.par");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).expect("stderr is valid utf-8");
+    assert!(
+        stderr.contains("elaboration error:"),
+        "stderr was: {stderr}"
+    );
+}
