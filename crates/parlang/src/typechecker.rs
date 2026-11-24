@@ -146,6 +146,18 @@ impl TypeEnv {
         self.constructors.insert(constructor_name, info);
     }
 
+    /// Constructors of the sum type `type_name` with their arities, sorted by name.
+    pub(crate) fn constructors_of(&self, type_name: &str) -> Vec<(String, usize)> {
+        let mut ctors: Vec<(String, usize)> = self
+            .constructors
+            .iter()
+            .filter(|(_, info)| info.sum_type_name == type_name)
+            .map(|(name, info)| (name.clone(), info.payload_types.len()))
+            .collect();
+        ctors.sort();
+        ctors
+    }
+
     /// Look up constructor information
     pub fn lookup_constructor(&self, name: &str) -> Option<&ConstructorInfo> {
         self.constructors.get(name)

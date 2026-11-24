@@ -34,6 +34,7 @@ pub mod ast;
 pub mod dot;
 pub mod eval;
 pub mod exhaustiveness;
+pub mod match_coverage;
 pub mod parser;
 pub mod typechecker;
 pub mod typed_ast;
