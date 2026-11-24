@@ -73,6 +73,13 @@ This supersedes ADR 0002's deferral of constructor deconstruction: a tag-switch
   matrix); there is no runtime failure value to emit into a `Case`. This is
   consistent with roadmap follow-up #4 (blocking exhaustiveness in the surface).
 
+### Resolution (slice 7e)
+
+- F2 is resolved: the elaborator binds arm bodies reached from several leaves
+  once as join points (`$j<n>` let-bound lambdas) and calls them from each leaf.
+- F3 is resolved: slice 7c rejects non-exhaustive matches and undeclared
+  constructors at type-check time, so no FAIL term is needed in Core.
+
 ## References
 
 - Simon Peyton Jones, *The Implementation of Functional Programming Languages*

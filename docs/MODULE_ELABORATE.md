@@ -149,7 +149,18 @@ no fresh name generated this way can ever collide with a user-written name.
 
 ## Pattern matching
 
-Match expressions are not elaborated yet; they are rejected with `ElabError::Unsupported` until slice 7e.
+Match expressions are compiled to Core decision trees by `elaborate/match_compile.rs`.
+
+- The scrutinee is bound once to a fresh `$s` variable, because Core is strict.
+- Arms form a clause matrix. Tuples and records become single constructors of synthetic types; records use their full sorted field set, and missing fields are wildcards. The unit pattern is a wildcard.
+- Column heuristic: the leftmost refutable column of the first row.
+- Data constructors become one `Case` with one alternative per constructor, in declaration order.
+- Bool literals become `if`.
+- Int and Char literals become an `if (eq ..)` chain over the distinct literals in first-occurrence order, ending in the default matrix.
+- Pattern variables are bound with `let` at the leaf. If a pattern binds a name twice, the last occurrence in source order wins, matching the surface evaluator.
+- Arm bodies reached from more than one leaf are bound once as join points `$j<n>`. A join point is a lambda over the arm's variables, or over a `Unit` parameter when the arm binds none, and each leaf calls it. Arms reached from a single leaf are inlined.
+- Output is deterministic: fresh names, constructor order and literal order are all fixed.
+- Slice 7c guarantees exhaustiveness and declared constructors before elaboration. A violated invariant yields `ElabError::Unsupported` rather than a panic.
 
 ## Unsupported constructs
 
