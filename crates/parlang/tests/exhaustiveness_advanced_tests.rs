@@ -1,6 +1,6 @@
 /// Advanced exhaustiveness checking tests
 /// Tests for nested constructors, complex patterns, and edge cases
-use parlang::{parse_expr as parse, typecheck};
+use parlang::{parse_expr as parse, typecheck, TypeError};
 
 // Nested Constructor Exhaustiveness Tests
 
@@ -24,7 +24,7 @@ fn test_nested_constructor_exhaustive() {
 #[test]
 fn test_nested_constructor_non_exhaustive() {
     // Test that missing nested patterns are detected
-    // Note: Current implementation may not warn on nested patterns
+    // The sound checker reports the missing `Some None` case as a type error
     let code = r"
         data Option a = Some a | None in
         let x = Some (Some 42) in
@@ -33,9 +33,8 @@ fn test_nested_constructor_non_exhaustive() {
         | None -> 0
     ";
     let expr = parse(code).unwrap();
-    // Should still typecheck, but would ideally warn about missing Some None case
     let result = typecheck(&expr);
-    assert!(result.is_ok());
+    assert!(matches!(result, Err(TypeError::NonExhaustiveMatch { .. })));
 }
 
 #[test]

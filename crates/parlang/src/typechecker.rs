@@ -4,6 +4,27 @@ use crate::typed_ast::{
     TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern, TypedPatternKind,
     TypedProgram,
 };
+
+/// Checks that the arms of a `match` cover every value of the scrutinee type.
+///
+/// Resolves `scrut_ty` and each arm pattern under the final `subst`, then calls
+/// `crate::match_coverage::check_match`; missing witnesses become
+/// `TypeError::NonExhaustiveMatch`.
+fn check_arm_coverage(
+    subst: &Substitution,
+    scrut_ty: &Type,
+    arms: &[TypedMatchArm],
+    env: &TypeEnv,
+) -> Result<(), TypeError> {
+    let resolved_ty = apply_subst(subst, scrut_ty);
+    let resolved: Vec<TypedPattern> = arms
+        .iter()
+        .map(|arm| resolve_pattern(subst, &arm.pattern))
+        .collect();
+    let refs: Vec<&TypedPattern> = resolved.iter().collect();
+    crate::match_coverage::check_match(&resolved_ty, &refs, env)
+        .map_err(|missing| TypeError::NonExhaustiveMatch { missing })
+}
 use crate::types::{Type, TypeScheme, TypeVar};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -361,6 +382,10 @@ pub enum TypeError {
     TupleExpected(String),
     /// A constructor was used without any `data` declaration defining it.
     UnknownConstructor(String),
+    /// A `match` whose arms do not cover every value; `missing` holds witness patterns.
+    NonExhaustiveMatch {
+        missing: Vec<String>,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -416,6 +441,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::UnknownConstructor(name) => {
                 write!(f, "Unknown constructor: {name}")
+            }
+            TypeError::NonExhaustiveMatch { missing } => {
+                write!(f, "Non-exhaustive match: missing {}", missing.join(", "))
             }
         }
     }
@@ -1217,6 +1245,7 @@ fn infer_match(
         });
     }
 
+    check_arm_coverage(&subst, &scrut_typed.ty, &typed_arms, env)?;
     let ty = apply_subst(&subst, &result_ty);
     Ok((
         TypedExpr {

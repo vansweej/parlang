@@ -33,7 +33,6 @@
 pub mod ast;
 pub mod dot;
 pub mod eval;
-pub mod exhaustiveness;
 pub mod match_coverage;
 pub mod parser;
 pub mod typechecker;
@@ -48,7 +47,6 @@ pub use eval::{
     run_on_evaluator_stack, Environment, EvalError, EvaluatorStackError, Value,
     EVALUATOR_STACK_SIZE,
 };
-pub use exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
 pub use parser::{parse_expr, parse_program};
 pub use typechecker::{
     typecheck, typecheck_program, typecheck_program_typed, typecheck_program_typed_with_env,

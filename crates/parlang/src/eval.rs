@@ -1,7 +1,6 @@
 /// Evaluator/Interpreter for the `ParLang` language
 /// This module implements the runtime evaluation of `ParLang` expressions
 use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
-use crate::exhaustiveness::{check_exhaustiveness, ExhaustivenessResult};
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -979,18 +978,6 @@ fn eval_match(
     env: &Environment,
     depth: usize,
 ) -> Result<Value, EvalError> {
-    // Check exhaustiveness of patterns
-    let patterns: Vec<Pattern> = arms.iter().map(|(p, _)| p.clone()).collect();
-    let exhaustiveness = check_exhaustiveness(&patterns, env);
-
-    if !exhaustiveness.is_exhaustive() {
-        // Print warning to stderr for non-exhaustive patterns
-        if let ExhaustivenessResult::NonExhaustive(missing) = exhaustiveness {
-            eprintln!("Warning: pattern match is non-exhaustive");
-            eprintln!("  Missing cases: {}", missing.join(", "));
-        }
-    }
-
     // Evaluate the scrutinee expression
     let val = eval_inner(scrutinee, env, depth + 1)?;
 
