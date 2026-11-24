@@ -103,6 +103,8 @@ struct Elab {
     data_params: BTreeMap<String, usize>,
     /// Surface type-variable ids bound by enclosing `TyLam`s.
     scope: Vec<usize>,
+    /// Counter for fresh `$`-prefixed binder names.
+    fresh: usize,
 }
 
 impl Elab {
@@ -151,7 +153,8 @@ impl Elab {
                 }
                 Ok(acc)
             }
-            Type::Tuple(_) | Type::Record(_) => Err(pending("tuple or record type")),
+            Type::Tuple(items) => self.conv_tuple_type(items),
+            Type::Record(fields) => self.conv_record_type(fields),
         }
     }
 
@@ -178,6 +181,221 @@ impl Elab {
                 acc
             }
         }
+    }
+
+    /// Generates a fresh `$`-prefixed binder name using `prefix`.
+    ///
+    /// The `$` prefix cannot clash with surface identifiers, and builders
+    /// reject only empty names.
+    fn fresh_name(&mut self, prefix: &str) -> String {
+        let name = format!("${prefix}{}", self.fresh);
+        self.fresh += 1;
+        name
+    }
+
+    /// Returns the synthetic tuple type-constructor name for `arity`, e.g.
+    /// `(,)` for arity 2 and `(,,)` for arity 3.
+    fn tuple_type_name(arity: usize) -> String {
+        format!("({})", ",".repeat(arity.saturating_sub(1)))
+    }
+
+    /// Returns the synthetic record type-constructor name for a sorted field
+    /// list, e.g. `{age,name}`.
+    fn record_type_name(sorted: &[String]) -> String {
+        format!("{{{}}}", sorted.join(","))
+    }
+
+    /// Registers a synthetic data type named `name` with `arity` type
+    /// parameters and a single constructor of the same name, if not already
+    /// registered.
+    fn ensure_synthetic(&mut self, name: &str, arity: usize) -> Result<(), ElabError> {
+        if self.data_params.contains_key(name) {
+            return Ok(());
+        }
+        let params: Vec<String> = (1..=arity).map(|i| format!("p{i}")).collect();
+        let fields: Vec<CoreType> = params.iter().map(|p| CoreType::Var(p.clone())).collect();
+        let dt = DataType {
+            name: name.to_string(),
+            params,
+            ctors: vec![DataCon {
+                name: name.to_string(),
+                fields,
+            }],
+        };
+        self.register_data(dt)
+    }
+
+    /// Ensures a synthetic tuple type of `arity` is registered and returns
+    /// its name.
+    fn ensure_tuple(&mut self, arity: usize) -> Result<String, ElabError> {
+        let name = Self::tuple_type_name(arity);
+        self.ensure_synthetic(&name, arity)?;
+        Ok(name)
+    }
+
+    /// Ensures a synthetic record type over `sorted` field names is
+    /// registered and returns its name.
+    fn ensure_record(&mut self, sorted: &[String]) -> Result<String, ElabError> {
+        let name = Self::record_type_name(sorted);
+        self.ensure_synthetic(&name, sorted.len())?;
+        Ok(name)
+    }
+
+    /// Converts a surface tuple type of arity two or more to Core, via a
+    /// synthetic tuple data type.
+    fn conv_tuple_type(&mut self, items: &[Type]) -> Result<CoreType, ElabError> {
+        if items.len() < 2 {
+            return Err(unsupported("tuple type", "tuple of arity below two"));
+        }
+        let name = self.ensure_tuple(items.len())?;
+        let mut acc = CoreType::Con(name);
+        for item in items {
+            let item_ty = self.conv_type(item)?;
+            acc = CoreType::App(Box::new(acc), Box::new(item_ty));
+        }
+        Ok(acc)
+    }
+
+    /// Converts a surface record type to Core, via a synthetic record data
+    /// type keyed by sorted field names.
+    fn conv_record_type(
+        &mut self,
+        fields: &std::collections::HashMap<String, Type>,
+    ) -> Result<CoreType, ElabError> {
+        let mut sorted: Vec<String> = fields.keys().cloned().collect();
+        sorted.sort();
+        let name = self.ensure_record(&sorted)?;
+        let mut acc = CoreType::Con(name);
+        for field_name in &sorted {
+            let field_ty = self.conv_type(&fields[field_name])?;
+            acc = CoreType::App(Box::new(acc), Box::new(field_ty));
+        }
+        Ok(acc)
+    }
+
+    /// Elaborates a tuple literal into a synthetic tuple constructor
+    /// application.
+    fn elab_tuple(&mut self, ty: &Type, items: &[TypedExpr]) -> Result<Term, ElabError> {
+        let Type::Tuple(component_types) = ty else {
+            return Err(unsupported("tuple", "tuple without tuple type"));
+        };
+        let name = self.ensure_tuple(items.len())?;
+        let mut type_args = Vec::with_capacity(component_types.len());
+        for component_ty in component_types {
+            type_args.push(self.conv_type(component_ty)?);
+        }
+        let mut values = Vec::with_capacity(items.len());
+        for item in items {
+            values.push(self.elab_expr(item)?);
+        }
+        Ok(builder::con_at(&name, type_args, values)?)
+    }
+
+    /// Elaborates `inner.index` (0-based) via a single-alt `Case` over the
+    /// synthetic tuple constructor.
+    fn elab_tuple_proj(&mut self, inner: &TypedExpr, index: usize) -> Result<Term, ElabError> {
+        let Type::Tuple(ts) = &inner.ty else {
+            return Err(unsupported("tuple projection", "projection of a non-tuple"));
+        };
+        let name = self.ensure_tuple(ts.len())?;
+        let scrut = self.elab_expr(inner)?;
+        let binders: Vec<String> = (0..ts.len()).map(|_| self.fresh_name("p")).collect();
+        let refs: Vec<&str> = binders.iter().map(String::as_str).collect();
+        let Some(selected) = binders.get(index).map(String::as_str) else {
+            return Err(unsupported("tuple projection", "projection out of range"));
+        };
+        Ok(builder::case_(
+            scrut,
+            vec![builder::alt(&name, &refs, builder::var(selected)?)?],
+        ))
+    }
+
+    /// Elaborates a record literal into a synthetic record constructor
+    /// application, with fields in sorted order.
+    fn elab_record(
+        &mut self,
+        ty: &Type,
+        fields: &[(String, TypedExpr)],
+    ) -> Result<Term, ElabError> {
+        let Type::Record(map) = ty else {
+            return Err(unsupported("record", "record without record type"));
+        };
+        let mut names: Vec<&String> = fields.iter().map(|(n, _)| n).collect();
+        names.sort();
+        let sorted: Vec<String> = names.iter().map(|n| (*n).clone()).collect();
+        let ctor_name = self.ensure_record(&sorted)?;
+
+        let mut type_args = Vec::with_capacity(sorted.len());
+        for field_name in &sorted {
+            let Some(field_ty) = map.get(field_name) else {
+                return Err(unsupported("record", "field missing from record type"));
+            };
+            type_args.push(self.conv_type(field_ty)?);
+        }
+
+        // Evaluating in sorted order rather than source order changes
+        // evaluation order, which is safe because Core is pure.
+        let mut values = Vec::with_capacity(sorted.len());
+        for field_name in &sorted {
+            let value_expr = fields
+                .iter()
+                .find(|(n, _)| n == field_name)
+                .map(|(_, e)| e)
+                .ok_or_else(|| unsupported("record", "field missing from record value"))?;
+            values.push(self.elab_expr(value_expr)?);
+        }
+
+        Ok(builder::con_at(&ctor_name, type_args, values)?)
+    }
+
+    /// Elaborates `inner.field` via a single-alt `Case` over the synthetic
+    /// record constructor.
+    fn elab_field_access(&mut self, inner: &TypedExpr, field: &str) -> Result<Term, ElabError> {
+        let Type::Record(map) = &inner.ty else {
+            return Err(unsupported(
+                "field access",
+                "field access on non-record type",
+            ));
+        };
+        let mut sorted: Vec<String> = map.keys().cloned().collect();
+        sorted.sort();
+        let ctor_name = self.ensure_record(&sorted)?;
+        let Some(position) = sorted.iter().position(|n| n == field) else {
+            return Err(unsupported(
+                "field access",
+                "field access on non-record type",
+            ));
+        };
+        let scrut = self.elab_expr(inner)?;
+        let binders: Vec<String> = sorted.iter().map(|_| self.fresh_name("f")).collect();
+        let refs: Vec<&str> = binders.iter().map(String::as_str).collect();
+        let selected = binders[position].as_str();
+        Ok(builder::case_(
+            scrut,
+            vec![builder::alt(&ctor_name, &refs, builder::var(selected)?)?],
+        ))
+    }
+
+    /// Elaborates a user data-constructor application with its explicit
+    /// instantiation type arguments.
+    fn elab_constructor(
+        &mut self,
+        ty: &Type,
+        name: &str,
+        args: &[TypedExpr],
+    ) -> Result<Term, ElabError> {
+        let Type::SumType(_, sum_args) = ty else {
+            return Err(unsupported("constructor", "constructor without data type"));
+        };
+        let mut type_args = Vec::with_capacity(sum_args.len());
+        for arg in sum_args {
+            type_args.push(self.conv_type(arg)?);
+        }
+        let mut values = Vec::with_capacity(args.len());
+        for arg in args {
+            values.push(self.elab_expr(arg)?);
+        }
+        Ok(builder::con_at(name, type_args, values)?)
     }
 
     fn data_decl(
@@ -221,9 +439,11 @@ impl Elab {
                 body,
             } => self.elab_typedef(name, type_params, constructors, body),
             K::Tuple(items) if items.is_empty() => Ok(builder::unit()),
-            K::Tuple(_) | K::TupleProj(..) => Err(pending("tuple")),
-            K::Record(_) | K::FieldAccess(..) => Err(pending("record")),
-            K::Constructor(..) => Err(pending("constructor")),
+            K::Tuple(items) => self.elab_tuple(&expr.ty, items),
+            K::TupleProj(inner, index) => self.elab_tuple_proj(inner, *index),
+            K::Record(fields) => self.elab_record(&expr.ty, fields),
+            K::FieldAccess(inner, field) => self.elab_field_access(inner, field),
+            K::Constructor(name, args) => self.elab_constructor(&expr.ty, name, args),
             K::Match(..) => Err(pending("match")),
             K::Load(..) => Err(unsupported(
                 "load",
