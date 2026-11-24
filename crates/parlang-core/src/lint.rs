@@ -58,7 +58,68 @@ impl LintEnv {
         Self::default()
     }
 
-    /// Registers a data type declaration, returning the updated environment.
+    /// Validates and registers a data type declaration, returning the
+    /// updated environment.
+    ///
+    /// Unlike [`LintEnv::with_data`], which trusts its input, this checks
+    /// that the type name is not already registered, that the type
+    /// parameters are pairwise distinct, that every constructor name is
+    /// unique both within the declaration and across already-registered
+    /// types, and that every field type is well-formed with exactly the
+    /// declaration's parameters in scope as type variables. The declared
+    /// type itself is in scope while its field types are checked, so
+    /// recursive types such as `List a` are accepted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LintError::DuplicateDataType`],
+    /// [`LintError::DuplicateTypeParam`], or [`LintError::DuplicateDataCon`]
+    /// for the corresponding name clash, or the first well-formedness error
+    /// (`UnboundTypeVar`, `UnknownType`, `ArityMismatch`, `ShadowedTypeVar`)
+    /// found in a field type.
+    pub fn try_with_data(self, data: DataType) -> Result<Self, LintError> {
+        if self.types.contains_key(&data.name) {
+            return Err(LintError::DuplicateDataType { name: data.name });
+        }
+        for (index, param) in data.params.iter().enumerate() {
+            if data.params[..index].contains(param) {
+                return Err(LintError::DuplicateTypeParam {
+                    ty: data.name.clone(),
+                    param: param.clone(),
+                });
+            }
+        }
+        for (index, ctor) in data.ctors.iter().enumerate() {
+            let repeated = data.ctors[..index]
+                .iter()
+                .any(|earlier| earlier.name == ctor.name);
+            if repeated || self.ctor_owner.contains_key(&ctor.name) {
+                return Err(LintError::DuplicateDataCon {
+                    ctor: ctor.name.clone(),
+                });
+            }
+        }
+        let mut scratch = Self {
+            types: self.types.clone(),
+            tyvars: data.params.clone(),
+            ..Self::default()
+        };
+        scratch.types.insert(data.name.clone(), data.clone());
+        for ctor in &data.ctors {
+            for field in &ctor.fields {
+                well_formed(&mut scratch, field)?;
+            }
+        }
+        Ok(self.with_data(data))
+    }
+
+    /// Registers a data type declaration WITHOUT validating it, returning
+    /// the updated environment.
+    ///
+    /// This trusts its input: a duplicate type or constructor name silently
+    /// replaces the earlier registration, and field types are not checked.
+    /// Use [`LintEnv::try_with_data`] for declarations not already known to
+    /// be well-formed, such as user data declarations.
     #[must_use]
     pub fn with_data(mut self, dt: DataType) -> Self {
         for ctor in &dt.ctors {
@@ -221,6 +282,25 @@ pub enum LintError {
         /// The right operand's type.
         right: Type,
     },
+    /// `LintEnv::try_with_data` was given a data type whose name is already
+    /// registered.
+    DuplicateDataType {
+        /// The data type name.
+        name: String,
+    },
+    /// A data type declaration listed the same type parameter more than once.
+    DuplicateTypeParam {
+        /// The data type name.
+        ty: String,
+        /// The repeated parameter name.
+        param: String,
+    },
+    /// A data constructor name was repeated within one declaration, or is
+    /// already owned by a registered data type.
+    DuplicateDataCon {
+        /// The constructor name.
+        ctor: String,
+    },
 }
 
 impl Display for LintError {
@@ -316,6 +396,11 @@ impl Display for LintError {
             Self::EqTypeMismatch { left, right } => {
                 write!(f, "eq type mismatch: {left} vs {right}")
             }
+            Self::DuplicateDataType { name } => write!(f, "duplicate data type: {name}"),
+            Self::DuplicateTypeParam { ty, param } => {
+                write!(f, "data type {ty}: duplicate type parameter {param}")
+            }
+            Self::DuplicateDataCon { ctor } => write!(f, "duplicate data constructor: {ctor}"),
         }
     }
 }
@@ -1292,6 +1377,215 @@ mod tests {
             ))
         );
         Ok(())
+    }
+
+    fn list_decl() -> DataType {
+        DataType {
+            name: "List".to_string(),
+            params: vec!["a".to_string()],
+            ctors: vec![
+                DataCon {
+                    name: "Nil".to_string(),
+                    fields: vec![],
+                },
+                DataCon {
+                    name: "Cons".to_string(),
+                    fields: vec![
+                        Type::Var("a".to_string()),
+                        Type::App(
+                            Box::new(Type::Con("List".to_string())),
+                            Box::new(Type::Var("a".to_string())),
+                        ),
+                    ],
+                },
+            ],
+        }
+    }
+
+    fn single_ctor_decl(name: &str, params: &[&str], fields: Vec<Type>) -> DataType {
+        DataType {
+            name: name.to_string(),
+            params: params.iter().map(|p| (*p).to_string()).collect(),
+            ctors: vec![DataCon {
+                name: format!("Mk{name}"),
+                fields,
+            }],
+        }
+    }
+
+    #[test]
+    fn try_with_data_accepts_recursive_list() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new().try_with_data(list_decl())?;
+        let term = list_int_case(int(0), var("h")?)?;
+        assert_eq!(lint(&term, &env), Ok(Type::Base(BaseType::Int)));
+        Ok(())
+    }
+
+    #[test]
+    fn try_with_data_accepts_two_param_result() -> Result<(), Box<dyn std::error::Error>> {
+        let result_decl = DataType {
+            name: "Result".to_string(),
+            params: vec!["a".to_string(), "b".to_string()],
+            ctors: vec![
+                DataCon {
+                    name: "Ok".to_string(),
+                    fields: vec![Type::Var("a".to_string())],
+                },
+                DataCon {
+                    name: "Err".to_string(),
+                    fields: vec![Type::Var("b".to_string())],
+                },
+            ],
+        };
+        let env = LintEnv::new().try_with_data(result_decl)?;
+        let term = con_at(
+            "Err",
+            vec![Type::Base(BaseType::Int), Type::Base(BaseType::Bool)],
+            vec![bool_(true)],
+        )?;
+        let expected = Type::App(
+            Box::new(Type::App(
+                Box::new(Type::Con("Result".to_string())),
+                Box::new(Type::Base(BaseType::Int)),
+            )),
+            Box::new(Type::Base(BaseType::Bool)),
+        );
+        assert_eq!(lint(&term, &env), Ok(expected));
+        Ok(())
+    }
+
+    #[test]
+    fn try_with_data_accepts_prelude_env_content() -> Result<(), Box<dyn std::error::Error>> {
+        let list = prelude_env()
+            .types
+            .get("List")
+            .cloned()
+            .ok_or("prelude_env must register List")?;
+        assert!(LintEnv::new().try_with_data(list).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn try_with_data_rejects_duplicate_type() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new().try_with_data(list_decl())?;
+        assert_eq!(
+            env.try_with_data(list_decl()).map(|_| ()),
+            Err(LintError::DuplicateDataType {
+                name: "List".to_string()
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn try_with_data_rejects_duplicate_type_param() {
+        let decl = single_ctor_decl(
+            "Pair",
+            &["a", "a"],
+            vec![Type::Var("a".to_string()), Type::Var("a".to_string())],
+        );
+        assert_eq!(
+            LintEnv::new().try_with_data(decl).map(|_| ()),
+            Err(LintError::DuplicateTypeParam {
+                ty: "Pair".to_string(),
+                param: "a".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn try_with_data_rejects_duplicate_ctor_within_decl() {
+        let decl = DataType {
+            name: "T".to_string(),
+            params: vec![],
+            ctors: vec![
+                DataCon {
+                    name: "A".to_string(),
+                    fields: vec![],
+                },
+                DataCon {
+                    name: "A".to_string(),
+                    fields: vec![],
+                },
+            ],
+        };
+        assert_eq!(
+            LintEnv::new().try_with_data(decl).map(|_| ()),
+            Err(LintError::DuplicateDataCon {
+                ctor: "A".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn try_with_data_rejects_ctor_owned_by_other_type() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new().try_with_data(list_decl())?;
+        let decl = DataType {
+            name: "Other".to_string(),
+            params: vec![],
+            ctors: vec![DataCon {
+                name: "Nil".to_string(),
+                fields: vec![],
+            }],
+        };
+        assert_eq!(
+            env.try_with_data(decl).map(|_| ()),
+            Err(LintError::DuplicateDataCon {
+                ctor: "Nil".to_string()
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn try_with_data_rejects_unbound_field_var() {
+        let decl = single_ctor_decl("Box", &["a"], vec![Type::Var("b".to_string())]);
+        assert_eq!(
+            LintEnv::new().try_with_data(decl).map(|_| ()),
+            Err(LintError::UnboundTypeVar("b".to_string()))
+        );
+    }
+
+    #[test]
+    fn try_with_data_rejects_unknown_field_type() {
+        let decl = single_ctor_decl("Holder", &[], vec![Type::Con("Missing".to_string())]);
+        assert_eq!(
+            LintEnv::new().try_with_data(decl).map(|_| ()),
+            Err(LintError::UnknownType("Missing".to_string()))
+        );
+    }
+
+    #[test]
+    fn try_with_data_rejects_field_arity_mismatch() {
+        let decl = single_ctor_decl("Bad", &["a"], vec![Type::Con("Bad".to_string())]);
+        assert_eq!(
+            LintEnv::new().try_with_data(decl).map(|_| ()),
+            Err(LintError::ArityMismatch {
+                tycon: "Bad".to_string(),
+                expected: 1,
+                found: 0
+            })
+        );
+    }
+
+    #[test]
+    fn registration_errors_display_their_names() {
+        let dup_type = LintError::DuplicateDataType {
+            name: "List".to_string(),
+        };
+        let dup_param = LintError::DuplicateTypeParam {
+            ty: "Pair".to_string(),
+            param: "a".to_string(),
+        };
+        let dup_ctor = LintError::DuplicateDataCon {
+            ctor: "Nil".to_string(),
+        };
+        assert_eq!(dup_type.to_string(), "duplicate data type: List");
+        assert_eq!(
+            dup_param.to_string(),
+            "data type Pair: duplicate type parameter a"
+        );
+        assert_eq!(dup_ctor.to_string(), "duplicate data constructor: Nil");
     }
 
     #[test]
