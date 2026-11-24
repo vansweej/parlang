@@ -16,6 +16,8 @@ use crate::ast::{BinOp, TypeAnnotation};
 use crate::typed_ast::{TypedDecl, TypedExpr, TypedExprKind as K, TypedProgram};
 use crate::types::{Type, TypeVar};
 
+mod match_compile;
+
 /// The result of elaborating a `TypedProgram` into Core.
 #[derive(Debug, Clone)]
 pub struct Elaborated {
@@ -89,11 +91,6 @@ fn unsupported(construct: &str, reason: &str) -> ElabError {
     }
 }
 
-/// Placeholder error for constructs that a later phase of this slice elaborates.
-fn pending(construct: &str) -> ElabError {
-    unsupported(construct, "not yet elaborated")
-}
-
 /// Mutable elaboration state threaded through the translation.
 #[derive(Default)]
 struct Elab {
@@ -101,6 +98,10 @@ struct Elab {
     env: LintEnv,
     /// Parameter count of every registered data type, keyed by type name.
     data_params: BTreeMap<String, usize>,
+    /// Constructors of each registered data type as `(name, arity)`, in declaration order.
+    data_ctors: BTreeMap<String, Vec<(String, usize)>>,
+    /// Owning data type name of every registered constructor.
+    ctor_owner: BTreeMap<String, String>,
     /// Surface type-variable ids bound by enclosing `TyLam`s.
     scope: Vec<usize>,
     /// Counter for fresh `$`-prefixed binder names.
@@ -111,6 +112,15 @@ impl Elab {
     /// Registers `dt` in the Core `LintEnv`, recording its parameter count.
     fn register_data(&mut self, dt: DataType) -> Result<(), ElabError> {
         self.data_params.insert(dt.name.clone(), dt.params.len());
+        let ctors: Vec<(String, usize)> = dt
+            .ctors
+            .iter()
+            .map(|c| (c.name.clone(), c.fields.len()))
+            .collect();
+        for (cname, _) in &ctors {
+            self.ctor_owner.insert(cname.clone(), dt.name.clone());
+        }
+        self.data_ctors.insert(dt.name.clone(), ctors);
         self.env = std::mem::take(&mut self.env)
             .try_with_data(dt)
             .map_err(ElabError::Data)?;
@@ -444,7 +454,7 @@ impl Elab {
             K::Record(fields) => self.elab_record(&expr.ty, fields),
             K::FieldAccess(inner, field) => self.elab_field_access(inner, field),
             K::Constructor(name, args) => self.elab_constructor(&expr.ty, name, args),
-            K::Match(..) => Err(pending("match")),
+            K::Match(scrut, arms) => self.compile_match(scrut, arms),
             K::Load(..) => Err(unsupported(
                 "load",
                 "load is not type-checked; typed modules come later",
@@ -901,15 +911,5 @@ mod tests {
             elab_src("(1, 2) == (1, 2)"),
             Err(ElabError::Unsupported { .. })
         ));
-    }
-
-    /// A `match` is rejected with `ElabError::Unsupported` until slice 7e.
-    #[test]
-    fn match_is_pending_until_slice_7e() {
-        let construct = match elab_src("match 5 with | x -> x") {
-            Err(ElabError::Unsupported { construct, .. }) => construct,
-            other => format!("{other:?}"),
-        };
-        assert_eq!(construct, "match");
     }
 }
