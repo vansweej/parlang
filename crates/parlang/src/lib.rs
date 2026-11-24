@@ -36,6 +36,7 @@ pub mod elaborate;
 pub mod eval;
 pub mod match_coverage;
 pub mod parser;
+pub mod pipeline;
 pub mod typechecker;
 pub mod typed_ast;
 pub mod types;
