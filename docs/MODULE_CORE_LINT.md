@@ -2,7 +2,7 @@
 
 ## Role
 
-Core Lint is a **pure, bidirectional type checker** over the explicitly-typed
+Core Lint is a **pure, synthesis-only type checker** over the explicitly-typed
 Core `Term` IR introduced across slices 6a-6d. It performs **no inference and
 no unification**: every `Term` node either carries enough type annotation to
 synthesize its type directly (`Lam`, `LetRec`, `Con`'s explicit type
@@ -24,24 +24,41 @@ The environment Lint checks a term against. It carries:
 
 - A **data/kind environment**: registered `DataType` declarations (name, type
   parameters, constructors with their field types), built via
-  `LintEnv::new().with_data(dt)`.
+  `LintEnv::new().try_with_data(dt)?` (validating) or
+  `LintEnv::new().with_data(dt)` (trusting; see below).
 - A **term context**: a stack of `(name, Type)` bindings, extended for
   `Lam`/`Let`/`LetRec`/`Case`-alt binders during checking, and extendable by
   callers via `with_term(name, ty)` to seed free variables (e.g. prelude
   bindings referenced by an open term).
 - An **in-scope type-variable stack**: the names bound by enclosing `TyLam`s
-  (or, within a data declaration's field types, the data type's own
-  parameters).
+  (and by `Forall` binders while a type is checked for well-formedness).
 
 `LintEnv::new()` is empty; `prelude_env()` returns a `LintEnv` with the single
 `List a = Nil | Cons a (List a)` data type registered, used by the standing
 guard described below.
 
+### `LintEnv::try_with_data` vs `LintEnv::with_data`
+
+`try_with_data(dt) -> Result<LintEnv, LintError>` validates a declaration
+before registering it. It rejects a type name that is already registered
+(`DuplicateDataType`), a repeated type parameter (`DuplicateTypeParam`), and a
+constructor name repeated within the declaration or already owned by a
+registered type (`DuplicateDataCon`). It then checks every field type for
+well-formedness (see below) with exactly the declaration's own parameters in
+scope as type variables and the declared type itself registered, so recursive
+types such as `List a` are accepted. This is the entry point for declarations
+not known to be well-formed, such as user data declarations.
+
+`with_data(dt)` registers a declaration WITHOUT any validation: duplicate
+names silently replace earlier registrations, and field types are trusted.
+It is intended for trusted, hand-built environments such as `prelude_env()`.
+
 ### `lint(term: &Term, env: &LintEnv) -> Result<Type, LintError>`
 
 Checks `term` against `env`, returning its synthesized `Type` on success or
 the first `LintError` encountered. Internally this clones `env` and runs the
-bidirectional `synth` judgement described below.
+synthesis-only `synth` judgement described below (there is no separate
+checking mode).
 
 ## Typing rules
 
@@ -80,9 +97,12 @@ default case.
   - `if`: exactly 3 args; the condition must synthesize `Bool`
     (`PrimArgMismatch` otherwise); the two branches' synthesized types must be
     alpha-equivalent (`BranchTypeMismatch` otherwise); result is that type.
-  - `+`/`-`/`*`/`/`: exactly 2 args, both must synthesize `Int`; result is
-    `Int`.
-  - `<`: exactly 2 args, both `Int` or both `Char`; result is `Bool`.
+  - `+`/`-`/`*`/`/`: exactly 2 args, both `Int` or both `Float`; result is
+    that operand type. Anything else, including mixed `Int`/`Float`, is
+    `PrimArgMismatch`, whose `expected` is the first operand's type when it
+    is numeric, else `Int`.
+  - `<`: exactly 2 args, both `Int`, both `Char`, or both `Float`; result is
+    `Bool`.
   - `eq`: exactly 2 args; each must synthesize a `Type::Base(_)`
     (`NonBaseEq` otherwise); the two base types must be equal
     (`EqTypeMismatch` otherwise); result is `Bool`. A reserved primitive given
@@ -114,9 +134,10 @@ default case.
 ### Well-formedness of types (`well_formed`)
 
 A type is well-formed under an environment if every free type variable it
-mentions is in scope (bound by an enclosing `TyLam`, or, when checking a data
-declaration's own field types, one of that data type's own parameters;
-otherwise `UnboundTypeVar`), and every type-constructor application has
+mentions is in scope (bound by an enclosing `TyLam` or `Forall`, or, when
+`try_with_data` checks a data declaration's field types, one of that
+declaration's own parameters; otherwise `UnboundTypeVar`), and every
+type-constructor application has
 exactly the arity the data environment records for it (`UnknownType` for an
 unregistered name, `ArityMismatch` for a wrong argument count). A `Forall`
 binder that shadows an already in-scope type variable is rejected
@@ -131,7 +152,9 @@ The full set of ways Lint can reject a term: `UnboundTermVar`,
 `PrimArgCount`, `PrimArgMismatch`, `NotAForall`, `NotADataType`,
 `NonExhaustiveCase`, `DuplicateAlt`, `ForeignAlt`, `BinderCountMismatch`,
 `EmptyCase`, `BranchTypeMismatch`, `LetRecValueNotLam`,
-`LetRecAnnotationMismatch`, `NonBaseEq`, `EqTypeMismatch`. Each variant's
+`LetRecAnnotationMismatch`, `NonBaseEq`, `EqTypeMismatch`, and (raised only
+by `try_with_data`) `DuplicateDataType`, `DuplicateTypeParam`,
+`DuplicateDataCon`. Each variant's
 `Display` implementation renders a human-readable message including the
 relevant type(s)/name(s).
 

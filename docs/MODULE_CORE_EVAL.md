@@ -41,9 +41,9 @@ All evaluation error variants:
 - `UnboundVar` — a variable was referenced but not found in the environment.
 - `NotAFunction` — application was attempted on a non-function value.
 - `TypeMismatch` — an operation received operand(s) of the wrong type
-  (e.g., non-`Int` operands to arithmetic or `<`, or a non-`Lam` bound by
+  (e.g., mixed or non-numeric operands to arithmetic or `<`, or a non-`Lam` bound by
   `LetRec`).
-- `DivisionByZero` — integer division or remainder by zero.
+- `DivisionByZero` — integer or float division by zero (`Float` division by `0.0` or `-0.0` mirrors the surface evaluator).
 - `ArithmeticOverflow` — a checked arithmetic operation overflowed or
   underflowed.
 - `NotComparable` — `eq` was applied to non-base-type operands (functions or
@@ -87,11 +87,13 @@ shared `Term` AST frozen:
 
 - `Con("if", [c, t, e])` — strict in `c` (must evaluate to `Bool`), lazy in
   the untaken branch (only the taken branch of `t`/`e` is evaluated).
-- `Con("+"|"-"|"*"|"/", [a, b])` — both operands must be `Int`; checked
-  arithmetic (`DivisionByZero` / `ArithmeticOverflow` / `TypeMismatch` on
-  mismatch).
-- `Con("<", [a, b])` — `Int` or `Char` operands, yields `Bool`; `Char`
-  operands compare by scalar ordering.
+- `Con("+"|"-"|"*"|"/", [a, b])` — both operands `Int` (checked
+  arithmetic: `DivisionByZero` / `ArithmeticOverflow`) or both `Float`
+  (IEEE 754 arithmetic; division by zero is `DivisionByZero`, as in the
+  surface evaluator); `TypeMismatch` on mixed or other operands.
+- `Con("<", [a, b])` — `Int`, `Char`, or `Float` operands, yields `Bool`;
+  `Char` operands compare by scalar ordering, `Float` operands by IEEE
+  ordering (NaN compares `false`).
 - `Con("eq", [a, b])` — restricted to base values (`Int`, `Bool`, `Unit`,
   `Char`, `Float`); `Float` operands are compared via `f64::to_bits`
   bit-equality, `Char` operands by scalar equality; function or constructor

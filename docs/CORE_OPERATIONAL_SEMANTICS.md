@@ -94,11 +94,14 @@ Strict:
 ρ ⊢ Let(x, t₁, t₂) ⇓ v
 ```
 
-### `LetRec(x, t₁, t₂)`
+### `LetRec(x, ty, t₁, t₂)`
 
 `t₁` is expected to be a `Lam`; it becomes a `RecClosure` capturing the
 current environment ρ **without** pre-inserting the name `x` into it. `t₂` is
 then evaluated under `ρ[x ↦ recclosure]`.
+
+The `LetRec` type annotation `ty` (the binder's declared type, checked by
+Core Lint) is erased at evaluation time and plays no role in the rule above.
 
 ### `Case(t, alts)`
 
@@ -116,11 +119,15 @@ tables produced by elaboration cover the complete constructor family (Wadler
 
 - **`Con("if", [c, thn, els])`**: `c ⇓ Bool(b)`; if `b` is `true`, evaluate
   `thn`; otherwise evaluate `els`. The other branch is **not** evaluated.
-- **`Con("+"/"-"/"*"/"/" , [a, b])`**: both `a` and `b` evaluate to `Int`;
-  apply checked arithmetic. Division by zero yields `DivisionByZero`. A
-  `None` result from a checked operation (overflow/underflow) yields
-  `ArithmeticOverflow`. Non-`Int` operands yield `TypeMismatch`.
-- **`Con("<", [a, b])`**: `Int` or `Char` operands, result is `Bool`.
+- **`Con("+"/"-"/"*"/"/" , [a, b])`**: both `a` and `b` evaluate to `Int`,
+  or both to `Float`. For `Int`, apply checked arithmetic: division by zero
+  yields `DivisionByZero`, and a `None` result from a checked operation
+  (overflow/underflow) yields `ArithmeticOverflow`. For `Float`, apply plain
+  IEEE 754 arithmetic (results may be infinite or NaN), except that division
+  by `0.0` or `-0.0` yields `DivisionByZero`, mirroring the surface
+  evaluator. Mixed or other operands yield `TypeMismatch`.
+- **`Con("<", [a, b])`**: `Int`, `Char`, or `Float` operands (both the same),
+  result is `Bool`; `Float` uses IEEE ordering, so a NaN operand gives `false`.
   `Char` operands compare by scalar (code-point) ordering. Other operand
   types yield `TypeMismatch` (there is no float comparison).
 - **`Con("eq", [a, b])`**: base-type operands only. `Float` operands are
