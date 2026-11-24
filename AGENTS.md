@@ -75,6 +75,7 @@ integration tests.
 | `typechecker.rs` | Algorithm W inference; entrypoint `typecheck()` |
 | `typed_ast.rs` | Typed AST produced by `typecheck_typed` and friends; `typed_program_to_text` renders it |
 | `match_coverage.rs` | Sound type-check-time match exhaustiveness checker (`check_match`); non-exhaustive matches are a `NonExhaustiveMatch` type error |
+| `elaborate.rs` | Typed AST to Core IR elaborator (`elaborate_program`, `check_elaborated`); see `docs/MODULE_ELABORATE.md` |
 | `eval.rs` | Tree-walking interpreter; `eval()`, `Value`, `Environment` |
 | `dot.rs` | AST → Graphviz DOT |
 | `main.rs` | `clap` CLI + `rustyline` REPL |
