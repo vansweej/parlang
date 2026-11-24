@@ -1,0 +1,26 @@
+-- Roadmap MVP acceptance program: a polymorphic ADT, a recursive function
+-- with pattern matching over it, and a string. Builds a binary search tree
+-- of the characters of a string and reads it back in order, which sorts the
+-- characters and drops duplicates.
+data List a = Nil | Cons a (List a);
+data Tree a = Leaf | Node (Tree a) a (Tree a);
+let asChar = fun c -> if true then c else 'a' in
+let insert = rec insert -> fun x -> fun t ->
+  match t with
+  | Leaf -> Node Leaf x Leaf
+  | Node l v r ->
+      if asChar x < v then Node (insert x l) v r
+      else if v < x then Node l v (insert x r)
+      else t
+in
+let fromString = rec fromString -> fun acc -> fun s ->
+  match s with
+  | Nil -> acc
+  | Cons c rest -> fromString (insert c acc) rest
+in
+let toString = rec toString -> fun t -> fun acc ->
+  match t with
+  | Leaf -> acc
+  | Node l v r -> toString l (Cons v (toString r acc))
+in
+toString (fromString Leaf "parlang") Nil

@@ -183,6 +183,94 @@ fn dump_typed_dot_arithmetic() {
     );
 }
 
+/// Absolute path of a driver test fixture.
+fn fixture_path(name: &str) -> String {
+    format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))
+}
+
+/// Run the driver with `args`, assert it succeeded, and return its stdout.
+fn driver_stdout(args: &[&str]) -> String {
+    let output = Command::cargo_bin("parlang-driver")
+        .expect("driver binary should be built")
+        .args(args)
+        .output()
+        .expect("driver should run");
+
+    assert!(
+        output.status.success(),
+        "driver failed for {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    String::from_utf8(output.stdout).expect("stdout is valid utf-8")
+}
+
+#[test]
+fn mvp_runs_on_surface() {
+    let fixture = fixture_path("mvp.par");
+    let stdout = driver_stdout(&[fixture.as_str()]);
+    assert!(!stdout.trim().is_empty(), "stdout was empty");
+}
+
+#[test]
+fn mvp_parsed_stage_text_and_dot() {
+    let fixture = fixture_path("mvp.par");
+    let text = driver_stdout(&["--dump", "--stage", "parsed", fixture.as_str()]);
+    assert!(!text.trim().is_empty(), "parsed text dump was empty");
+    let dot = driver_stdout(&["--dump-dot", "--stage", "parsed", fixture.as_str()]);
+    assert!(dot.starts_with("digraph"), "stdout was: {dot}");
+}
+
+#[test]
+fn mvp_typed_stage_mentions_tree() {
+    let fixture = fixture_path("mvp.par");
+    let stdout = driver_stdout(&["--dump", "--stage", "typed", fixture.as_str()]);
+    assert!(
+        stdout.contains("Tree") || stdout.contains("Node"),
+        "stdout was: {stdout}"
+    );
+}
+
+#[test]
+fn mvp_core_stage_shows_constructors() {
+    let fixture = fixture_path("mvp.par");
+    let stdout = driver_stdout(&["--dump", "--stage", "core", fixture.as_str()]);
+    assert!(
+        stdout.contains("/\\") || stdout.contains('@'),
+        "stdout was: {stdout}"
+    );
+    assert!(stdout.contains("Node"), "stdout was: {stdout}");
+    assert!(stdout.contains("Leaf"), "stdout was: {stdout}");
+}
+
+#[test]
+fn mvp_lint_stage_text_and_dot() {
+    let fixture = fixture_path("mvp.par");
+    let text = driver_stdout(&["--dump", "--stage", "lint", fixture.as_str()]);
+    assert!(text.starts_with("lint ok: "), "stdout was: {text}");
+    let dot = driver_stdout(&["--dump-dot", "--stage", "lint", fixture.as_str()]);
+    assert!(dot.starts_with("digraph"), "stdout was: {dot}");
+}
+
+#[test]
+fn mvp_core_flag_renders_string() {
+    let fixture = fixture_path("mvp.par");
+    let stdout = driver_stdout(&["--core", fixture.as_str()]);
+    assert_eq!(stdout.trim(), "\"aglnpr\"");
+}
+
+#[test]
+fn trace_small_fixture_ends_with_result() {
+    let fixture = fixture_path("let_binding.par");
+    let stdout = driver_stdout(&["trace", fixture.as_str()]);
+    let last = stdout
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or_default();
+    assert_eq!(last.trim(), "result: 42");
+}
+
 #[test]
 fn stage_requires_dump() {
     let manifest = env!("CARGO_MANIFEST_DIR");
