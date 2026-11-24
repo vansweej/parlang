@@ -92,6 +92,16 @@ graph TB
   - Execute binary operations
   - Load and integrate external library files
 
+#### Typed AST Module
+- **Purpose**: Hold the output of Hindley-Milner inference (`typed_ast.rs`), fully resolved under the final substitution, as input for dumps and the surface-to-Core elaborator
+- **Key Types**: `TypedExpr`, `TypedExprKind`, `TypedMatchArm`, `TypedPattern`, `TypedPatternKind`, `TypedDecl`, `TypedProgram`
+- **Elaboration-facing fields**:
+  - `TypedExprKind::Var(name, args)`: the instantiation type arguments of this occurrence, fully resolved, one per quantified variable of the binding's `TypeScheme`, in `TypeScheme::vars` order; empty for monomorphic bindings (lambda, pattern, `rec`, monomorphic `let`)
+  - `TypedExprKind::Let(name, ann, scheme, value, body)`: the scheme generalized at this `let`; its quantified variables stay `Type::Var` and, for a let whose value captures no monomorphic outer variable, are exactly the free type variables of the resolved value's type (top-level `TypedDecl::Let.scheme` follows the same rule)
+  - `TypedMatchArm.pattern: TypedPattern`: every pattern node carries its resolved type (unit pattern is an empty `Tuple` typed `Unit`); `TypedPattern::to_pattern` erases types
+- **Rendering**: the typed text and DOT dumps ignore `Var` args and `Let` schemes and print patterns via `to_pattern`, so dump output is unchanged
+- **Not typed**: `Load` bodies stay untyped `Expr`
+
 #### Main Module
 - **Purpose**: Provide user interface for the interpreter
 - **Modes**: REPL (interactive), File execution
