@@ -6,7 +6,7 @@
 //! always type-variable-free leaves by construction: `Load` bodies are never
 //! inspected by inference, and unregistered constructors yield a fresh var.
 
-use crate::ast::{Expr, Pattern, TypeAnnotation, TypeExpr};
+use crate::ast::{Expr, Literal, Pattern, TypeAnnotation, TypeExpr};
 use crate::types::{Type, TypeScheme};
 use std::fmt::Write;
 
@@ -62,11 +62,56 @@ pub enum TypedExprKind {
     Constructor(String, Vec<TypedExpr>),
 }
 
-/// A typed match arm: the (untyped) pattern, the variable bindings it
+/// A pattern annotated with the fully resolved type of the value it matches.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypedPattern {
+    pub kind: TypedPatternKind,
+    pub ty: Type,
+}
+
+/// Typed mirror of [`crate::ast::Pattern`]. The unit pattern is
+/// `Tuple(vec![])` typed `Type::Unit`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TypedPatternKind {
+    Literal(Literal),
+    Var(String),
+    Wildcard,
+    Tuple(Vec<TypedPattern>),
+    Record(Vec<(String, TypedPattern)>),
+    Constructor(String, Vec<TypedPattern>),
+}
+
+impl TypedPattern {
+    /// Erase the types, recovering the source [`Pattern`] this node was
+    /// built from (used by the text and DOT renderers).
+    #[must_use]
+    pub fn to_pattern(&self) -> Pattern {
+        match &self.kind {
+            TypedPatternKind::Literal(lit) => Pattern::Literal(lit.clone()),
+            TypedPatternKind::Var(name) => Pattern::Var(name.clone()),
+            TypedPatternKind::Wildcard => Pattern::Wildcard,
+            TypedPatternKind::Tuple(items) => {
+                Pattern::Tuple(items.iter().map(TypedPattern::to_pattern).collect())
+            }
+            TypedPatternKind::Record(fields) => Pattern::Record(
+                fields
+                    .iter()
+                    .map(|(name, p)| (name.clone(), p.to_pattern()))
+                    .collect(),
+            ),
+            TypedPatternKind::Constructor(name, args) => Pattern::Constructor(
+                name.clone(),
+                args.iter().map(TypedPattern::to_pattern).collect(),
+            ),
+        }
+    }
+}
+
+/// A typed match arm: the typed pattern, the variable bindings it
 /// introduces with their types, and the typed body.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypedMatchArm {
-    pub pattern: Pattern,
+    pub pattern: TypedPattern,
     pub bindings: Vec<(String, Type)>,
     pub body: TypedExpr,
 }
@@ -236,12 +281,12 @@ fn write_bindings(bindings: &[(String, Type)]) -> String {
 fn write_arm(out: &mut String, index: usize, arm: &TypedMatchArm, depth: usize) {
     indent(out, depth);
     if arm.bindings.is_empty() {
-        let _ = writeln!(out, "arm {index}: {}", arm.pattern);
+        let _ = writeln!(out, "arm {index}: {}", arm.pattern.to_pattern());
     } else {
         let _ = writeln!(
             out,
             "arm {index}: {} [{}]",
-            arm.pattern,
+            arm.pattern.to_pattern(),
             write_bindings(&arm.bindings)
         );
     }

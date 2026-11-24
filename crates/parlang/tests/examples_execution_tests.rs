@@ -95,7 +95,9 @@ fn node_rule_ok(node: &TypedExpr) -> Result<(), String> {
         K::Let(.., b) | K::Rec(_, b) => node.ty == b.ty,
         K::Fun(_, _, b) => matches!(&node.ty, Type::Fun(_, bt) if **bt == b.ty),
         K::App(f, a) => f.ty == Type::Fun(Box::new(a.ty.clone()), Box::new(node.ty.clone())),
-        K::Match(_, arms) => arms.iter().all(|arm| arm.body.ty == node.ty),
+        K::Match(s, arms) => arms
+            .iter()
+            .all(|arm| arm.body.ty == node.ty && arm.pattern.ty == s.ty),
         K::Tuple(elems) => node.ty == Type::Tuple(elems.iter().map(|e| e.ty.clone()).collect()),
         K::TupleProj(t, i) => {
             !matches!(&t.ty, Type::Tuple(elems) if elems.get(*i).is_some_and(|e| *e != node.ty))

@@ -798,7 +798,7 @@ fn typed_arm_to_dot(
 ) {
     let arm_id = gen.next();
     let _ = writeln!(output, "  {arm_id} [label=\"Arm {index}\"];");
-    let pattern_id = pattern_to_dot(&arm.pattern, output, gen);
+    let pattern_id = pattern_to_dot(&arm.pattern.to_pattern(), output, gen);
     let result_id = typed_expr_to_dot(&arm.body, output, gen);
     let _ = writeln!(output, "  {parent} -> {arm_id} [label=\"arm {index}\"];");
     let _ = writeln!(output, "  {arm_id} -> {pattern_id} [label=\"pattern\"];");

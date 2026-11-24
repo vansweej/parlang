@@ -1,6 +1,9 @@
 /// Hindley-Milner type inference implementation
 use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
-use crate::typed_ast::{TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedProgram};
+use crate::typed_ast::{
+    TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern, TypedPatternKind,
+    TypedProgram,
+};
 use crate::types::{Type, TypeScheme, TypeVar};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -1003,10 +1006,11 @@ fn infer_pattern_record(
     expected: &Type,
     env: &mut TypeEnv,
     bindings: &mut Vec<(String, Type)>,
-) -> Result<Substitution, TypeError> {
+) -> Result<(TypedPattern, Substitution), TypeError> {
     match expected {
         Type::Record(map) => {
             let mut subst = HashMap::new();
+            let mut typed_fields = Vec::with_capacity(fields.len());
             for (field_name, sub_pattern) in fields {
                 let Some(field_ty) = map.get(field_name) else {
                     let mut available: Vec<String> = map.keys().cloned().collect();
@@ -1014,10 +1018,14 @@ fn infer_pattern_record(
                     return Err(TypeError::FieldNotFound(field_name.clone(), available));
                 };
                 let field_ty = apply_subst(&subst, field_ty);
-                let s = infer_pattern(sub_pattern, &field_ty, env, bindings)?;
+                let (typed_sub, s) = infer_pattern(sub_pattern, &field_ty, env, bindings)?;
                 subst = compose_subst(&s, &subst);
+                typed_fields.push((field_name.clone(), typed_sub));
             }
-            Ok(subst)
+            Ok((
+                typed_pattern(TypedPatternKind::Record(typed_fields), expected),
+                subst,
+            ))
         }
         other => Err(TypeError::RecordExpected(format!("{other}"))),
     }
@@ -1035,7 +1043,7 @@ fn infer_pattern_constructor(
     expected: &Type,
     env: &mut TypeEnv,
     bindings: &mut Vec<(String, Type)>,
-) -> Result<Substitution, TypeError> {
+) -> Result<(TypedPattern, Substitution), TypeError> {
     if let Some(info) = env.lookup_constructor(name).cloned() {
         let type_args: Vec<Type> = info.type_params.iter().map(|_| env.fresh_var()).collect();
         let type_param_map: HashMap<String, Type> = info
@@ -1053,59 +1061,114 @@ fn infer_pattern_constructor(
             ));
         }
 
-        let mut subst = unify(
-            expected,
-            &Type::SumType(info.sum_type_name.clone(), type_args),
-        )?;
+        let sum_ty = Type::SumType(info.sum_type_name.clone(), type_args);
+        let mut subst = unify(expected, &sum_ty)?;
 
+        let mut items = Vec::with_capacity(patterns.len());
         for (sub_pattern, annotation) in patterns.iter().zip(&info.payload_types) {
             let payload = type_annotation_to_type(annotation, &type_param_map, env);
             let payload = apply_subst(&subst, &payload);
-            let s = infer_pattern(sub_pattern, &payload, env, bindings)?;
+            let (typed_sub, s) = infer_pattern(sub_pattern, &payload, env, bindings)?;
             subst = compose_subst(&s, &subst);
+            items.push(typed_sub);
         }
-        Ok(subst)
+        let kind = TypedPatternKind::Constructor(name.to_string(), items);
+        Ok((typed_pattern(kind, &sum_ty), subst))
     } else {
         let mut subst = HashMap::new();
+        let mut items = Vec::with_capacity(patterns.len());
         for sub_pattern in patterns {
             let fresh = env.fresh_var();
-            let s = infer_pattern(sub_pattern, &fresh, env, bindings)?;
+            let (typed_sub, s) = infer_pattern(sub_pattern, &fresh, env, bindings)?;
             subst = compose_subst(&s, &subst);
+            items.push(typed_sub);
         }
-        Ok(subst)
+        let kind = TypedPatternKind::Constructor(name.to_string(), items);
+        Ok((typed_pattern(kind, expected), subst))
+    }
+}
+
+/// Build a [`TypedPattern`] node of type `ty` (resolved later by
+/// `resolve_pattern`).
+fn typed_pattern(kind: TypedPatternKind, ty: &Type) -> TypedPattern {
+    TypedPattern {
+        kind,
+        ty: ty.clone(),
+    }
+}
+
+/// Apply `subst` to every `ty` in a typed pattern tree.
+fn resolve_pattern(subst: &Substitution, pattern: &TypedPattern) -> TypedPattern {
+    use TypedPatternKind as P;
+    let kind = match &pattern.kind {
+        P::Literal(_) | P::Var(_) | P::Wildcard => pattern.kind.clone(),
+        P::Tuple(items) => P::Tuple(items.iter().map(|p| resolve_pattern(subst, p)).collect()),
+        P::Record(fields) => P::Record(
+            fields
+                .iter()
+                .map(|(name, p)| (name.clone(), resolve_pattern(subst, p)))
+                .collect(),
+        ),
+        P::Constructor(name, args) => P::Constructor(
+            name.clone(),
+            args.iter().map(|p| resolve_pattern(subst, p)).collect(),
+        ),
+    };
+    TypedPattern {
+        kind,
+        ty: apply_subst(subst, &pattern.ty),
     }
 }
 
 /// Type a pattern against the `expected` scrutinee type, collecting variable
-/// bindings. Returns the substitution produced by unifying the pattern's
-/// shape with `expected`.
+/// bindings. Returns the typed pattern (types resolved later by
+/// `resolve_pattern`) and the substitution produced by unifying the
+/// pattern's shape with `expected`.
 fn infer_pattern(
     pattern: &Pattern,
     expected: &Type,
     env: &mut TypeEnv,
     bindings: &mut Vec<(String, Type)>,
-) -> Result<Substitution, TypeError> {
+) -> Result<(TypedPattern, Substitution), TypeError> {
     match pattern {
-        Pattern::Literal(Literal::Int(_)) => unify(expected, &Type::Int),
-        Pattern::Literal(Literal::Bool(_)) => unify(expected, &Type::Bool),
-        Pattern::Literal(Literal::Char(_)) => unify(expected, &Type::Char),
+        Pattern::Literal(lit) => {
+            let lit_ty = match lit {
+                Literal::Int(_) => Type::Int,
+                Literal::Bool(_) => Type::Bool,
+                Literal::Char(_) => Type::Char,
+            };
+            let s = unify(expected, &lit_ty)?;
+            Ok((
+                typed_pattern(TypedPatternKind::Literal(lit.clone()), &lit_ty),
+                s,
+            ))
+        }
         Pattern::Var(name) => {
             bindings.push((name.clone(), expected.clone()));
-            Ok(HashMap::new())
+            let kind = TypedPatternKind::Var(name.clone());
+            Ok((typed_pattern(kind, expected), HashMap::new()))
         }
-        Pattern::Wildcard => Ok(HashMap::new()),
+        Pattern::Wildcard => Ok((
+            typed_pattern(TypedPatternKind::Wildcard, expected),
+            HashMap::new(),
+        )),
         Pattern::Tuple(patterns) => {
             if patterns.is_empty() {
-                return unify(expected, &Type::Unit);
+                let s = unify(expected, &Type::Unit)?;
+                let kind = TypedPatternKind::Tuple(Vec::new());
+                return Ok((typed_pattern(kind, &Type::Unit), s));
             }
             let fresh: Vec<Type> = patterns.iter().map(|_| env.fresh_var()).collect();
             let mut subst = unify(expected, &Type::Tuple(fresh.clone()))?;
+            let mut items = Vec::with_capacity(patterns.len());
             for (sub_pattern, fresh_ty) in patterns.iter().zip(&fresh) {
                 let fresh_ty = apply_subst(&subst, fresh_ty);
-                let s = infer_pattern(sub_pattern, &fresh_ty, env, bindings)?;
+                let (typed_sub, s) = infer_pattern(sub_pattern, &fresh_ty, env, bindings)?;
                 subst = compose_subst(&s, &subst);
+                items.push(typed_sub);
             }
-            Ok(subst)
+            let kind = TypedPatternKind::Tuple(items);
+            Ok((typed_pattern(kind, &Type::Tuple(fresh)), subst))
         }
         Pattern::Record(fields) => infer_pattern_record(fields, expected, env, bindings),
         Pattern::Constructor(name, patterns) => {
@@ -1133,7 +1196,7 @@ fn infer_match(
     for (pattern, body) in arms {
         let expected = apply_subst(&subst, &scrut_typed.ty);
         let mut bindings: Vec<(String, Type)> = Vec::new();
-        let pattern_subst = infer_pattern(pattern, &expected, env, &mut bindings)?;
+        let (arm_pattern, pattern_subst) = infer_pattern(pattern, &expected, env, &mut bindings)?;
         subst = compose_subst(&pattern_subst, &subst);
 
         let mut arm_env = env.clone();
@@ -1154,7 +1217,7 @@ fn infer_match(
         subst = compose_subst(&arm_subst, &subst);
 
         typed_arms.push(TypedMatchArm {
-            pattern: pattern.clone(),
+            pattern: arm_pattern,
             bindings,
             body: body_typed,
         });
@@ -1559,7 +1622,7 @@ fn resolve_typed(subst: &Substitution, typed: &TypedExpr) -> TypedExpr {
             Box::new(resolve_typed(subst, s)),
             arms.iter()
                 .map(|arm| TypedMatchArm {
-                    pattern: arm.pattern.clone(),
+                    pattern: resolve_pattern(subst, &arm.pattern),
                     bindings: arm
                         .bindings
                         .iter()
@@ -2105,6 +2168,80 @@ mod tests {
         };
         assert_eq!(name, "Cons");
         assert_eq!(args[0].ty, Type::Char);
+    }
+
+    #[test]
+    fn test_typed_constructor_pattern_types() {
+        use crate::typed_ast::{TypedExprKind as K, TypedPatternKind as P};
+        let program = check_program(
+            "data Option a = Some a | None;\nmatch Some 1 with | Some n -> n | None -> 0",
+        );
+        let body = program.body.unwrap();
+        let K::Match(_, arms) = &body.kind else {
+            panic!("expected Match")
+        };
+        let option_int = Type::SumType("Option".to_string(), vec![Type::Int]);
+        assert_eq!(arms[0].pattern.ty, option_int);
+        let P::Constructor(name, subs) = &arms[0].pattern.kind else {
+            panic!("expected Some pattern")
+        };
+        assert_eq!(name, "Some");
+        assert_eq!(subs.len(), 1);
+        assert!(matches!(&subs[0].kind, P::Var(n) if n == "n"));
+        assert_eq!(subs[0].ty, Type::Int);
+        assert_eq!(arms[1].pattern.ty, option_int);
+        let P::Constructor(none_name, none_subs) = &arms[1].pattern.kind else {
+            panic!("expected None pattern")
+        };
+        assert_eq!(none_name, "None");
+        assert!(none_subs.is_empty());
+    }
+
+    #[test]
+    fn test_typed_tuple_pattern_types() {
+        use crate::typed_ast::{TypedExprKind as K, TypedPatternKind as P};
+        let typed = check_typed("match (1, true) with | (a, _) -> a").unwrap();
+        let K::Match(_, arms) = &typed.kind else {
+            panic!("expected Match")
+        };
+        let pattern = &arms[0].pattern;
+        assert_eq!(pattern.ty, Type::Tuple(vec![Type::Int, Type::Bool]));
+        let P::Tuple(items) = &pattern.kind else {
+            panic!("expected Tuple pattern")
+        };
+        assert!(matches!(&items[0].kind, P::Var(n) if n == "a"));
+        assert_eq!(items[0].ty, Type::Int);
+        assert!(matches!(items[1].kind, P::Wildcard));
+        assert_eq!(items[1].ty, Type::Bool);
+        let erased = Pattern::Tuple(vec![Pattern::Var("a".to_string()), Pattern::Wildcard]);
+        assert_eq!(pattern.to_pattern(), erased);
+    }
+
+    #[test]
+    fn test_typed_unit_pattern_type() {
+        use crate::typed_ast::{TypedExprKind as K, TypedPatternKind as P};
+        let typed = check_typed("match () with | () -> 1").unwrap();
+        let K::Match(_, arms) = &typed.kind else {
+            panic!("expected Match")
+        };
+        assert_eq!(arms[0].pattern.ty, Type::Unit);
+        let P::Tuple(items) = &arms[0].pattern.kind else {
+            panic!("expected unit Tuple pattern")
+        };
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_typed_literal_pattern_type() {
+        use crate::typed_ast::{TypedExprKind as K, TypedPatternKind as P};
+        let typed = check_typed("match 3 with | 0 -> 1 | _ -> 2").unwrap();
+        let K::Match(_, arms) = &typed.kind else {
+            panic!("expected Match")
+        };
+        assert!(matches!(arms[0].pattern.kind, P::Literal(Literal::Int(0))));
+        assert_eq!(arms[0].pattern.ty, Type::Int);
+        assert!(matches!(arms[1].pattern.kind, P::Wildcard));
+        assert_eq!(arms[1].pattern.ty, Type::Int);
     }
 
     #[test]
