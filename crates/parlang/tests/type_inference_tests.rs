@@ -414,16 +414,26 @@ fn test_match_record_patterns() {
 }
 
 #[test]
-fn test_match_lenient_constructors() {
-    // Unregistered constructor pattern is lenient.
+fn test_match_unknown_constructors_are_rejected() {
+    // A constructor pattern without a `data` declaration is a type error.
     assert_eq!(
-        typecheck(&parse("match 1 with | Foo x -> x | _ -> 0").unwrap()).unwrap(),
-        Type::Int
+        typecheck(&parse("match 1 with | Foo x -> x | _ -> 0").unwrap()),
+        Err(TypeError::UnknownConstructor("Foo".to_string()))
     );
 
-    // Strings still typecheck via the lenient constructor path.
-    assert!(
-        typecheck(&parse("match \"ab\" with | Cons c rest -> c | Nil -> 'z'").unwrap()).is_ok()
+    // String literals desugar to `Cons`/`Nil`, which need a `List` declaration.
+    assert_eq!(
+        typecheck(&parse("match \"ab\" with | Cons c rest -> c | Nil -> 'z'").unwrap()),
+        Err(TypeError::UnknownConstructor("Cons".to_string()))
+    );
+
+    let declared = concat!(
+        "data List a = Nil | Cons a (List a) ; ",
+        "match \"ab\" with | Cons c rest -> c | Nil -> 'z'"
+    );
+    assert_eq!(
+        typecheck_program(&parse_program(declared).unwrap()).unwrap(),
+        Type::Char
     );
 }
 

@@ -347,6 +347,8 @@ pub enum TypeError {
     TupleIndexOutOfBounds(usize, usize),
     /// Expected a tuple type but got something else.
     TupleExpected(String),
+    /// A constructor was used without any `data` declaration defining it.
+    UnknownConstructor(String),
 }
 
 impl fmt::Display for TypeError {
@@ -399,6 +401,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::TupleExpected(got) => {
                 write!(f, "Expected tuple type, got {got}")
+            }
+            TypeError::UnknownConstructor(name) => {
+                write!(f, "Unknown constructor: {name}")
             }
         }
     }
@@ -978,22 +983,9 @@ fn infer_constructor(
             subst,
         ))
     } else {
-        // Constructor not registered: infer the args for a typed tree, thread
-        // their substitution, and give the node a fresh type variable.
-        let mut typed_args = Vec::new();
-        let mut subst = HashMap::new();
-        for arg in args {
-            let (arg_typed, s) = infer_typed(arg, env)?;
-            subst = compose_subst(&s, &subst);
-            typed_args.push(arg_typed);
-        }
-        Ok((
-            TypedExpr {
-                kind: TypedExprKind::Constructor(name.to_string(), typed_args),
-                ty: env.fresh_var(),
-            },
-            subst,
-        ))
+        // Constructor not declared by any `data` declaration: reject it before
+        // inferring its arguments, so the constructor name is the reported error.
+        Err(TypeError::UnknownConstructor(name.to_string()))
     }
 }
 
@@ -1033,10 +1025,9 @@ fn infer_pattern_record(
 
 /// Type a constructor pattern `Ctor p1 p2 ...` against the scrutinee type.
 /// Registered constructors constrain the scrutinee to their sum type and
-/// type their sub-patterns against the declared payloads. Unregistered
-/// constructors are lenient (string literals desugar to unregistered
-/// `Cons`/`Nil`): the scrutinee is left unconstrained and sub-patterns are
-/// typed against fresh variables.
+/// type their sub-patterns against the declared payloads. A constructor with
+/// no `data` declaration is an `UnknownConstructor` error; string literals
+/// desugar to `Cons`/`Nil`, so they need a `List` declaration in scope.
 fn infer_pattern_constructor(
     name: &str,
     patterns: &[Pattern],
@@ -1075,16 +1066,7 @@ fn infer_pattern_constructor(
         let kind = TypedPatternKind::Constructor(name.to_string(), items);
         Ok((typed_pattern(kind, &sum_ty), subst))
     } else {
-        let mut subst = HashMap::new();
-        let mut items = Vec::with_capacity(patterns.len());
-        for sub_pattern in patterns {
-            let fresh = env.fresh_var();
-            let (typed_sub, s) = infer_pattern(sub_pattern, &fresh, env, bindings)?;
-            subst = compose_subst(&s, &subst);
-            items.push(typed_sub);
-        }
-        let kind = TypedPatternKind::Constructor(name.to_string(), items);
-        Ok((typed_pattern(kind, expected), subst))
+        Err(TypeError::UnknownConstructor(name.to_string()))
     }
 }
 
@@ -2159,15 +2141,10 @@ mod tests {
     }
 
     #[test]
-    fn test_unregistered_constructor_arg_is_inferred() {
-        // "ab" desugars to Cons 'a' (Cons 'b' Nil); unregistered Cons infers args.
-        use crate::typed_ast::TypedExprKind as K;
-        let typed = check_typed("\"ab\"").unwrap();
-        let K::Constructor(name, args) = &typed.kind else {
-            panic!("expected Constructor")
-        };
-        assert_eq!(name, "Cons");
-        assert_eq!(args[0].ty, Type::Char);
+    fn test_string_literal_without_list_decl_is_unknown_constructor() {
+        // "ab" desugars to Cons 'a' (Cons 'b' Nil); with no `data List` it is rejected.
+        let err = check_typed("\"ab\"");
+        assert_eq!(err, Err(TypeError::UnknownConstructor("Cons".to_string())));
     }
 
     #[test]
@@ -2245,17 +2222,21 @@ mod tests {
     }
 
     #[test]
-    fn test_unregistered_constructor_unbound_arg_errors() {
-        // The arg is now inferred, so an unbound variable surfaces as an error.
+    fn test_unknown_constructor_errors_before_args() {
+        // The constructor is rejected before its arguments are inferred.
         let err = check_typed("Foo undefinedVar");
-        assert!(matches!(err, Err(TypeError::UnboundVariable(_))));
+        assert_eq!(err, Err(TypeError::UnknownConstructor("Foo".to_string())));
     }
 
     #[test]
     fn test_constructor_args_do_not_share_app_result_vars() {
         // `f 1` and `g true` are independent applications inside constructor
         // arguments; their result types must be distinct type variables.
-        let ty = check("fun f -> fun g -> Foo (f 1) (g true)").unwrap();
+        let program = crate::parser::parse_program(
+            "data Pair a b = Foo a b ; fun f -> fun g -> Foo (f 1) (g true)",
+        )
+        .unwrap();
+        let ty = typecheck_program(&program).unwrap();
         let Type::Fun(f_ty, rest) = &ty else {
             panic!("expected Fun")
         };

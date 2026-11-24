@@ -4,7 +4,8 @@
 //! built *through* the inference helpers and then resolved per root under the
 //! final substitution, so every `ty` is fully substituted. Some nodes are
 //! always type-variable-free leaves by construction: `Load` bodies are never
-//! inspected by inference, and unregistered constructors yield a fresh var.
+//! inspected by inference. Constructors without a `data` declaration are
+//! rejected with `UnknownConstructor`, so they never reach this tree.
 
 use crate::ast::{Expr, Literal, Pattern, TypeAnnotation, TypeExpr};
 use crate::types::{Type, TypeScheme};

@@ -1,3 +1,6 @@
+data List a = Nil | Cons a (List a) ;
+data Option a = Some a | None ;
+
 let strlen = rec len -> fun s ->
   match s with
   | Nil -> 0
