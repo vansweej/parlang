@@ -823,6 +823,86 @@ mod tests {
         ));
     }
 
+    /// A polymorphic `id` used at two types builds a `(,)` tuple via `TyApp`.
+    #[test]
+    fn polymorphic_let_tuple() {
+        let src = "let id = fun x -> x in (id 1, id true)";
+        assert_eq!(
+            run_src(src),
+            parlang_core::Value::Con(
+                "(,)".to_string(),
+                vec![parlang_core::Value::Int(1), parlang_core::Value::Bool(true)]
+            )
+        );
+        let text = elab_src(src).expect("elaborate").term.to_text();
+        assert!(text.contains("@Int"), "{text}");
+        assert!(text.contains("/\\"), "{text}");
+    }
+
+    /// Tuple projection `(10, 20, 30).1` selects the middle component.
+    #[test]
+    fn tuple_projection() {
+        assert_eq!(run_src("(10, 20, 30).1"), parlang_core::Value::Int(20));
+    }
+
+    /// A `let`-bound record literal supports field access.
+    #[test]
+    fn record_construction_and_access() {
+        assert_eq!(
+            run_src("let r = {name: 1, age: 2} in r.age"),
+            parlang_core::Value::Int(2)
+        );
+    }
+
+    /// A record value is a `{age,name}` constructor with fields in sorted order.
+    #[test]
+    fn record_value_sorted_fields() {
+        assert_eq!(
+            run_src("{name: 1, age: 2}"),
+            parlang_core::Value::Con(
+                "{age,name}".to_string(),
+                vec![parlang_core::Value::Int(2), parlang_core::Value::Int(1)]
+            )
+        );
+    }
+
+    /// A user data constructor elaborates with its type argument.
+    #[test]
+    fn data_constructor_with_type_args() {
+        assert_eq!(
+            run_src("data Option a = Some a | None;\nSome 5"),
+            parlang_core::Value::Con("Some".to_string(), vec![parlang_core::Value::Int(5)])
+        );
+    }
+
+    /// A nullary constructor's residual type argument defaults to `Unit` and lints.
+    #[test]
+    fn nullary_constructor_defaults_type_arg() {
+        assert_eq!(
+            run_src("data Option a = Some a | None;\nNone"),
+            parlang_core::Value::Con("None".to_string(), vec![])
+        );
+    }
+
+    /// A string literal elaborates to a `List Char` built from `Cons`/`Nil`.
+    #[test]
+    fn string_literal_is_char_list() {
+        use parlang_core::Value as V;
+        let nil = V::Con("Nil".to_string(), vec![]);
+        let b = V::Con("Cons".to_string(), vec![V::Char('b'), nil]);
+        let ab = V::Con("Cons".to_string(), vec![V::Char('a'), b]);
+        assert_eq!(run_src("data List a = Nil | Cons a (List a);\n\"ab\""), ab);
+    }
+
+    /// Equality on a non-base type (a tuple) is rejected by elaboration.
+    #[test]
+    fn equality_on_non_base_is_unsupported() {
+        assert!(matches!(
+            elab_src("(1, 2) == (1, 2)"),
+            Err(ElabError::Unsupported { .. })
+        ));
+    }
+
     /// A `match` is rejected with `ElabError::Unsupported` until slice 7e.
     #[test]
     fn match_is_pending_until_slice_7e() {
