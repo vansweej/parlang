@@ -1,7 +1,8 @@
 use parlang::{
     eval_program, parse_program, run_on_evaluator_stack, typecheck_program,
-    typecheck_program_typed, BinOp, Environment, Type, TypedDecl, TypedExpr, TypedExprKind,
+    typecheck_program_typed, BinOp, Environment, Type, TypedDecl, TypedExpr, TypedExprKind, Value,
 };
+use parlang_core::Value as CoreValue;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
@@ -297,6 +298,161 @@ fn every_example_typechecks_and_runs() {
     assert!(
         failures.is_empty(),
         "examples failed to typecheck/run:\n{}",
+        failures.join("\n")
+    );
+}
+
+/// Examples that Core elaboration rejects on purpose, paired with a substring
+/// the elaboration error must contain. Every other example must elaborate,
+/// run on Core, and agree with the surface evaluator.
+const EXPECTED_CORE_REJECTIONS: &[(&str, &str)] = &[
+    ("examples/stdlib/map.par", "equality"),
+    ("examples/string.par", "equality"),
+    ("examples/use_recursion.par", "load"),
+    ("examples/use_stdlib.par", "load"),
+    ("examples/use_strings.par", "load"),
+];
+
+/// The Core data-type and constructor name of a tuple with `arity` elements:
+/// an opening parenthesis, `arity - 1` commas, and a closing parenthesis.
+fn tuple_con_name(arity: usize) -> String {
+    format!("({})", ",".repeat(arity.saturating_sub(1)))
+}
+
+/// The Core data-type and constructor name of a closed record whose field
+/// names are given in `sorted_keys` (already sorted).
+fn record_con_name(sorted_keys: &[&str]) -> String {
+    format!("{{{}}}", sorted_keys.join(","))
+}
+
+/// Pairwise structural agreement of two value sequences of equal length.
+fn all_agree(surface: &[&Value], core: &[CoreValue]) -> bool {
+    surface.len() == core.len()
+        && surface
+            .iter()
+            .zip(core)
+            .all(|(left, right)| values_agree(left, right))
+}
+
+/// Structural agreement between a surface `Value` and a Core `CoreValue`
+/// under the slice-7 encodings: the empty tuple is Core `Unit`, tuples are
+/// constructors named by `tuple_con_name`, closed records are constructors
+/// named by `record_con_name` with fields in sorted-name order, and user
+/// constructors keep their names. Closures agree with closures without being
+/// inspected.
+fn values_agree(surface: &Value, core: &CoreValue) -> bool {
+    match (surface, core) {
+        (Value::Int(left), CoreValue::Int(right)) => left == right,
+        (Value::Bool(left), CoreValue::Bool(right)) => left == right,
+        (Value::Char(left), CoreValue::Char(right)) => left == right,
+        (Value::Float(left), CoreValue::Float(right)) => {
+            left.total_cmp(right).is_eq() || (left.is_nan() && right.is_nan())
+        }
+        (Value::Tuple(items), CoreValue::Unit) => items.is_empty(),
+        (Value::Tuple(items), CoreValue::Con(name, fields)) => {
+            let refs: Vec<&Value> = items.iter().collect();
+            items.len() >= 2 && *name == tuple_con_name(items.len()) && all_agree(&refs, fields)
+        }
+        (Value::Record(map), CoreValue::Con(name, fields)) => {
+            let mut keys: Vec<&str> = map.keys().map(String::as_str).collect();
+            keys.sort_unstable();
+            let refs: Vec<&Value> = keys.iter().map(|key| &map[*key]).collect();
+            *name == record_con_name(&keys) && all_agree(&refs, fields)
+        }
+        (Value::Variant(tag, items), CoreValue::Con(name, fields)) => {
+            let refs: Vec<&Value> = items.iter().collect();
+            tag == name && all_agree(&refs, fields)
+        }
+        (
+            Value::Closure(..) | Value::RecClosure(..),
+            CoreValue::Closure(_) | CoreValue::RecClosure(_),
+        ) => true,
+        _ => false,
+    }
+}
+
+/// How one example fared on the surface evaluator versus Core. Carries only
+/// `String` payloads so it can cross the evaluator-stack thread boundary.
+enum CoreOutcome {
+    /// Elaborated, ran on Core, and agreed with the surface value.
+    Agrees,
+    /// Elaborated and ran on Core, but the values disagree.
+    Disagrees(String),
+    /// Elaboration rejected the program with this error.
+    Rejected(String),
+}
+
+/// Parse, typecheck and evaluate `source` on the surface, then elaborate it
+/// to Core and evaluate the Core term in the Core prelude environment. Both
+/// values are compared and dropped inside the worker; only a `CoreOutcome`
+/// or a `String` error is returned.
+fn core_outcome(source: String) -> Result<CoreOutcome, String> {
+    run_on_evaluator_stack(move || -> Result<CoreOutcome, String> {
+        let program = parse_program(&source)?;
+        typecheck_program(&program).map_err(|error| error.to_string())?;
+        let surface =
+            eval_program(&program, &Environment::new()).map_err(|error| error.to_string())?;
+        let elaborated = match parlang::pipeline::core_of_program(&program) {
+            Ok(elaborated) => elaborated,
+            Err(error) => return Ok(CoreOutcome::Rejected(error)),
+        };
+        let env = parlang_core::prelude().map_err(|error| error.to_string())?;
+        let core = parlang_core::eval(&elaborated.term, &env)
+            .map_err(|error| format!("Core evaluation failed: {error:?}"))?;
+        if values_agree(&surface, &core) {
+            Ok(CoreOutcome::Agrees)
+        } else {
+            Ok(CoreOutcome::Disagrees(format!(
+                "surface {surface:?} vs Core {core:?}"
+            )))
+        }
+    })
+    .map_err(|error| error.to_string())?
+}
+
+/// Classify one example's outcome against `EXPECTED_CORE_REJECTIONS`,
+/// returning a failure description when it violates the oracle.
+fn core_failure(rel: &str, outcome: Result<CoreOutcome, String>) -> Option<String> {
+    let expected = EXPECTED_CORE_REJECTIONS
+        .iter()
+        .find(|(path, _)| *path == rel)
+        .map(|(_, needle)| *needle);
+    match (outcome, expected) {
+        (Err(error), _) => Some(format!("{rel}: {error}")),
+        (Ok(CoreOutcome::Agrees), None) => None,
+        (Ok(CoreOutcome::Agrees), Some(_)) => Some(format!(
+            "{rel}: listed in EXPECTED_CORE_REJECTIONS but elaborated and agreed (stale entry)"
+        )),
+        (Ok(CoreOutcome::Disagrees(detail)), _) => {
+            Some(format!("{rel}: surface and Core disagree: {detail}"))
+        }
+        (Ok(CoreOutcome::Rejected(error)), None) => {
+            Some(format!("{rel}: unexpected elaboration error: {error}"))
+        }
+        (Ok(CoreOutcome::Rejected(error)), Some(needle)) => (!error.contains(needle))
+            .then(|| format!("{rel}: elaboration error lacks {needle:?}: {error}")),
+    }
+}
+
+#[test]
+fn every_example_agrees_on_core() {
+    let rels = example_rels();
+
+    let mut failures: Vec<String> = EXPECTED_CORE_REJECTIONS
+        .iter()
+        .filter(|(path, _)| !rels.iter().any(|rel| rel.as_str() == *path))
+        .map(|(path, _)| format!("{path}: listed in EXPECTED_CORE_REJECTIONS but not found"))
+        .collect();
+    for rel in &rels {
+        let outcome = example_source(rel).and_then(core_outcome);
+        if let Some(failure) = core_failure(rel, outcome) {
+            failures.push(failure);
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "surface/Core differential failures:\n{}",
         failures.join("\n")
     );
 }
