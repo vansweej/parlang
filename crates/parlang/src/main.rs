@@ -3,7 +3,8 @@
 /// This executable provides:
 /// - REPL mode for interactive evaluation
 /// - File execution mode for running .par files
-/// - AST dumping to stdout as text IR (--dump) or DOT (--dump-dot), parsed or typed (--stage)
+/// - AST dumping to stdout as text IR (--dump) or DOT (--dump-dot), parsed, typed, core or lint (--stage)
+/// - Core evaluation (--core) and Core machine tracing (trace subcommand)
 use clap::{Parser, Subcommand};
 use parlang::{
     eval_program, eval_program_with_env, parse_program, program_to_dot, run_on_evaluator_stack,
@@ -34,9 +35,13 @@ struct Cli {
     #[arg(long, requires = "file")]
     dump_dot: bool,
 
-    /// Pipeline stage to dump: `parsed` (default) or `typed` (requires --dump or --dump-dot).
+    /// Pipeline stage to dump: `parsed` (default), `typed`, `core` or `lint` (requires --dump or --dump-dot).
     #[arg(long, value_enum, requires = "dump_mode")]
     stage: Option<Stage>,
+
+    /// Evaluate the program on the Core CEK machine instead of the surface evaluator.
+    #[arg(long, conflicts_with = "dump_mode", requires = "file")]
+    core: bool,
 }
 
 struct ReplResponse {
@@ -51,6 +56,10 @@ enum Stage {
     Parsed,
     /// The type-annotated AST after Hindley-Milner inference.
     Typed,
+    /// The elaborated Core term (elaboration only, no Core lint).
+    Core,
+    /// The elaborated Core term checked by Core lint.
+    Lint,
 }
 
 /// Dump `program` at the chosen `stage`, as DOT when `dot` is set.
@@ -75,6 +84,8 @@ fn run_dump(program: &parlang::Program, stage: Stage, dot: bool) -> Result<(), S
                 print!("{}", parlang::typed_program_to_text(&typed));
             }
         }
+        Stage::Core => print!("{}", parlang::pipeline::dump_core(program, dot)?),
+        Stage::Lint => print!("{}", parlang::pipeline::dump_lint(program, dot)?),
     }
     Ok(())
 }
@@ -83,10 +94,41 @@ fn run_dump(program: &parlang::Program, stage: Stage, dot: bool) -> Result<(), S
 enum Commands {
     /// Start interactive REPL
     Repl,
+    /// Trace a program's evaluation on the Core CEK machine.
+    Trace {
+        /// Input file to trace (.par file)
+        file: String,
+        /// Maximum number of machine steps before giving up.
+        #[arg(long, default_value_t = 10_000)]
+        fuel: usize,
+        /// Print every raw machine step instead of the reduction view.
+        #[arg(long)]
+        raw: bool,
+    },
+}
+
+/// Trace `file` on the Core machine: print the trace, or print the error and exit 1.
+fn run_trace(file: &str, fuel: usize, raw: bool) {
+    let outcome = fs::read_to_string(file)
+        .map_err(|e| format!("Failed to read file '{file}': {e}"))
+        .and_then(|contents| parse_program(&contents).map_err(|e| format!("Parse error: {e}")))
+        .and_then(|program| parlang::pipeline::trace_core(&program, fuel, raw));
+    match outcome {
+        Ok(text) => print!("{text}"),
+        Err(e) => {
+            eprintln!("{e}");
+            process::exit(1);
+        }
+    }
 }
 
 fn main() {
     let cli = Cli::parse();
+
+    if let Some(Commands::Trace { file, fuel, raw }) = &cli.command {
+        run_trace(file, *fuel, *raw);
+        return;
+    }
 
     // Handle REPL command or no arguments
     if cli.command.is_some() || cli.file.is_none() {
@@ -116,6 +158,17 @@ fn main() {
                             if let Err(e) = run_dump(&program, stage, cli.dump_dot) {
                                 eprintln!("{e}");
                                 process::exit(1);
+                            }
+                            return;
+                        }
+
+                        if cli.core {
+                            match parlang::pipeline::run_core(&program) {
+                                Ok(rendered) => print!("{rendered}"),
+                                Err(e) => {
+                                    eprintln!("{e}");
+                                    process::exit(1);
+                                }
                             }
                             return;
                         }

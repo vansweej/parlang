@@ -305,3 +305,149 @@ x + y + z
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert_eq!(stdout.trim(), "60");
 }
+
+#[test]
+fn test_cli_core_arithmetic() {
+    let test_file = env::temp_dir().join("test_core_arith.par");
+    fs::write(&test_file, "1 + 2 * 3").unwrap();
+
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--core",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    let _ = fs::remove_file(&test_file);
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "7");
+}
+
+#[test]
+fn test_cli_core_tuple() {
+    let test_file = env::temp_dir().join("test_core_tuple.par");
+    fs::write(&test_file, "let id = fun x -> x in (id 1, id true)").unwrap();
+
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--core",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    let _ = fs::remove_file(&test_file);
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "(1, true)");
+}
+
+#[test]
+fn test_cli_dump_stage_lint() {
+    let test_file = env::temp_dir().join("test_dump_stage_lint.par");
+    fs::write(&test_file, "1 + 2").unwrap();
+
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--dump",
+            "--stage",
+            "lint",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    let _ = fs::remove_file(&test_file);
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.trim(), "lint ok: Int");
+}
+
+#[test]
+fn test_cli_core_conflicts_with_dump() {
+    let test_file = env::temp_dir().join("test_core_conflicts_with_dump.par");
+    fs::write(&test_file, "1 + 2").unwrap();
+
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            test_file.to_str().unwrap(),
+            "--core",
+            "--dump",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    let _ = fs::remove_file(&test_file);
+
+    assert!(!output.status.success());
+}
+
+#[test]
+fn test_cli_trace() {
+    let test_file = env::temp_dir().join("test_cli_trace.par");
+    fs::write(&test_file, "1 + 2 * 3").unwrap();
+
+    let output = Command::new("cargo")
+        .args(["run", "--quiet", "--", "trace", test_file.to_str().unwrap()])
+        .output()
+        .expect("Failed to execute command");
+
+    let _ = fs::remove_file(&test_file);
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+    assert!(lines[0].starts_with("0: "), "lines were: {lines:?}");
+    assert!(
+        lines.iter().any(|l| l.starts_with("1: ")),
+        "lines were: {lines:?}"
+    );
+    let last = *lines.last().expect("non-empty trace");
+    assert_eq!(last, "result: 7");
+    assert!(
+        lines[..lines.len() - 1].iter().any(|l| l.contains('7')),
+        "lines were: {lines:?}"
+    );
+}
+
+#[test]
+fn test_cli_trace_step_limit() {
+    let test_file = env::temp_dir().join("test_cli_trace_step_limit.par");
+    fs::write(&test_file, "1 + 2 * 3").unwrap();
+
+    let output = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            "trace",
+            test_file.to_str().unwrap(),
+            "--fuel",
+            "1",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    let _ = fs::remove_file(&test_file);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("step limit"), "stderr was: {stderr}");
+}
