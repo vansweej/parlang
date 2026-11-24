@@ -24,6 +24,10 @@ Welcome to the comprehensive documentation for ParLang, a small ML-alike functio
 - [Parser Module](MODULE_PARSER.md) - Parser implementation using combinators
 - [Evaluator Module](MODULE_EVAL.md) - Expression evaluation and runtime
 - [Main Module](MODULE_MAIN.md) - CLI and REPL interface
+- [Elaboration Module](MODULE_ELABORATE.md) - Surface-to-Core elaboration from the typed AST
+
+### Architecture Decision Records
+- [ADR 0009: Surface to Core Elaboration](adr/0009-surface-to-core-elaboration.md) - Typed AST to explicitly typed Core, tuple and closed-record encodings, hard rejections, differential oracle
 
 ## 📖 Documentation Overview
 

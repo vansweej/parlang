@@ -18,6 +18,18 @@ ParLang is a functional programming language interpreter that follows a traditio
 Source Code → Parser → AST → Evaluator → Result
 ```
 
+Since roadmap slice 7 a program can also take a second, explicitly typed
+route through the Core IR:
+
+    parse -> typecheck (typed AST) -> surface evaluator   (default)
+    parse -> typecheck (typed AST) -> elaborate -> Core Lint -> CEK machine
+
+The surface evaluator remains the default. `--core`, `--stage core`,
+`--stage lint` and `trace` select the Core route. A differential oracle
+(`every_example_agrees_on_core`) keeps both routes in agreement on every
+example. See `docs/adr/0009-surface-to-core-elaboration.md` and
+`docs/MODULE_ELABORATE.md`.
+
 The interpreter consists of four main components:
 
 1. **AST Module** (`crates/parlang/src/ast.rs`): Defines the Abstract Syntax Tree structure

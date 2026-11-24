@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted
+Accepted; superseded in part by `docs/adr/0009-surface-to-core-elaboration.md`.
+Slice 7 encodes tuples as `(,)`-named Core data types and closed records as
+`{a,b}`-named single-constructor Core data types, replacing the bullet below
+that rejects tuples and records ("records need a Core row type").
 
 Builds on `docs/adr/0003-core-case-eliminator.md` (which records Finding F1:
 Core `Lam` binders can only carry a `BaseType`). Slice 6b adds the Core type

@@ -24,6 +24,7 @@ ParLang is a simple functional programming language with:
 - **Function Application**: Call functions with arguments
 - **Currying**: Functions naturally support partial application
 - **Library/Module System**: Load and reuse functions from library files
+- **Core Pipeline**: Programs elaborate from the typed AST to an explicitly typed Core IR, are checked by Core Lint, and run on a CEK machine (`--core`, `--dump --stage core|lint`, `trace`); a differential test keeps Core and the surface evaluator in agreement
 
 ## Syntax
 
@@ -781,6 +782,8 @@ See the `examples/` directory for sample programs:
 - `generic_types.par` - Matching on a parameterized option type
 - `stdlib/map.par` - Association-list map operations and demonstration
 - `stdlib/treemap.par` - Binary-search-tree map operations and demonstration
+- `records.par` - Closed records: construction, field access, record patterns, a string field, and a record inside a constructor
+- `mvp.par` - MVP acceptance program: a polymorphic tree ADT, recursive pattern matching, and a string (runs on surface and Core)
 
 ## Documentation
 
