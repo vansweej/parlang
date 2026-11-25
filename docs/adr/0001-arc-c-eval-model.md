@@ -86,6 +86,8 @@ the VM's `Con` dispatch in `eval.rs` and do not appear as bindings in any
 non-error `false` rather than raising `NotComparable`) is unchanged by this
 addition.
 
+> Superseded (slice 6e; ADR 0007, follow-up #1): `eq` on mismatched base operands now yields `TypeMismatch` (and Core Lint rejects it with `EqTypeMismatch`); it no longer returns `false`.
+
 Superseded in part by ADR 0004 (`0004-core-char-and-strings.md`): the
 primitive-string helpers were retired; Core strings are `List Char`.
 
