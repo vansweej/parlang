@@ -388,3 +388,140 @@ fn evaluate_repl_input(input: &str, env: &mut Environment, type_env: &mut TypeEn
 
     ReplResponse { type_line, outcome }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{run, Cli, ReplState};
+    use clap::Parser;
+    use std::path::PathBuf;
+
+    /// Writes `src` to a pid-unique temp file tagged `name` and returns its path.
+    fn temp_program(name: &str, src: &str) -> PathBuf {
+        let file = format!("parlang_main_{}_{name}.par", std::process::id());
+        let path = std::env::temp_dir().join(file);
+        std::fs::write(&path, src).expect("write temp program");
+        path
+    }
+
+    /// Parses `args` (without the binary name) as `Cli` and calls `run`.
+    fn run_args(args: &[&str]) -> Result<String, String> {
+        let full_args = std::iter::once("parlang").chain(args.iter().copied());
+        let cli = Cli::try_parse_from(full_args).expect("valid arguments");
+        run(&cli)
+    }
+
+    /// Runs `src` from a temp file with extra `flags`, then removes the file.
+    fn run_src(name: &str, src: &str, flags: &[&str]) -> Result<String, String> {
+        let path = temp_program(name, src);
+        let path_text = path.to_string_lossy().into_owned();
+        let mut args = vec![path_text.as_str()];
+        args.extend_from_slice(flags);
+        let result = run_args(&args);
+        let _ = std::fs::remove_file(&path);
+        result
+    }
+
+    #[test]
+    fn run_example_file_prints_value() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/simple.par");
+        assert_eq!(run_args(&[path]), Ok("20\n".to_string()));
+    }
+
+    #[test]
+    fn dump_stage_typed_mentions_int() {
+        let out = run_src("typed", "1 + 2", &["--dump", "--stage", "typed"]);
+        let text = out.expect("typed dump succeeds");
+        assert!(text.contains("Int"), "{text}");
+    }
+
+    #[test]
+    fn dump_stage_core_is_not_empty() {
+        let out = run_src("core_dump", "1 + 2", &["--dump", "--stage", "core"]);
+        let text = out.expect("core dump succeeds");
+        assert!(!text.trim().is_empty());
+    }
+
+    #[test]
+    fn dump_stage_lint_reports_type() {
+        let out = run_src("lint", "1 + 2", &["--dump", "--stage", "lint"]);
+        assert_eq!(out, Ok("lint ok: Int\n".to_string()));
+    }
+
+    #[test]
+    fn core_flag_evaluates_on_core() {
+        let out = run_src("core_eval", "1 + 2 * 3", &["--core"]);
+        assert_eq!(out, Ok("7\n".to_string()));
+    }
+
+    #[test]
+    fn trace_subcommand_lists_steps() {
+        let path = temp_program("trace", "1 + 2 * 3");
+        let path_text = path.to_string_lossy().into_owned();
+        let out = run_args(&["trace", path_text.as_str()]);
+        let _ = std::fs::remove_file(&path);
+        let text = out.expect("trace succeeds");
+        let first = text.lines().find(|l| !l.trim().is_empty());
+        assert!(first.is_some_and(|l| l.starts_with("0: ")), "{text}");
+        assert!(text.contains("result: 7"), "{text}");
+    }
+
+    #[test]
+    fn parse_error_is_reported() {
+        let out = run_src("parse_err", "let x = in y", &[]);
+        assert!(
+            matches!(&out, Err(e) if e.starts_with("Parse error")),
+            "{out:?}"
+        );
+    }
+
+    #[test]
+    fn type_error_is_reported() {
+        let out = run_src("type_err", "1 + true", &[]);
+        assert!(
+            matches!(&out, Err(e) if e.starts_with("type error")),
+            "{out:?}"
+        );
+    }
+
+    #[test]
+    fn eval_error_is_reported() {
+        let out = run_src("eval_err", "1 / 0", &[]);
+        assert!(matches!(&out, Err(e) if e.starts_with("Error")), "{out:?}");
+    }
+
+    #[test]
+    fn missing_file_is_reported() {
+        let out = run_args(&["/nonexistent/parlang_missing_file.par"]);
+        assert!(
+            matches!(&out, Err(e) if e.starts_with("Failed to read file")),
+            "{out:?}"
+        );
+    }
+
+    #[test]
+    fn repl_declaration_persists_across_inputs() {
+        let mut state = ReplState::new();
+        let first = state.eval_input("let x = 41;");
+        assert_eq!(first.outcome, Ok("Declarations added.".to_string()));
+        let second = state.eval_input("x + 1");
+        assert_eq!(second.type_line.as_deref(), Some("Type: Int"));
+        assert_eq!(second.outcome, Ok("42".to_string()));
+    }
+
+    #[test]
+    fn repl_failed_input_does_not_commit() {
+        let mut state = ReplState::new();
+        let failed = state.eval_input("let y = true + 1;");
+        let bad = &failed.outcome;
+        assert!(
+            matches!(bad, Err(e) if e.starts_with("Type error")),
+            "{bad:?}"
+        );
+        let later = state.eval_input("y");
+        let unbound = &later.outcome;
+        assert!(
+            matches!(unbound, Err(e) if e.starts_with("Type error")),
+            "{unbound:?}"
+        );
+    }
+}
