@@ -52,6 +52,7 @@ pub enum TypeError {
     RecordExpected(String),
     RecordFieldMismatch,
     ConstructorArityMismatch(String, usize, usize),
+    TypeConstructorArityMismatch(String, usize, usize),
     TypeAliasCycle(Vec<String>),
     DuplicateTypeName(String),
     DuplicateConstructor(String),

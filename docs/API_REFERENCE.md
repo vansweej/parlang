@@ -217,6 +217,7 @@ pub enum Expr {
     FieldAccess(Box<Expr>, String),
 
     /// Data type definition: data Name a b = Constructor1 T1 T2 | Constructor2 T3 | ...
+    /// Payload fields are atomic types; parenthesise applications, e.g. `Cons a (List a)`.
     /// Introduces a new algebraic data type with constructors
     TypeDef {
         /// Type name (e.g., "Option", "Either", "List")
