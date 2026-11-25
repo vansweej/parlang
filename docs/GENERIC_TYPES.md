@@ -272,7 +272,6 @@ Each constructor stores:
 
 ### Planned Enhancements
 
-- **Applied-type annotations**: Allow type annotations using applied type constructors (e.g. `Option Int`)
 - **Improved error messages**: Better diagnostics for type mismatches with generic types
 - **Standard library**: Built-in generic types and functions
 
