@@ -294,10 +294,20 @@ fn fmt_type_def(
         }
         write!(f, " {ctor}")?;
         for ty in types {
-            write!(f, " {ty}")?;
+            fmt_payload_field(f, ty)?;
         }
     }
     write!(f, " in {body})")
+}
+
+/// Write one constructor payload field preceded by a space. Applied types are
+/// parenthesised so the output re-parses as a single atomic field; function
+/// types already print their own parentheses.
+fn fmt_payload_field(f: &mut fmt::Formatter, ty: &TypeAnnotation) -> fmt::Result {
+    match ty {
+        TypeAnnotation::App(..) => write!(f, " ({ty})"),
+        _ => write!(f, " {ty}"),
+    }
 }
 
 /// Format a record literal (extracted from the `Expr` Display impl to keep
@@ -428,7 +438,7 @@ impl fmt::Display for Program {
                         }
                         write!(f, " {ctor}")?;
                         for ty in types {
-                            write!(f, " {ty}")?;
+                            fmt_payload_field(f, ty)?;
                         }
                     }
                 }

@@ -597,6 +597,18 @@ parser! {
                 }).skip(spaces()),
                 many1(type_annotation_atom().skip(spaces()))
             ).map(|(name, args)| TypeAnnotation::App(name, args))),
+            type_field_atom(),
+        ))
+    }
+}
+
+// Parse a constructor payload field: a type variable, a bare type name, or a
+// parenthesised type. Applications must be parenthesised: Cons a (List a)
+parser! {
+    fn type_field_atom[Input]()(Input) -> TypeAnnotation
+    where [Input: Stream<Token = char>]
+    {
+        choice((
             // Parenthesized type annotation
             attempt(between(
                 token('(').skip(spaces()),
@@ -647,8 +659,8 @@ parser! {
                 ).map(|(first, rest)| format!("{first}{rest}"))
                  .skip(combine::not_followed_by(alpha_num().or(token('_'))))
                  .skip(spaces()),
-                // Constructor argument types
-                many(attempt(type_annotation_atom().skip(spaces())))
+                // Constructor argument types (atomic; applications need parens)
+                many(attempt(type_field_atom().skip(spaces())))
             ),
             // Additional constructors (each starting with |)
             many(attempt((
@@ -659,7 +671,7 @@ parser! {
                 ).map(|(first, rest)| format!("{first}{rest}"))
                  .skip(combine::not_followed_by(alpha_num().or(token('_'))))
                  .skip(spaces()),
-                many(attempt(type_annotation_atom().skip(spaces())))
+                many(attempt(type_field_atom().skip(spaces())))
             ))),
         )
             .map(|tuple: (_, String, Vec<String>, _, CtorSignature, Vec<AdditionalCtor>)| {
@@ -2141,6 +2153,59 @@ mod tests {
                 _ => panic!("Expected Constructor"),
             }
         }
+    }
+
+    #[test]
+    fn test_data_payload_fields_are_atomic() {
+        let expr = parse("data P = P Int Int in 0").unwrap();
+        let Expr::TypeDef { constructors, .. } = &expr else {
+            panic!("expected TypeDef, got {expr:?}");
+        };
+        let expected = vec![(
+            "P".to_string(),
+            vec![
+                TypeAnnotation::Concrete("Int".to_string()),
+                TypeAnnotation::Concrete("Int".to_string()),
+            ],
+        )];
+        assert_eq!(constructors, &expected);
+
+        let expr = parse("data Str = SNil | SCons Char Str in 0").unwrap();
+        let Expr::TypeDef { constructors, .. } = &expr else {
+            panic!("expected TypeDef, got {expr:?}");
+        };
+        assert_eq!(constructors[1].0, "SCons");
+        assert_eq!(constructors[1].1.len(), 2);
+    }
+
+    #[test]
+    fn test_data_payload_application_needs_parens() {
+        let expr = parse("data List a = Nil | Cons a (List a) in 0").unwrap();
+        let Expr::TypeDef { constructors, .. } = &expr else {
+            panic!("expected TypeDef, got {expr:?}");
+        };
+        let expected_fields = vec![
+            TypeAnnotation::Var("a".to_string()),
+            TypeAnnotation::App(
+                "List".to_string(),
+                vec![TypeAnnotation::Var("a".to_string())],
+            ),
+        ];
+        assert_eq!(constructors[1].1, expected_fields);
+    }
+
+    #[test]
+    fn test_data_payload_display_round_trips() {
+        let parsed = parse("data List a = Nil | Cons a (List a) in 0").unwrap();
+        let printed = format!("{parsed}");
+        assert_eq!(printed, "(data List a = Nil | Cons a (List a) in 0)");
+        assert_eq!(parse(&printed).unwrap(), parsed);
+
+        let program = parse_program("data Tree a = Leaf | Node (Tree a) a (Tree a) ;\n0").unwrap();
+        assert_eq!(
+            format!("{program}"),
+            "(data Tree a = Leaf | Node (Tree a) a (Tree a); 0)"
+        );
     }
 
     #[test]
