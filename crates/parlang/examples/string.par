@@ -72,7 +72,7 @@ let strfilter = rec filt -> fun pred -> fun s ->
       else filt pred rest
 in
 
-let strcmp = rec cmp -> fun s1 -> fun s2 ->
+let strcmp = rec cmp -> fun (s1 : List Char) -> fun (s2 : List Char) ->
   match (s1, s2) with
   | (Nil, Nil) -> 0
   | (Nil, _) -> -1
