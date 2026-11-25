@@ -368,3 +368,86 @@ fn test_result_type() {
     assert!(result.is_ok(), "Eval failed: {:?}", result.err());
     assert_eq!(format!("{}", result.unwrap()), "100");
 }
+
+/// `P Int Int` declares two atomic fields, not one applied type
+#[test]
+fn test_payload_two_int_fields() {
+    let input = "data P = P Int Int in match P 1 2 with | P a b -> a + b";
+    let expr = parse(input).expect("Parse failed");
+    assert_eq!(parlang::typecheck(&expr), Ok(parlang::Type::Int));
+    let result = eval(&expr, &Environment::new());
+    assert_eq!(format!("{}", result.expect("Eval failed")), "3");
+}
+
+/// `SCons Char Str` declares two fields
+#[test]
+fn test_payload_char_and_recursive_field() {
+    let input =
+        "data Str = SNil | SCons Char Str in match SNil with | SNil -> 0 | SCons c rest -> 1";
+    let expr = parse(input).expect("Parse failed");
+    let parlang::Expr::TypeDef { constructors, .. } = &expr else {
+        panic!("expected TypeDef, got {expr:?}");
+    };
+    assert_eq!(constructors[1].1.len(), 2);
+    assert_eq!(parlang::typecheck(&expr), Ok(parlang::Type::Int));
+}
+
+/// Parenthesised applications still work as payload fields
+#[test]
+fn test_payload_parenthesised_application() {
+    let input = "data List a = Nil | Cons a (List a) in Cons 1 (Cons 2 Nil)";
+    let expr = parse(input).expect("Parse failed");
+    assert_eq!(
+        parlang::typecheck(&expr),
+        Ok(parlang::Type::SumType(
+            "List".to_string(),
+            vec![parlang::Type::Int]
+        ))
+    );
+}
+
+/// Applying a base type in a payload is a type error at declaration time
+#[test]
+fn test_payload_applied_base_type_is_arity_error() {
+    let expr = parse("data Bad = Bad (Int Int) in 0").expect("Parse failed");
+    assert_eq!(
+        parlang::typecheck(&expr),
+        Err(parlang::TypeError::TypeConstructorArityMismatch(
+            "Int".to_string(),
+            0,
+            1
+        ))
+    );
+    let program = parlang::parse_program("data Bad = Bad (Bool Int) ;\n0").expect("Parse failed");
+    assert_eq!(
+        parlang::typecheck_program(&program),
+        Err(parlang::TypeError::TypeConstructorArityMismatch(
+            "Bool".to_string(),
+            0,
+            1
+        ))
+    );
+}
+
+/// Applying a data type to the wrong number of arguments is a type error
+#[test]
+fn test_payload_wrong_data_arity_is_error() {
+    let expr = parse("data T a = T (T a a) in 0").expect("Parse failed");
+    assert_eq!(
+        parlang::typecheck(&expr),
+        Err(parlang::TypeError::TypeConstructorArityMismatch(
+            "T".to_string(),
+            1,
+            2
+        ))
+    );
+    let expr = parse("data L a = N | C a (L) in 0").expect("Parse failed");
+    assert_eq!(
+        parlang::typecheck(&expr),
+        Err(parlang::TypeError::TypeConstructorArityMismatch(
+            "L".to_string(),
+            1,
+            0
+        ))
+    );
+}
