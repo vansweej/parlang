@@ -39,8 +39,8 @@ struct Cli {
     #[arg(long, value_enum, requires = "dump_mode")]
     stage: Option<Stage>,
 
-    /// Evaluate the program on the Core CEK machine instead of the surface evaluator.
-    #[arg(long, conflicts_with = "dump_mode", requires = "file")]
+    /// Evaluate on the Core CEK machine instead of the surface evaluator (file mode or REPL); redundant with the trace subcommand, which always runs on Core.
+    #[arg(long, conflicts_with = "dump_mode")]
     core: bool,
 }
 
@@ -54,6 +54,9 @@ struct ReplResponse {
 struct ReplState {
     env: Environment,
     type_env: TypeEnv,
+    /// Committed declarations when evaluating on Core (`--core`); `None`
+    /// selects the surface evaluator.
+    core_decls: Option<Vec<parlang::Decl>>,
 }
 
 impl ReplState {
@@ -62,13 +65,60 @@ impl ReplState {
         Self {
             env: Environment::new(),
             type_env: TypeEnv::new(),
+            core_decls: None,
         }
     }
 
-    /// Parses, type-checks and evaluates `input`, committing the new
-    /// environments only when every stage succeeds.
+    /// Creates an empty REPL state that evaluates inputs on the Core machine.
+    fn new_core() -> Self {
+        Self {
+            core_decls: Some(Vec::new()),
+            ..Self::new()
+        }
+    }
+
+    /// Evaluates `input` on the selected evaluator, committing state only
+    /// when every stage succeeds.
     fn eval_input(&mut self, input: &str) -> ReplResponse {
+        if let Some(decls) = self.core_decls.as_mut() {
+            return evaluate_core_repl_input(input, decls);
+        }
         evaluate_repl_input(input, &mut self.env, &mut self.type_env)
+    }
+}
+
+/// Evaluates `input` on the Core CEK machine against the committed Core
+/// declarations `decls`.
+///
+/// There is no incremental Core API, so the committed declarations plus the
+/// new input are elaborated, linted and run as one whole program; the input's
+/// declarations are appended to `decls` only when that succeeds.
+fn evaluate_core_repl_input(input: &str, decls: &mut Vec<parlang::Decl>) -> ReplResponse {
+    let program = match parse_program(input) {
+        Ok(program) => program,
+        Err(error) => {
+            return ReplResponse {
+                type_line: None,
+                outcome: Err(format!("Parse error: {error}")),
+            };
+        }
+    };
+    let has_body = program.body.is_some();
+    let candidate = parlang::Program {
+        decls: decls.iter().cloned().chain(program.decls).collect(),
+        body: program.body,
+    };
+    let outcome = if has_body {
+        parlang::pipeline::run_core(&candidate).map(|text| text.trim_end().to_string())
+    } else {
+        parlang::pipeline::core_of_program(&candidate).map(|_| "Declarations added.".to_string())
+    };
+    if outcome.is_ok() {
+        *decls = candidate.decls;
+    }
+    ReplResponse {
+        type_line: None,
+        outcome,
     }
 }
 
@@ -200,8 +250,11 @@ fn main() {
             env!("CARGO_PKG_VERSION")
         );
         println!("Type expressions to evaluate them. Press Ctrl+C to exit.");
+        if cli.core {
+            println!("Evaluating on the Core CEK machine (--core).");
+        }
         println!();
-        if !repl() {
+        if !repl(cli.core) {
             process::exit(1);
         }
         return;
@@ -216,11 +269,11 @@ fn main() {
     }
 }
 
-fn repl() -> bool {
+fn repl(core: bool) -> bool {
     let mut rl = DefaultEditor::new().expect("Failed to initialize line editor");
     let (input_sender, input_receiver) = mpsc::channel::<String>();
     let (response_sender, response_receiver) = mpsc::channel::<ReplResponse>();
-    let worker = match start_repl_worker(input_receiver, response_sender) {
+    let worker = match start_repl_worker(input_receiver, response_sender, core) {
         Ok(worker) => worker,
         Err(error) => {
             eprintln!("Error starting evaluator worker: {error}");
@@ -332,11 +385,16 @@ fn repl() -> bool {
 fn start_repl_worker(
     input_receiver: mpsc::Receiver<String>,
     response_sender: mpsc::Sender<ReplResponse>,
+    core: bool,
 ) -> std::io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .stack_size(EVALUATOR_STACK_SIZE)
         .spawn(move || {
-            let mut state = ReplState::new();
+            let mut state = if core {
+                ReplState::new_core()
+            } else {
+                ReplState::new()
+            };
 
             while let Ok(input) = input_receiver.recv() {
                 let response = state.eval_input(&input);
@@ -391,7 +449,7 @@ fn evaluate_repl_input(input: &str, env: &mut Environment, type_env: &mut TypeEn
 
 #[cfg(test)]
 mod tests {
-    use super::{run, Cli, ReplState};
+    use super::{run, wants_repl, Cli, ReplState};
     use clap::Parser;
     use std::path::PathBuf;
 
@@ -523,5 +581,76 @@ mod tests {
             matches!(unbound, Err(e) if e.starts_with("Type error")),
             "{unbound:?}"
         );
+    }
+
+    #[test]
+    fn core_flag_without_file_starts_repl() {
+        let cli = Cli::try_parse_from(["parlang", "--core"]).expect("valid arguments");
+        assert!(cli.core);
+        assert!(wants_repl(&cli));
+    }
+
+    #[test]
+    fn core_flag_still_conflicts_with_dump() {
+        let parsed = Cli::try_parse_from(["parlang", "f.par", "--core", "--dump"]);
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn core_flag_with_trace_is_accepted() {
+        let parsed = Cli::try_parse_from(["parlang", "--core", "trace", "f.par"]);
+        let cli = parsed.expect("--core with trace is accepted");
+        assert!(!wants_repl(&cli));
+    }
+
+    #[test]
+    fn core_repl_evaluates_arithmetic() {
+        let mut state = ReplState::new_core();
+        let response = state.eval_input("1 + 2");
+        assert_eq!(response.type_line, None);
+        assert_eq!(response.outcome, Ok("3".to_string()));
+    }
+
+    #[test]
+    fn core_repl_let_persists_across_inputs() {
+        let mut state = ReplState::new_core();
+        let first = state.eval_input("let x = 41;");
+        assert_eq!(first.outcome, Ok("Declarations added.".to_string()));
+        let second = state.eval_input("x + 1");
+        assert_eq!(second.outcome, Ok("42".to_string()));
+    }
+
+    #[test]
+    fn core_repl_data_then_match() {
+        let mut state = ReplState::new_core();
+        let first = state.eval_input("data Color = Red | Green;");
+        assert_eq!(first.outcome, Ok("Declarations added.".to_string()));
+        let second = state.eval_input("match Green with | Red -> 1 | Green -> 2");
+        assert_eq!(second.outcome, Ok("2".to_string()));
+    }
+
+    #[test]
+    fn core_repl_elaboration_error_does_not_commit() {
+        let mut state = ReplState::new_core();
+        let failed = state.eval_input("let t = (1, 2) == (1, 2);");
+        let bad = &failed.outcome;
+        assert!(
+            matches!(bad, Err(e) if e.starts_with("elaboration error")),
+            "{bad:?}"
+        );
+        let later = state.eval_input("t");
+        let unbound = &later.outcome;
+        assert!(
+            matches!(unbound, Err(e) if e.starts_with("type error")),
+            "{unbound:?}"
+        );
+    }
+
+    #[test]
+    fn surface_repl_unchanged_by_core_mode() {
+        let mut state = ReplState::new();
+        let response = state.eval_input("1 + 2");
+        assert_eq!(response.type_line.as_deref(), Some("Type: Int"));
+        assert_eq!(response.outcome, Ok("3".to_string()));
     }
 }
