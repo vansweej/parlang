@@ -336,3 +336,91 @@ fn test_display_round_trips_annotated_fun() {
         "(fun (f : (Int -> Int)) -> (f 1))",
     );
 }
+
+const LIST_DECL: &str = "data List a = Nil | Cons a (List a) in ";
+
+fn string_example_with_body(body: &str) -> String {
+    let src = include_str!("../examples/string.par");
+    let prefix = src
+        .trim_end()
+        .strip_suffix('0')
+        .expect("string.par ends with body 0");
+    format!("{prefix}{body}")
+}
+
+fn list_char() -> Type {
+    Type::SumType("List".to_string(), vec![Type::Char])
+}
+
+#[test]
+fn test_typecheck_applied_type_annotation_with_declared_list() {
+    let src = format!(
+        "{LIST_DECL}(fun (xs : List Int) -> match xs with | Nil -> 0 | Cons h t -> h) (Cons 1 Nil)"
+    );
+    let expr = parse_expr(&src).unwrap();
+    assert_eq!(typecheck(&expr), Ok(Type::Int));
+}
+
+#[test]
+fn test_nullary_data_annotation_resolves() {
+    let src =
+        "data Color = Red | Green in (fun (c : Color) -> match c with | Red -> 1 | Green -> 2) Red";
+    let expr = parse_expr(src).unwrap();
+    assert_eq!(typecheck(&expr), Ok(Type::Int));
+}
+
+#[test]
+fn test_applied_base_type_annotation_is_arity_error() {
+    let expr = parse_expr("fun (x : Int Int) -> x").unwrap();
+    assert_eq!(
+        typecheck(&expr),
+        Err(parlang::TypeError::TypeConstructorArityMismatch(
+            "Int".to_string(),
+            0,
+            1
+        ))
+    );
+}
+
+#[test]
+fn test_bare_parameterised_type_annotation_is_arity_error() {
+    let src = format!("{LIST_DECL}fun (x : List) -> x");
+    let expr = parse_expr(&src).unwrap();
+    assert_eq!(
+        typecheck(&expr),
+        Err(parlang::TypeError::TypeConstructorArityMismatch(
+            "List".to_string(),
+            1,
+            0
+        ))
+    );
+}
+
+#[test]
+fn test_unknown_applied_type_annotation_is_rejected() {
+    let expr = parse_expr("fun (x : Foo Int) -> x").unwrap();
+    assert!(matches!(
+        typecheck(&expr),
+        Err(parlang::TypeError::UnboundVariable(_))
+    ));
+}
+
+#[test]
+fn test_string_example_strcmp_is_list_char() {
+    let program = parse_program(&string_example_with_body("strcmp")).unwrap();
+    let expected = Type::Fun(
+        Box::new(list_char()),
+        Box::new(Type::Fun(Box::new(list_char()), Box::new(Type::Int))),
+    );
+    assert_eq!(parlang::typecheck_program(&program), Ok(expected));
+
+    let program = parse_program(&string_example_with_body("strcmp \"ab\" \"ac\"")).unwrap();
+    assert_eq!(parlang::typecheck_program(&program), Ok(Type::Int));
+}
+
+#[test]
+fn test_string_example_strcmp_rejects_int_lists() {
+    let body = "strcmp (Cons 1 Nil) (Cons 2 Nil)";
+    let program = parse_program(&string_example_with_body(body)).unwrap();
+    assert!(parlang::typecheck_program(&program).is_err());
+}
