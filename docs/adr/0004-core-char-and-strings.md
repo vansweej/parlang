@@ -50,6 +50,8 @@ character type at all.
   error for operands of different base types) is unchanged; revisiting it is a
   separate deferred follow-up.
 
+  > Superseded (slice 6e; ADR 0007, follow-up #1): `eq` on mismatched base operands now yields `TypeMismatch` (and Core Lint rejects it with `EqTypeMismatch`); it no longer returns `false`.
+
 ## References
 
 - `docs/adr/0002-arc-c4-list-encoding.md` — the frozen `Cons`/`Nil` list
