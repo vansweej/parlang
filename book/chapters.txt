@@ -1,0 +1,44 @@
+# Chapter map for the ParLang book, read in order by book/build.sh.
+# Fields are separated by '|'; all paths are repository-root relative.
+# Entry kinds:
+#   part|<title>|<intro .md>   start a part (PDF: \part; EPUB: "Part: <title>" chapter)
+#   doc|<docs .md file>        GitHub Markdown, converted to one chapter
+#   md|<book .md file>         pandoc Markdown hand-written chapter
+#   appendix                   switch to appendix numbering (PDF only)
+#   examples                   generated chapter listing every examples/*.par
+#   glyphs                     glyph coverage table (PDF only; setup period)
+part|Language reference|book/front/part-language.md
+doc|docs/LANGUAGE_SPEC.md
+doc|docs/TYPE_SYSTEM.md
+doc|docs/TYPE_INFERENCE.md
+doc|docs/TYPE_ANNOTATIONS.md
+doc|docs/GENERIC_TYPES.md
+doc|docs/SUM_TYPES.md
+doc|docs/RECORDS.md
+doc|docs/STRINGS.md
+doc|docs/EXHAUSTIVENESS_CHECKING.md
+doc|docs/ERROR_HANDLING.md
+part|From surface to Core|book/front/part-core.md
+doc|docs/CORE_OPERATIONAL_SEMANTICS.md
+doc|docs/MODULE_ELABORATE.md
+doc|docs/MODULE_CORE_LINT.md
+doc|docs/MODULE_CORE_EVAL.md
+doc|docs/MODULE_CORE_PRELUDE.md
+md|book/front/reduction-walkthrough.md
+part|Environment and tooling|book/front/part-tooling.md
+doc|docs/MODULE_MAIN.md
+doc|docs/EDITOR_SUPPORT.md
+part|Standard library|book/front/part-stdlib.md
+doc|docs/MAP_LIBRARY.md
+appendix
+examples
+doc|docs/adr/0001-arc-c-eval-model.md
+doc|docs/adr/0002-arc-c4-list-encoding.md
+doc|docs/adr/0003-core-case-eliminator.md
+doc|docs/adr/0004-core-char-and-strings.md
+doc|docs/adr/0005-core-type-enum.md
+doc|docs/adr/0006-core-system-f-term-erasure.md
+doc|docs/adr/0007-core-explicit-typing-and-lint.md
+doc|docs/adr/0008-core-cek-machine.md
+doc|docs/adr/0009-surface-to-core-elaboration.md
+glyphs
