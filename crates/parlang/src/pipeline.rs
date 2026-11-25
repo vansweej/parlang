@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use crate::{check_elaborated, elaborate_program, typecheck_program_typed, Elaborated, Program};
 use parlang_core::{
-    core_to_dot, eval, reduction_terms, render_value, run, trace, Environment, EvalError, Type,
+    core_to_dot, eval, reduction_terms, render_value, trace, Environment, EvalError, Type,
 };
 
 /// Elaborates `program` to Core without running Core Lint.
@@ -121,9 +121,12 @@ pub fn trace_core(program: &Program, fuel: usize, raw: bool) -> Result<String, S
         }
     }
 
-    let value = run(&elab.term, &Environment::new(), Some(fuel))
-        .map_err(|e| format!("trace error: {e}"))?;
-    let rendered = render_value(&value, &elab.ty, &elab.env);
+    // The final `Halt` entry holds `Return(value)`; reuse it instead of re-running.
+    let halted = steps.last().map(|step| &step.state.control);
+    let Some(parlang_core::machine::Control::Return(value)) = halted else {
+        return Err("trace error: trace did not halt with a value".to_string());
+    };
+    let rendered = render_value(value, &elab.ty, &elab.env);
     let _ = writeln!(out, "result: {rendered}");
 
     Ok(out)
@@ -218,6 +221,44 @@ mod tests {
         assert!(lines.iter().any(|l| l.starts_with("1: [")));
         let last = *lines.last().expect("non-empty trace");
         assert_eq!(last, "result: 7");
+    }
+
+    #[test]
+    fn trace_core_exact_reductions() {
+        assert_eq!(
+            trace_core(&prog("1 + 2"), 10_000, false),
+            Ok("0: +(1, 2)\n1: 3\nresult: 3\n".to_string())
+        );
+    }
+
+    #[test]
+    fn trace_core_exact_raw() {
+        let expected = concat!(
+            "0: [push] <eval +(1, 2) | kont: []>\n",
+            "1: [construct] <eval 1 | kont: [PrimArgs(+, [], [2])]>\n",
+            "2: [push] <return 1 | kont: [PrimArgs(+, [], [2])]>\n",
+            "3: [construct] <eval 2 | kont: [PrimArgs(+, [1], [])]>\n",
+            "4: [delta] <return 2 | kont: [PrimArgs(+, [1], [])]>\n",
+            "5: [halt] <return 3 | kont: []>\n",
+            "result: 3\n",
+        );
+        assert_eq!(
+            trace_core(&prog("1 + 2"), 10_000, true),
+            Ok(expected.to_string())
+        );
+    }
+
+    #[test]
+    fn trace_core_fuel_boundary() {
+        // Five transitions plus the halting step need exactly six units of fuel.
+        assert_eq!(
+            trace_core(&prog("1 + 2"), 6, false),
+            Ok("0: +(1, 2)\n1: 3\nresult: 3\n".to_string())
+        );
+        assert_eq!(
+            trace_core(&prog("1 + 2"), 5, false),
+            Err("trace error: step limit of 5 exceeded".to_string())
+        );
     }
 
     #[test]
