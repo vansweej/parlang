@@ -176,9 +176,9 @@ Match expressions are compiled to Core decision trees by `elaborate/match_compil
   function value, but Core's `LetRec` requires its bound value to already be
   a `Lam`, so such a `rec` cannot be elaborated.
 - **A data type applied to the wrong number of type arguments** is rejected
-  as unsupported. This is a known limitation: annotating with a bare
-  parameterized data name, for example `(x : List)` for a one-parameter
-  `List` type, is rejected by the arity check, because the surface
-  typechecker registers each data type name as a type alias to
-  `SumType(name, [])` (zero type arguments), which elaboration then sees as
-  an arity mismatch against the type's actual registered parameter count.
+  as unsupported. Annotations no longer reach this case: the surface
+  typechecker rejects a bare parameterized data name such as `(x : List)`
+  for a one-parameter `List` type earlier, with
+  `TypeError::TypeConstructorArityMismatch`. It remains reachable through a
+  type alias such as `type MyList = List`, which still resolves to
+  `SumType(name, [])` (zero type arguments).

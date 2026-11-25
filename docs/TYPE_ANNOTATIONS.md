@@ -168,10 +168,10 @@ cargo run -- examples/type_annotations.par
 
 ### Applied Types
 
-Applied types (like `Option Int` or `List Bool`) are not yet supported in annotations:
+Applied types (like `Option Int` or `List Bool`) are supported in annotations when the head is a declared data type applied to exactly its declared number of parameters. Applying a base type (`Int Int`) or using the wrong arity (`List` or `List a a` for a one-parameter `List`) is a `TypeConstructorArityMismatch` error:
 
 ```parlang
-# This is not yet supported in annotations:
+# Supported when Option is a declared data type:
 let opt : Option Int = Some 42
 ```
 

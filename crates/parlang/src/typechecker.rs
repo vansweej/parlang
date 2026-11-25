@@ -694,11 +694,18 @@ fn resolve_type_annotation(
                 "Bool" => Ok(Type::Bool),
                 "Char" => Ok(Type::Char),
                 "Float" => Ok(Type::Float),
-                _ => {
+                _ => match env.data_arity(name) {
+                    Some(0) => Ok(Type::SumType(name.clone(), vec![])),
+                    Some(expected) => Err(TypeError::TypeConstructorArityMismatch(
+                        name.clone(),
+                        expected,
+                        0,
+                    )),
                     // Try to resolve as type alias
-                    env.resolve_type_alias(name)
-                        .ok_or_else(|| TypeError::UnboundVariable(name.clone()))
-                }
+                    None => env
+                        .resolve_type_alias(name)
+                        .ok_or_else(|| TypeError::UnboundVariable(name.clone())),
+                },
             }
         }
         crate::ast::TypeAnnotation::Var(_name) => {
@@ -711,12 +718,18 @@ fn resolve_type_annotation(
             let ret_ty = resolve_type_annotation(ret, env)?;
             Ok(Type::Fun(Box::new(arg_ty), Box::new(ret_ty)))
         }
-        crate::ast::TypeAnnotation::App(name, _args) => {
-            // For now, we don't support applied types in annotations
-            // This would require tracking type constructors
-            Err(TypeError::UnboundVariable(format!(
-                "Applied type not yet supported in annotations: {name}"
-            )))
+        crate::ast::TypeAnnotation::App(name, args) => {
+            check_type_constructor_arity(name, args.len(), env)?;
+            if env.data_arity(name).is_none() {
+                return Err(TypeError::UnboundVariable(format!(
+                    "Unknown type constructor in annotation: {name}"
+                )));
+            }
+            let arg_types = args
+                .iter()
+                .map(|arg| resolve_type_annotation(arg, env))
+                .collect::<Result<Vec<Type>, TypeError>>()?;
+            Ok(Type::SumType(name.clone(), arg_types))
         }
     }
 }
