@@ -60,6 +60,40 @@
           parlangBatSyntax = pkgs.linkFarm "parlang-bat-syntax" [
             { name = "ParLang.sublime-syntax"; path = ./editors/sublime/ParLang.sublime-syntax; }
           ];
+
+          # The ParLang book (book/): pandoc + LuaLaTeX, fonts for the sandbox.
+          bookFonts = [ pkgs.dejavu_fonts pkgs.noto-fonts-cjk-sans pkgs.noto-fonts-monochrome-emoji ];
+          bookFontDirs = pkgs.lib.concatMapStringsSep ":" (font: "${font}/share/fonts") bookFonts;
+          bookTex = pkgs.texliveMedium.withPackages (ps: with ps; [ latexmk fvextra lineno upquote ]);
+
+          # The book only runs the interpreter; its tests run in packages.parlang.
+          parlangForBook = parlang.overrideAttrs (_: { doCheck = false; });
+
+          parlangBook = pkgs.stdenvNoCC.mkDerivation {
+            pname = "parlang-book";
+            version = manifest.version;
+            src = ./.;
+
+            nativeBuildInputs = [ bookTex pkgs.pandoc parlangForBook ];
+            OSFONTDIR = bookFontDirs;
+            dontConfigure = true;
+
+            buildPhase = ''
+              runHook preBuild
+              export HOME="$TMPDIR"
+              bash book/build-book
+              runHook postBuild
+            '';
+
+            installPhase = ''
+              runHook preInstall
+              mkdir -p "$out"
+              cp book/build/parlang-book.pdf "$out/parlang-book.pdf"
+              cp book/build/parlang-book.epub "$out/parlang-book.epub"
+              cp book/build/glyph-test.pdf "$out/glyph-test.pdf"
+              runHook postInstall
+            '';
+          };
         in
         rec {
           packages = {
@@ -68,6 +102,7 @@
             tree-sitter-parlang = treeSitterParlang;
             parlang-nvim = parlangNvim;
             parlang-bat-syntax = parlangBatSyntax;
+            parlang-book = parlangBook;
           };
 
           devShells.default = pkgs.mkShell {
@@ -93,6 +128,14 @@
               # Required by rust-analyzer
               RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
               PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
+            };
+          };
+
+          devShells.book = pkgs.mkShell {
+            packages = [ bookTex pkgs.pandoc parlangForBook ];
+
+            env = {
+              OSFONTDIR = bookFontDirs;
             };
           };
 
