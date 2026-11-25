@@ -605,9 +605,10 @@ pub fn trace(
                 }
             }
             StepOutcome::Done(_) => {
+                // A `Done` step leaves the state untouched, so `before` is the halted state.
                 steps.push(TraceStep {
                     kind: StepKind::Halt,
-                    state: machine.state().clone(),
+                    state: before,
                 });
                 return Ok(steps);
             }

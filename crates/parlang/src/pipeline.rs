@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use crate::{check_elaborated, elaborate_program, typecheck_program_typed, Elaborated, Program};
 use parlang_core::{
-    core_to_dot, eval, reduction_terms, render_value, run, trace, Environment, EvalError, Type,
+    core_to_dot, eval, reduction_terms, render_value, trace, Environment, EvalError, Type,
 };
 
 /// Elaborates `program` to Core without running Core Lint.
@@ -121,9 +121,12 @@ pub fn trace_core(program: &Program, fuel: usize, raw: bool) -> Result<String, S
         }
     }
 
-    let value = run(&elab.term, &Environment::new(), Some(fuel))
-        .map_err(|e| format!("trace error: {e}"))?;
-    let rendered = render_value(&value, &elab.ty, &elab.env);
+    // The final `Halt` entry holds `Return(value)`; reuse it instead of re-running.
+    let halted = steps.last().map(|step| &step.state.control);
+    let Some(parlang_core::machine::Control::Return(value)) = halted else {
+        return Err("trace error: trace did not halt with a value".to_string());
+    };
+    let rendered = render_value(value, &elab.ty, &elab.env);
     let _ = writeln!(out, "result: {rendered}");
 
     Ok(out)
