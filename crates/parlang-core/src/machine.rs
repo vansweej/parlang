@@ -220,10 +220,18 @@ impl Machine {
 
     /// Advances the machine by one transition.
     ///
+    /// The control component is moved out of the state rather than cloned.
+    /// After [`StepOutcome::Done`] the state is unchanged (control stays
+    /// `Return` of the result and the continuation is empty), so stepping
+    /// again yields `Done` again.
+    ///
     /// # Errors
-    /// Returns an [`EvalError`] when the current transition is invalid.
+    /// Returns an [`EvalError`] when the current transition is invalid. After
+    /// an error the machine state is unspecified and must not be inspected
+    /// or stepped further.
     pub fn step(&mut self) -> Result<StepOutcome, EvalError> {
-        match self.state.control.clone() {
+        let control = std::mem::replace(&mut self.state.control, Control::Return(Value::Unit));
+        match control {
             Control::Eval(term) => self.step_eval(term),
             Control::Return(value) => self.step_return(value),
         }
@@ -248,6 +256,8 @@ impl Machine {
 
     fn step_return(&mut self, value: Value) -> Result<StepOutcome, EvalError> {
         let Some(frame) = self.state.kont.pop() else {
+            // Keep the halted state observable: control stays `Return(value)`.
+            self.state.control = Control::Return(value.clone());
             return Ok(StepOutcome::Done(value));
         };
         match frame {
@@ -803,6 +813,27 @@ mod tests {
                 if matches!(entries.last(), Some(step) if step.kind == StepKind::Halt
                     && !step.is_reduction())
         ));
+    }
+
+    #[test]
+    fn done_keeps_return_control_in_place() -> Result<(), Box<dyn std::error::Error>> {
+        let term = con("+", vec![int(1), int(2)])?;
+        let mut machine = Machine::new(&term, &Environment::new());
+        let mut result = None;
+        for _ in 0..16 {
+            if let StepOutcome::Done(value) = machine.step()? {
+                result = Some(value);
+                break;
+            }
+        }
+        assert!(matches!(result, Some(Value::Int(3))));
+        assert!(matches!(
+            machine.state().control,
+            Control::Return(Value::Int(3))
+        ));
+        assert!(machine.state().kont.is_empty());
+        assert!(matches!(machine.step()?, StepOutcome::Done(Value::Int(3))));
+        Ok(())
     }
 
     fn factorial_term(input: i64) -> Result<Term, crate::error::BuildError> {
