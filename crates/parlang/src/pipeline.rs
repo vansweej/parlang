@@ -221,6 +221,44 @@ mod tests {
     }
 
     #[test]
+    fn trace_core_exact_reductions() {
+        assert_eq!(
+            trace_core(&prog("1 + 2"), 10_000, false),
+            Ok("0: +(1, 2)\n1: 3\nresult: 3\n".to_string())
+        );
+    }
+
+    #[test]
+    fn trace_core_exact_raw() {
+        let expected = concat!(
+            "0: [push] <eval +(1, 2) | kont: []>\n",
+            "1: [construct] <eval 1 | kont: [PrimArgs(+, [], [2])]>\n",
+            "2: [push] <return 1 | kont: [PrimArgs(+, [], [2])]>\n",
+            "3: [construct] <eval 2 | kont: [PrimArgs(+, [1], [])]>\n",
+            "4: [delta] <return 2 | kont: [PrimArgs(+, [1], [])]>\n",
+            "5: [halt] <return 3 | kont: []>\n",
+            "result: 3\n",
+        );
+        assert_eq!(
+            trace_core(&prog("1 + 2"), 10_000, true),
+            Ok(expected.to_string())
+        );
+    }
+
+    #[test]
+    fn trace_core_fuel_boundary() {
+        // Five transitions plus the halting step need exactly six units of fuel.
+        assert_eq!(
+            trace_core(&prog("1 + 2"), 6, false),
+            Ok("0: +(1, 2)\n1: 3\nresult: 3\n".to_string())
+        );
+        assert_eq!(
+            trace_core(&prog("1 + 2"), 5, false),
+            Err("trace error: step limit of 5 exceeded".to_string())
+        );
+    }
+
+    #[test]
     fn trace_core_step_limit() {
         assert_eq!(
             trace_core(&prog("1 + 2 * 3"), 1, false),
