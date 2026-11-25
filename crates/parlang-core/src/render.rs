@@ -34,36 +34,6 @@ fn spine(ty: &Type) -> Option<(&str, Vec<&Type>)> {
     }
 }
 
-/// Substitutes every entry of `mapping` into `ty` simultaneously (not sequentially), so
-/// that no substituted type can itself be further substituted by a later mapping entry.
-fn subst_simultaneous(ty: &Type, mapping: &[(&str, &Type)]) -> Type {
-    match ty {
-        Type::Var(v) => mapping
-            .iter()
-            .find(|(name, _)| *name == v.as_str())
-            .map_or_else(|| ty.clone(), |(_, replacement)| (*replacement).clone()),
-        Type::Base(_) | Type::Con(_) => ty.clone(),
-        Type::Fun(a, b) => Type::Fun(
-            Box::new(subst_simultaneous(a, mapping)),
-            Box::new(subst_simultaneous(b, mapping)),
-        ),
-        Type::App(a, b) => Type::App(
-            Box::new(subst_simultaneous(a, mapping)),
-            Box::new(subst_simultaneous(b, mapping)),
-        ),
-        Type::Forall(binder, body) => {
-            // No capture-avoiding renaming is performed here, because surface
-            // data-declaration field types never contain a `Forall`.
-            let inner: Vec<(&str, &Type)> = mapping
-                .iter()
-                .copied()
-                .filter(|(name, _)| name != binder)
-                .collect();
-            Type::Forall(binder.clone(), Box::new(subst_simultaneous(body, &inner)))
-        }
-    }
-}
-
 /// Returns the field types of constructor `ctor` (with `arity` fields) of data type `dt`,
 /// instantiated at the type arguments `args`, or `None` on arity/shape mismatch.
 fn field_types(dt: &DataType, args: &[&Type], ctor: &str, arity: usize) -> Option<Vec<Type>> {
@@ -83,7 +53,8 @@ fn field_types(dt: &DataType, args: &[&Type], ctor: &str, arity: usize) -> Optio
     Some(
         con.fields
             .iter()
-            .map(|field| subst_simultaneous(field, &mapping))
+            // Simultaneous and capture-avoiding (`Type::subst_many`).
+            .map(|field| field.subst_many(&mapping))
             .collect(),
     )
 }

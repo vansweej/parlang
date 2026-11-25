@@ -141,6 +141,55 @@ impl Type {
         }
     }
 
+    /// Simultaneous capture-avoiding substitution: every `(var, replacement)`
+    /// entry of `mapping` is applied in a single pass, so a replacement is
+    /// never rewritten by another entry. If a name occurs more than once, the
+    /// first entry wins. Under a `Forall` the entry for the binder is dropped,
+    /// and the binder is renamed fresh when it is free in a remaining
+    /// replacement (ADR 0006).
+    #[must_use]
+    pub fn subst_many(&self, mapping: &[(&str, &Type)]) -> Type {
+        match self {
+            Type::Base(_) | Type::Con(_) => self.clone(),
+            Type::Var(name) => mapping
+                .iter()
+                .find(|(var, _)| *var == name.as_str())
+                .map_or_else(|| self.clone(), |(_, replacement)| (*replacement).clone()),
+            Type::Fun(a, b) => Type::Fun(
+                Box::new(a.subst_many(mapping)),
+                Box::new(b.subst_many(mapping)),
+            ),
+            Type::App(a, b) => Type::App(
+                Box::new(a.subst_many(mapping)),
+                Box::new(b.subst_many(mapping)),
+            ),
+            Type::Forall(binder, body) => {
+                let inner: Vec<(&str, &Type)> = mapping
+                    .iter()
+                    .copied()
+                    .filter(|(var, _)| *var != binder.as_str())
+                    .collect();
+                let captures = inner
+                    .iter()
+                    .any(|(_, replacement)| replacement.free_vars().contains(binder));
+                if !captures {
+                    return Type::Forall(binder.clone(), Box::new(body.subst_many(&inner)));
+                }
+                let mut taken = body.free_vars();
+                for (var, replacement) in &inner {
+                    taken.insert((*var).to_string());
+                    taken.extend(replacement.free_vars());
+                }
+                let mut fresh = format!("{binder}'");
+                while taken.contains(&fresh) {
+                    fresh.push('\'');
+                }
+                let renamed = body.subst(binder, &Type::Var(fresh.clone()));
+                Type::Forall(fresh, Box::new(renamed.subst_many(&inner)))
+            }
+        }
+    }
+
     /// Produces a name based on `base` free in neither `replacement` nor `body`.
     fn fresh_for(base: &str, replacement: &Type, body: &Type) -> String {
         let taken_r = replacement.free_vars();
@@ -376,6 +425,50 @@ mod tests {
             panic!("expected a Forall, got {out}");
         };
         assert_ne!(binder, "a", "binder was not renamed: {out}");
+    }
+
+    #[test]
+    fn subst_many_is_simultaneous() {
+        // (a -> b)[a := b, b := a] swaps, it does not collapse to b -> b.
+        let ty = Type::Fun(
+            Box::new(Type::Var("a".to_string())),
+            Box::new(Type::Var("b".to_string())),
+        );
+        let left = Type::Var("a".to_string());
+        let right = Type::Var("b".to_string());
+        let out = ty.subst_many(&[("a", &right), ("b", &left)]);
+        assert_eq!(out.to_string(), "b -> a");
+    }
+
+    #[test]
+    fn subst_many_is_capture_avoiding() {
+        // (forall a. b -> a)[b := a] renames the binder so `a` stays free.
+        let ty = Type::Forall(
+            "a".to_string(),
+            Box::new(Type::Fun(
+                Box::new(Type::Var("b".to_string())),
+                Box::new(Type::Var("a".to_string())),
+            )),
+        );
+        let replacement = Type::Var("a".to_string());
+        let out = ty.subst_many(&[("b", &replacement)]);
+        assert_eq!(out.to_string(), "forall a'. a -> a'");
+    }
+
+    #[test]
+    fn subst_many_skips_shadowed_binder() {
+        // (forall a. a -> b)[a := Int, b := Bool] leaves the bound `a` alone.
+        let ty = Type::Forall(
+            "a".to_string(),
+            Box::new(Type::Fun(
+                Box::new(Type::Var("a".to_string())),
+                Box::new(Type::Var("b".to_string())),
+            )),
+        );
+        let int_ty = Type::Base(BaseType::Int);
+        let bool_ty = Type::Base(BaseType::Bool);
+        let out = ty.subst_many(&[("a", &int_ty), ("b", &bool_ty)]);
+        assert_eq!(out.to_string(), "forall a. a -> Bool");
     }
 
     #[test]
