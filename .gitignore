@@ -19,7 +19,7 @@ target
 # nix build output symlink
 /result*
 
-# ParLang book build output (book/build.sh)
+# ParLang book build output (book/build-book)
 /book/build/
 
 # RustRover

@@ -12,7 +12,7 @@
 --   * header identifiers are prefixed with the source file stem so they stay
 --     unique across chapters.
 -- Code text is never altered. The source path comes from the `book-source`
--- metadata set by book/build.sh.
+-- metadata set by book/build-book.
 
 local source = "book"
 local stem = "doc"

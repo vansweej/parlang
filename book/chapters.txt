@@ -1,4 +1,4 @@
-# Chapter map for the ParLang book, read in order by book/build.sh.
+# Chapter map for the ParLang book, read in order by book/build-book.
 # Fields are separated by '|'; all paths are repository-root relative.
 # Entry kinds:
 #   part|<title>|<intro .md>   start a part (PDF: \part; EPUB: "Part: <title>" chapter)
