@@ -829,7 +829,7 @@ This means a function expecting `{age: Int}` won't accept `{age: Int, name: Stri
 
 ### 4. Type Annotations Are Limited
 
-Value-level type annotations are optional and supported only on `let` bindings (the expression form `let x : Int = 42 in ...` and the top-level form `let x : Int = 42;`) and on parenthesised lambda parameters (`fun (x : Int) -> x + 1`). Applied types such as `Option Int` are accepted in annotations by the parser but rejected by the type checker. See [TYPE_ANNOTATIONS.md](TYPE_ANNOTATIONS.md).
+Value-level type annotations are optional and supported only on `let` bindings (the expression form `let x : Int = 42 in ...` and the top-level form `let x : Int = 42;`) and on parenthesised lambda parameters (`fun (x : Int) -> x + 1`). Applied types such as `Option Int` are accepted in annotations when the head is a declared data type with matching arity; `strcmp` in `examples/string.par` uses `List Char` annotations so it is typed `List Char -> List Char -> Int`. See [TYPE_ANNOTATIONS.md](TYPE_ANNOTATIONS.md).
 
 ```parlang
 # These are not supported:

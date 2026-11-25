@@ -382,16 +382,16 @@ Type annotations are supported on `let` bindings and on parenthesised lambda par
 ```parlang
 let x : Int = 42        # Supported
 fun (x : Int) -> x + 1  # Supported (the parameter must be parenthesised)
+fun (o : Option Int) -> o  # Supported when Option is a declared data type
 ```
 
 The following are not supported:
 ```parlang
 (42 : Int)              # Standalone expression annotations: not supported
-let o : Option Int = …  # Applied-type annotations: not supported
 fun x : Int -> x + 1    # Unparenthesised parameter annotations: not supported
 ```
 
-**Future**: Extend annotation syntax (expression annotations, applied types) to:
+**Future**: Extend annotation syntax (expression annotations) to:
 - Improve error messages
 - Allow early error detection
 - Document code better
