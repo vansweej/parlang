@@ -62,32 +62,32 @@ enum Stage {
     Lint,
 }
 
-/// Dump `program` at the chosen `stage`, as DOT when `dot` is set.
+/// Dump `program` at the chosen `stage`, as DOT when `dot` is set, returning
+/// the exact text to write to stdout.
 ///
 /// Runs `typecheck_program_typed` for the `typed` stage and returns the type
 /// error text on failure.
-fn run_dump(program: &parlang::Program, stage: Stage, dot: bool) -> Result<(), String> {
+fn run_dump(program: &parlang::Program, stage: Stage, dot: bool) -> Result<String, String> {
     match stage {
         Stage::Parsed => {
             if dot {
-                println!("{}", program_to_dot(program));
+                Ok(format!("{}\n", program_to_dot(program)))
             } else {
-                println!("{program}");
+                Ok(format!("{program}\n"))
             }
         }
         Stage::Typed => {
             let typed = parlang::typecheck_program_typed(program)
                 .map_err(|e| format!("type error: {e}"))?;
             if dot {
-                println!("{}", parlang::typed_program_to_dot(&typed));
+                Ok(format!("{}\n", parlang::typed_program_to_dot(&typed)))
             } else {
-                print!("{}", parlang::typed_program_to_text(&typed));
+                Ok(parlang::typed_program_to_text(&typed))
             }
         }
-        Stage::Core => print!("{}", parlang::pipeline::dump_core(program, dot)?),
-        Stage::Lint => print!("{}", parlang::pipeline::dump_lint(program, dot)?),
+        Stage::Core => parlang::pipeline::dump_core(program, dot),
+        Stage::Lint => parlang::pipeline::dump_lint(program, dot),
     }
-    Ok(())
 }
 
 #[derive(Subcommand)]
@@ -107,32 +107,71 @@ enum Commands {
     },
 }
 
-/// Trace `file` on the Core machine: print the trace, or print the error and exit 1.
-fn run_trace(file: &str, fuel: usize, raw: bool) {
-    let outcome = fs::read_to_string(file)
+/// Trace `file` on the Core machine, returning the trace text or the error line.
+fn run_trace(file: &str, fuel: usize, raw: bool) -> Result<String, String> {
+    fs::read_to_string(file)
         .map_err(|e| format!("Failed to read file '{file}': {e}"))
         .and_then(|contents| parse_program(&contents).map_err(|e| format!("Parse error: {e}")))
-        .and_then(|program| parlang::pipeline::trace_core(&program, fuel, raw));
-    match outcome {
-        Ok(text) => print!("{text}"),
-        Err(e) => {
-            eprintln!("{e}");
-            process::exit(1);
-        }
+        .and_then(|program| parlang::pipeline::trace_core(&program, fuel, raw))
+}
+
+/// Whether `cli` selects the interactive REPL: the `repl` subcommand, or no
+/// subcommand and no input file.
+fn wants_repl(cli: &Cli) -> bool {
+    match &cli.command {
+        Some(Commands::Repl) => true,
+        Some(Commands::Trace { .. }) => false,
+        None => cli.file.is_none(),
     }
+}
+
+/// Run file mode for `filename`: dump, Core evaluation, or type check plus
+/// surface evaluation, returning the exact stdout text or the stderr line.
+fn run_file(cli: &Cli, filename: &str) -> Result<String, String> {
+    let contents = fs::read_to_string(filename)
+        .map_err(|e| format!("Failed to read file '{filename}': {e}"))?;
+    let program = parse_program(&contents).map_err(|e| format!("Parse error: {e}"))?;
+
+    // Terminal dump modes: print AST then skip evaluation.
+    if cli.dump || cli.dump_dot {
+        return run_dump(&program, cli.stage.unwrap_or(Stage::Parsed), cli.dump_dot);
+    }
+
+    if cli.core {
+        return parlang::pipeline::run_core(&program);
+    }
+
+    // Type check before evaluating
+    typecheck_program(&program).map_err(|e| format!("type error: {e}"))?;
+
+    let value = run_on_evaluator_stack(move || {
+        let env = Environment::new();
+        eval_program(&program, &env)
+            .map(|value| format!("{value}"))
+            .map_err(|error| format!("Error: {error}"))
+    })
+    .map_err(|error| format!("Error: {error}"))??;
+    Ok(format!("{value}\n"))
+}
+
+/// Run the non-interactive CLI (trace subcommand or file mode).
+///
+/// Returns the exact text for stdout on success, or the single line for
+/// stderr on failure; the caller prints it and exits with status 1 on `Err`.
+fn run(cli: &Cli) -> Result<String, String> {
+    if let Some(Commands::Trace { file, fuel, raw }) = &cli.command {
+        return run_trace(file, *fuel, *raw);
+    }
+    let Some(filename) = &cli.file else {
+        return Err("Error: no input file given".to_string());
+    };
+    run_file(cli, filename)
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    if let Some(Commands::Trace { file, fuel, raw }) = &cli.command {
-        run_trace(file, *fuel, *raw);
-        return;
-    }
-
-    // Handle REPL command or no arguments
-    if cli.command.is_some() || cli.file.is_none() {
-        // REPL mode
+    if wants_repl(&cli) {
         println!(
             "ParLang v{} - A small ML-alike functional language",
             env!("CARGO_PKG_VERSION")
@@ -145,67 +184,11 @@ fn main() {
         return;
     }
 
-    // File execution mode
-    if let Some(filename) = &cli.file {
-        match fs::read_to_string(filename) {
-            Ok(contents) => {
-                // Parse the file
-                match parse_program(&contents) {
-                    Ok(program) => {
-                        // Terminal dump modes: print AST then skip evaluation.
-                        if cli.dump || cli.dump_dot {
-                            let stage = cli.stage.unwrap_or(Stage::Parsed);
-                            if let Err(e) = run_dump(&program, stage, cli.dump_dot) {
-                                eprintln!("{e}");
-                                process::exit(1);
-                            }
-                            return;
-                        }
-
-                        if cli.core {
-                            match parlang::pipeline::run_core(&program) {
-                                Ok(rendered) => print!("{rendered}"),
-                                Err(e) => {
-                                    eprintln!("{e}");
-                                    process::exit(1);
-                                }
-                            }
-                            return;
-                        }
-
-                        // Type check before evaluating
-                        if let Err(e) = typecheck_program(&program) {
-                            eprintln!("type error: {e}");
-                            process::exit(1);
-                        }
-
-                        match run_on_evaluator_stack(move || {
-                            let env = Environment::new();
-                            eval_program(&program, &env)
-                                .map(|value| format!("{value}"))
-                                .map_err(|error| format!("Error: {error}"))
-                        }) {
-                            Ok(Ok(value)) => println!("{value}"),
-                            Ok(Err(error)) => {
-                                eprintln!("{error}");
-                                process::exit(1);
-                            }
-                            Err(error) => {
-                                eprintln!("Error: {error}");
-                                process::exit(1);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Parse error: {e}");
-                        process::exit(1);
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Failed to read file '{filename}': {e}");
-                process::exit(1);
-            }
+    match run(&cli) {
+        Ok(text) => print!("{text}"),
+        Err(e) => {
+            eprintln!("{e}");
+            process::exit(1);
         }
     }
 }
