@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+# Build the ParLang book: book/build/parlang-book.pdf, book/build/parlang-book.epub
+# and the glyph coverage test book/build/glyph-test.pdf.
+#
+# Used by the nix derivation (packages.parlang-book) and by developers in
+# `nix develop .#book`. Everything generated goes to book/build/ (gitignored).
+# Never write .par files under book/: editor_grammar_tests walks the workspace.
+# pandoc always runs from the repository root, so every path in chapters.txt
+# and in include="..." attributes is repo-root relative.
+#
+# Environment:
+#   PARLANG    interpreter command; default `parlang` when on PATH, else
+#              `cargo run --quiet --package parlang --bin parlang --`
+#   OSFONTDIR  font directories for luaotfload (set by the flake)
+set -euo pipefail
+
+book_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(dirname "$book_dir")"
+cd "$repo_root"
+
+build_dir="book/build"
+gen_dir="$build_dir/gen"
+epub_dir="$gen_dir/epub"
+dump_dir="$build_dir/dumps"
+filter="book/filters/parlang.lua"
+chapters_tex="$build_dir/chapters.tex"
+
+rm -rf "$gen_dir"
+mkdir -p "$gen_dir" "$epub_dir" "$dump_dir" "$build_dir/texmf-var"
+
+export TEXMFVAR="${TEXMFVAR:-$repo_root/$build_dir/texmf-var}"
+export TEXMFCACHE="${TEXMFCACHE:-$repo_root/$build_dir/texmf-var}"
+if [ -z "${HOME:-}" ] || [ ! -w "${HOME:-/nonexistent}" ]; then
+  export HOME="$repo_root/$build_dir"
+fi
+
+if [ -n "${PARLANG:-}" ]; then
+  read -r -a parlang_cmd <<< "$PARLANG"
+elif command -v parlang > /dev/null 2>&1; then
+  parlang_cmd=(parlang)
+else
+  parlang_cmd=(cargo run --quiet --package parlang --bin parlang --)
+fi
+
+# Check a LaTeX log after latexmk: a clean build is the test.
+# Belt-and-braces for glyphs: whether \tracinglostchars=3 fires for .notdef
+# under luaotfload's HarfBuzz mode is unverified, so also fail on the log
+# message.
+check_latex_log() {
+  if grep -q "Missing character" "$1"; then
+    echo "book/build-book: missing glyphs, see $1" >&2
+    exit 1
+  fi
+  if grep -q -e "There were undefined references" -e "There were undefined citations" "$1"; then
+    echo "book/build-book: undefined references or citations, see $1" >&2
+    exit 1
+  fi
+  if grep -q "Rerun to get" "$1"; then
+    echo "book/build-book: LaTeX still asks for a rerun, see $1" >&2
+    exit 1
+  fi
+  # Pipe tables in pandoc's l-columns overflow on the first editions, so
+  # overfull boxes are reported, not fatal. Review the count; tightening this
+  # to a failure is a follow-up.
+  local overfull
+  overfull="$(grep -c '^Overfull \\hbox' "$1" || true)"
+  if [ "$overfull" -gt 0 ]; then
+    echo "book/build-book: WARNING: $overfull overfull hbox(es), see $1" >&2
+  fi
+}
+
+# 1. Real interpreter output for book/front/reduction-walkthrough.md.
+# simple.par is used for the trace because a full mvp.par trace is too long
+# to print. `parlang trace` exits non-zero when the fuel runs out; set -e then
+# fails the build on purpose instead of printing a truncated trace.
+mvp="crates/parlang/examples/mvp.par"
+simple="crates/parlang/examples/simple.par"
+"${parlang_cmd[@]}" "$mvp" > "$dump_dir/mvp-result.txt"
+"${parlang_cmd[@]}" "$mvp" --core > "$dump_dir/mvp-core-result.txt"
+"${parlang_cmd[@]}" "$mvp" --dump --stage typed > "$dump_dir/mvp-typed.txt"
+"${parlang_cmd[@]}" "$mvp" --dump --stage core > "$dump_dir/mvp-core.txt"
+"${parlang_cmd[@]}" "$mvp" --dump --stage lint > "$dump_dir/mvp-lint.txt"
+"${parlang_cmd[@]}" "$simple" --dump --stage core > "$dump_dir/simple-core.txt"
+"${parlang_cmd[@]}" trace "$simple" --fuel 10000 > "$dump_dir/simple-trace.txt"
+
+# 2. Example programs appendix as Markdown (serves PDF and EPUB).
+write_examples() {
+  printf '# Example programs\n\n'
+  printf 'Every program below lives in `crates/parlang/examples/` and is executed by the test suite (`every_example_typechecks_and_runs` in `crates/parlang/tests/examples_execution_tests.rs`).\n\n'
+  find crates/parlang/examples -name '*.par' -print | LC_ALL=C sort | while read -r path; do
+    printf '## `%s`\n\n' "${path#crates/parlang/examples/}"
+    printf '```{.parlang include="%s"}\n```\n\n' "$path"
+  done
+}
+write_examples > "$gen_dir/examples.md"
+
+# 3. Convert every source: LaTeX fragments for the PDF, filtered Markdown
+# intermediates (one per source, in order) for the EPUB.
+stem_of() {
+  local path="${1%.md}"
+  printf '%s' "${path//\//-}"
+}
+
+to_latex() {
+  pandoc "$1" --from "$2" --to latex --top-level-division=chapter \
+    --metadata "book-source:$1" --lua-filter "$filter" \
+    --output "$gen_dir/$(stem_of "$1").tex"
+}
+
+epub_inputs=()
+epub_count=0
+add_epub() {
+  epub_count=$((epub_count + 1))
+  local out
+  out="$(printf '%s/%03d.md' "$epub_dir" "$epub_count")"
+  pandoc "$1" --from "$2" --to markdown \
+    --metadata "book-source:$1" --lua-filter "$filter" --output "$out"
+  epub_inputs+=("$out")
+}
+
+to_latex book/front/preface.md markdown
+add_epub book/front/preface.md markdown
+
+: > "$chapters_tex"
+while IFS='|' read -r kind arg1 arg2 || [ -n "$kind" ]; do
+  case "$kind" in
+    '' | '#'*)
+      continue
+      ;;
+    part)
+      to_latex "$arg2" markdown
+      printf '\\part{%s}\n\\input{build/gen/%s}\n' "$arg1" "$(stem_of "$arg2")" >> "$chapters_tex"
+      part_md="$gen_dir/part-$(stem_of "$arg2").md"
+      { printf '# Part: %s\n\n' "$arg1"; cat "$arg2"; } > "$part_md"
+      add_epub "$part_md" markdown
+      ;;
+    doc)
+      to_latex "$arg1" gfm
+      printf '\\input{build/gen/%s}\n' "$(stem_of "$arg1")" >> "$chapters_tex"
+      add_epub "$arg1" gfm
+      ;;
+    md)
+      to_latex "$arg1" markdown
+      printf '\\input{build/gen/%s}\n' "$(stem_of "$arg1")" >> "$chapters_tex"
+      add_epub "$arg1" markdown
+      ;;
+    appendix)
+      printf '\\appendix\n' >> "$chapters_tex"
+      ;;
+    examples)
+      to_latex "$gen_dir/examples.md" markdown
+      printf '\\input{build/gen/%s}\n' "$(stem_of "$gen_dir/examples.md")" >> "$chapters_tex"
+      add_epub "$gen_dir/examples.md" markdown
+      ;;
+    glyphs)
+      printf '\\chapter{Glyph coverage}\n\\input{build/gen/glyph-table}\n' >> "$chapters_tex"
+      ;;
+    *)
+      echo "book/build-book: unknown chapters.txt entry: $kind" >&2
+      exit 1
+      ;;
+  esac
+done < book/chapters.txt
+
+# 4. Glyph coverage: collect sources plus every generated LaTeX fragment (so
+# characters pandoc introduces, e.g. smart quotes, are covered), generate the
+# table, and compile the standalone glyph test before the book so a font gap
+# fails fast. glyph-table.tex does not exist yet when the *.tex glob expands
+# ($gen_dir was emptied above and the table is written after the glob).
+glyph_sources=(book/front/preface.md)
+while IFS='|' read -r kind arg1 arg2 || [ -n "$kind" ]; do
+  case "$kind" in
+    part) glyph_sources+=("$arg2") ;;
+    doc | md) glyph_sources+=("$arg1") ;;
+  esac
+done < book/chapters.txt
+while IFS= read -r path; do
+  glyph_sources+=("$path")
+done < <(find crates/parlang/examples -name '*.par' -print | LC_ALL=C sort)
+glyph_sources+=("$dump_dir"/*.txt "$gen_dir"/*.tex)
+pandoc lua book/tools/glyphs.lua "$gen_dir/glyph-table.tex" "${glyph_sources[@]}"
+(cd book && latexmk -lualatex -interaction=nonstopmode -halt-on-error -file-line-error -outdir=build glyph-test.tex)
+check_latex_log book/build/glyph-test.log
+
+# 5. PDF edition.
+(cd book && latexmk -lualatex -interaction=nonstopmode -halt-on-error -file-line-error -outdir=build parlang-book.tex)
+check_latex_log book/build/parlang-book.log
+
+# 6. EPUB edition (no fonts needed).
+pandoc "${epub_inputs[@]}" --from markdown --to epub3 --toc \
+  --metadata "title=The ParLang Book" \
+  --metadata "author=The ParLang project" \
+  --metadata "lang=en" \
+  --output "$build_dir/parlang-book.epub"
+
+echo "book/build-book: wrote $build_dir/glyph-test.pdf, $build_dir/parlang-book.pdf, $build_dir/parlang-book.epub"

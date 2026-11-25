@@ -1,0 +1,47 @@
+% Preamble for the ParLang book and the glyph test. LuaLaTeX only.
+% All fonts use the HarfBuzz renderer so default-ignorable code points
+% (U+FE0F, U+200D) are hidden by shaping instead of reported missing.
+% Fallback chain: DejaVu -> DejaVu Sans -> Noto Sans CJK SC -> Noto Emoji.
+% The flake (OSFONTDIR) guarantees all of these fonts.
+\usepackage{fontspec}
+\directlua{luaotfload.add_fallback("bookfallback", {"DejaVu Sans:mode=harf;", "Noto Sans CJK SC:mode=harf;", "Noto Emoji:mode=harf;"})}
+\setmainfont{DejaVu Serif}[Renderer=HarfBuzz,RawFeature={fallback=bookfallback}]
+\setsansfont{DejaVu Sans}[Renderer=HarfBuzz,RawFeature={fallback=bookfallback}]
+\setmonofont{DejaVu Sans Mono}[Renderer=HarfBuzz,Scale=MatchLowercase,RawFeature={fallback=bookfallback}]
+
+% A character missing from every font is an error, so -halt-on-error stops.
+\tracinglostchars=3
+
+\usepackage[a4paper,margin=25mm]{geometry}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{calc}
+\usepackage{fvextra}
+\usepackage{upquote}
+\usepackage[hidelinks]{hyperref}
+\usepackage{bookmark}
+
+\setlength{\emergencystretch}{3em}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+
+% Macros emitted by pandoc's LaTeX writer (normally defined by its template).
+\providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\providecommand{\passthrough}[1]{#1}
+\providecommand{\pandocbounded}[1]{#1}
+\providecommand{\st}[1]{#1}
+\providecommand{\ul}[1]{#1}
+\makeatletter
+\@ifundefined{c@none}{\newcounter{none}}{}
+\makeatother
+
+% Code blocks: every fenced block becomes one of these (see filters/parlang.lua).
+\fvset{breaklines=true,breakanywhere=true,fontsize=\small,tabsize=4}
+\DefineVerbatimEnvironment{BookCode}{Verbatim}{frame=lines,framesep=2mm}
+\DefineVerbatimEnvironment{BookParCode}{Verbatim}{frame=single,framesep=2mm,label={ParLang},rulecolor=\color{gray}}
+
+% Replacement for mermaid diagrams, which are not rendered in print.
+\newcommand{\BookOmittedDiagram}[1]{\par\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{\small\itshape Diagram omitted in the print edition; see \texttt{\detokenize{#1}} in the repository.}}\par}
