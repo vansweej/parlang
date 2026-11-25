@@ -787,13 +787,11 @@ fn synth_data_con(
     }))
 }
 
-/// Substitutes each `params[i] := ty_args[i]` into `ty`, in order.
+/// Substitutes every `params[i] := ty_args[i]` into `ty` simultaneously, so a
+/// type argument that mentions a parameter name is never rewritten again.
 fn substitute_params(params: &[String], ty_args: &[Type], ty: &Type) -> Type {
-    let mut result = ty.clone();
-    for (param, ty_arg) in params.iter().zip(ty_args) {
-        result = result.subst(param, ty_arg);
-    }
-    result
+    let mapping: Vec<(&str, &Type)> = params.iter().map(String::as_str).zip(ty_args).collect();
+    ty.subst_many(&mapping)
 }
 
 fn synth_case(env: &mut LintEnv, scrutinee: &Term, alts: &[Alt]) -> Result<Type, LintError> {
@@ -1664,6 +1662,86 @@ mod tests {
             "data type Pair: duplicate type parameter a"
         );
         assert_eq!(dup_ctor.to_string(), "duplicate data constructor: Nil");
+    }
+
+    fn pair_decl() -> DataType {
+        single_ctor_decl(
+            "Pair",
+            &["a", "b"],
+            vec![Type::Var("a".to_string()), Type::Var("b".to_string())],
+        )
+    }
+
+    fn pair_app(first: Type, second: Type) -> Type {
+        Type::App(
+            Box::new(Type::App(
+                Box::new(Type::Con("Pair".to_string())),
+                Box::new(first),
+            )),
+            Box::new(second),
+        )
+    }
+
+    #[test]
+    fn con_substitutes_type_params_simultaneously() -> Result<(), Box<dyn std::error::Error>> {
+        // /\b. \x:b. MkPair @b @Int x 1  :  forall b. b -> Pair b Int
+        let env = LintEnv::new().try_with_data(pair_decl())?;
+        let pair = con_at(
+            "MkPair",
+            vec![tvar("b")?, Type::Base(BaseType::Int)],
+            vec![var("x")?, int(1)],
+        )?;
+        let term = tylam("b", lam("x", tvar("b")?, pair)?)?;
+        let ty = lint(&term, &env)?;
+        let expected = Type::Forall(
+            "b".to_string(),
+            Box::new(Type::Fun(
+                Box::new(Type::Var("b".to_string())),
+                Box::new(pair_app(
+                    Type::Var("b".to_string()),
+                    Type::Base(BaseType::Int),
+                )),
+            )),
+        );
+        assert!(ty.alpha_eq(&expected), "unexpected type: {ty}");
+        Ok(())
+    }
+
+    #[test]
+    fn con_rejects_int_for_type_var_named_like_a_param() -> Result<(), Box<dyn std::error::Error>> {
+        // /\b. MkPair @b @Int 1 1 is ill-typed: the first field has type b.
+        let env = LintEnv::new().try_with_data(pair_decl())?;
+        let pair = con_at(
+            "MkPair",
+            vec![tvar("b")?, Type::Base(BaseType::Int)],
+            vec![int(1), int(1)],
+        )?;
+        let term = tylam("b", pair)?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::ArgTypeMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn case_binds_fields_with_simultaneous_substitution() -> Result<(), Box<dyn std::error::Error>>
+    {
+        // /\b. \p:Pair b Int. case p of MkPair(x, y) -> x  :  forall b. Pair b Int -> b
+        let env = LintEnv::new().try_with_data(pair_decl())?;
+        let scrutinee_ty = pair_app(tvar("b")?, Type::Base(BaseType::Int));
+        let body = case_(var("p")?, vec![alt("MkPair", &["x", "y"], var("x")?)?]);
+        let term = tylam("b", lam("p", scrutinee_ty.clone(), body)?)?;
+        let ty = lint(&term, &env)?;
+        let expected = Type::Forall(
+            "b".to_string(),
+            Box::new(Type::Fun(
+                Box::new(scrutinee_ty),
+                Box::new(Type::Var("b".to_string())),
+            )),
+        );
+        assert!(ty.alpha_eq(&expected), "unexpected type: {ty}");
+        Ok(())
     }
 
     #[test]
