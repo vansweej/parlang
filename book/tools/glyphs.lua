@@ -1,6 +1,6 @@
 -- Glyph coverage table generator for the ParLang book.
 --
--- Usage: pandoc lua book/tools/glyphs.lua <out.tex> <source>...
+-- Usage: texlua book/tools/glyphs.lua <out.tex> <source>...
 -- Collects every distinct non-ASCII code point in the sources and writes a
 -- longtable with one row per code point (sorted): U+XXXX, the character in
 -- the serif, sans and mono fonts, and the first source file using it.
@@ -8,7 +8,7 @@
 -- variation selectors, tags) print "(invisible)" instead of the character.
 
 if #arg < 2 then
-  error("usage: pandoc lua book/tools/glyphs.lua <out.tex> <source>...")
+  error("usage: texlua book/tools/glyphs.lua <out.tex> <source>...")
 end
 
 local out_path = arg[1]

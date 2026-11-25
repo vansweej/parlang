@@ -3,6 +3,8 @@
 % (U+FE0F, U+200D) are hidden by shaping instead of reported missing.
 % Fallback chain: DejaVu -> DejaVu Sans -> Noto Sans CJK SC -> Noto Emoji.
 % The flake (OSFONTDIR) guarantees all of these fonts.
+% amssymb: pandoc writes GFM task-list items as \item[$\square$] / $\boxtimes$.
+\usepackage{amsmath,amssymb}
 \usepackage{fontspec}
 \directlua{luaotfload.add_fallback("bookfallback", {"DejaVu Sans:mode=harf;", "Noto Sans CJK SC:mode=harf;", "Noto Emoji:mode=harf;"})}
 \setmainfont{DejaVu Serif}[Renderer=HarfBuzz,RawFeature={fallback=bookfallback}]
