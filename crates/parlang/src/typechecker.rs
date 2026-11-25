@@ -27,6 +27,8 @@ pub struct TypeEnv {
     type_aliases: HashMap<String, Type>,
     /// Constructor information: maps constructor name to its type info
     constructors: HashMap<String, ConstructorInfo>,
+    /// Declared data types: maps type name to its number of type parameters
+    data_arities: HashMap<String, usize>,
 }
 
 impl TypeEnv {
@@ -36,6 +38,7 @@ impl TypeEnv {
             next_var: 0,
             type_aliases: HashMap::new(),
             constructors: HashMap::new(),
+            data_arities: HashMap::new(),
         }
     }
 
@@ -161,6 +164,16 @@ impl TypeEnv {
     /// Look up constructor information
     pub fn lookup_constructor(&self, name: &str) -> Option<&ConstructorInfo> {
         self.constructors.get(name)
+    }
+
+    /// Record that data type `name` takes `arity` type parameters.
+    pub fn define_data_arity(&mut self, name: String, arity: usize) {
+        self.data_arities.insert(name, arity);
+    }
+
+    /// Number of type parameters of the declared data type `name`, if any.
+    pub fn data_arity(&self, name: &str) -> Option<usize> {
+        self.data_arities.get(name).copied()
     }
 }
 
@@ -334,6 +347,48 @@ fn type_annotation_to_type(
     }
 }
 
+/// Whether `name` is one of the built-in base type names.
+fn is_base_type_name(name: &str) -> bool {
+    matches!(name, "Int" | "Bool" | "Char" | "Float")
+}
+
+/// Check that type constructor `name` is applied to `actual` type arguments.
+///
+/// Base types take no arguments; declared data types take exactly their
+/// declared number of parameters. Unknown names are accepted here.
+fn check_type_constructor_arity(name: &str, actual: usize, env: &TypeEnv) -> Result<(), TypeError> {
+    let expected = if is_base_type_name(name) {
+        Some(0)
+    } else {
+        env.data_arity(name)
+    };
+    match expected {
+        Some(expected) if expected != actual => Err(TypeError::TypeConstructorArityMismatch(
+            name.to_string(),
+            expected,
+            actual,
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Validate the type-constructor arities inside a data constructor payload field.
+fn check_payload_arity(field: &crate::ast::TypeAnnotation, env: &TypeEnv) -> Result<(), TypeError> {
+    match field {
+        crate::ast::TypeAnnotation::Var(_) => Ok(()),
+        crate::ast::TypeAnnotation::Concrete(name) => check_type_constructor_arity(name, 0, env),
+        crate::ast::TypeAnnotation::Fun(arg, ret) => {
+            check_payload_arity(arg, env)?;
+            check_payload_arity(ret, env)
+        }
+        crate::ast::TypeAnnotation::App(name, args) => {
+            check_type_constructor_arity(name, args.len(), env)?;
+            args.iter()
+                .try_for_each(|arg| check_payload_arity(arg, env))
+        }
+    }
+}
+
 /// Type checking errors
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeError {
@@ -361,6 +416,9 @@ pub enum TypeError {
     TupleExpected(String),
     /// A constructor was used without any `data` declaration defining it.
     UnknownConstructor(String),
+    /// A type constructor applied to the wrong number of type arguments:
+    /// type name, expected, actual (expected is 0 for base types).
+    TypeConstructorArityMismatch(String, usize, usize),
     /// A `match` whose arms do not cover every value; `missing` holds witness patterns.
     NonExhaustiveMatch {
         missing: Vec<String>,
@@ -423,6 +481,12 @@ impl fmt::Display for TypeError {
             }
             TypeError::NonExhaustiveMatch { missing } => {
                 write!(f, "Non-exhaustive match: missing {}", missing.join(", "))
+            }
+            TypeError::TypeConstructorArityMismatch(name, expected, actual) => {
+                write!(
+                    f,
+                    "Type constructor '{name}' expects {expected} type arguments, but got {actual}"
+                )
             }
         }
     }
@@ -1491,7 +1555,11 @@ fn infer_type_def(
     body: &Expr,
     env: &mut TypeEnv,
 ) -> Result<(TypedExpr, Substitution), TypeError> {
+    env.define_data_arity(name.to_string(), type_params.len());
     for (ctor_name, payload_types) in constructors {
+        for field in payload_types {
+            check_payload_arity(field, env)?;
+        }
         let info = ConstructorInfo {
             type_params: type_params.to_vec(),
             payload_types: payload_types.clone(),
@@ -1855,12 +1923,16 @@ pub fn typecheck_program_typed_with_env(
     for decl in &program.decls {
         match decl {
             Decl::Data {
-                name, constructors, ..
+                name,
+                type_params,
+                constructors,
+                ..
             } => {
                 if !type_names.insert(name.clone()) {
                     return Err(TypeError::DuplicateTypeName(name.clone()));
                 }
                 program_env.define_type_alias(name.clone(), Type::SumType(name.clone(), vec![]));
+                program_env.define_data_arity(name.clone(), type_params.len());
                 for (constructor_name, _) in constructors {
                     if !constructor_names.insert(constructor_name.clone()) {
                         return Err(TypeError::DuplicateConstructor(constructor_name.clone()));
@@ -1891,6 +1963,9 @@ pub fn typecheck_program_typed_with_env(
         } = decl
         {
             for (constructor_name, payload_types) in constructors {
+                for field in payload_types {
+                    check_payload_arity(field, &program_env)?;
+                }
                 program_env.register_constructor(
                     constructor_name.clone(),
                     ConstructorInfo {
