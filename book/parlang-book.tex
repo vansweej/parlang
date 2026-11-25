@@ -1,0 +1,21 @@
+% The ParLang book. Build with book/build-book, which generates build/gen/*
+% and build/chapters.tex from chapters.txt.
+\documentclass[11pt,openany]{book}
+\input{preamble}
+
+\title{The ParLang Book}
+\author{The ParLang project}
+\date{Living edition, generated from the repository}
+
+\begin{document}
+\frontmatter
+\maketitle
+\tableofcontents
+\input{build/gen/book-front-preface}
+
+\mainmatter
+% Chapters are \input, not \include: \include with latexmk -outdir=build would need mirrored aux subdirectories under build/ for the generated build/gen/* chapters.
+\input{build/chapters.tex}
+
+\backmatter
+\end{document}
