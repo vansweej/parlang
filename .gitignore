@@ -19,6 +19,9 @@ target
 # nix build output symlink
 /result*
 
+# ParLang book build output (book/build.sh)
+/book/build/
+
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
