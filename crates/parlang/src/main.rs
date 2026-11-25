@@ -449,7 +449,7 @@ fn evaluate_repl_input(input: &str, env: &mut Environment, type_env: &mut TypeEn
 
 #[cfg(test)]
 mod tests {
-    use super::{run, Cli, ReplState};
+    use super::{run, wants_repl, Cli, ReplState};
     use clap::Parser;
     use std::path::PathBuf;
 
@@ -581,5 +581,76 @@ mod tests {
             matches!(unbound, Err(e) if e.starts_with("Type error")),
             "{unbound:?}"
         );
+    }
+
+    #[test]
+    fn core_flag_without_file_starts_repl() {
+        let cli = Cli::try_parse_from(["parlang", "--core"]).expect("valid arguments");
+        assert!(cli.core);
+        assert!(wants_repl(&cli));
+    }
+
+    #[test]
+    fn core_flag_still_conflicts_with_dump() {
+        let parsed = Cli::try_parse_from(["parlang", "f.par", "--core", "--dump"]);
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn core_flag_with_trace_is_accepted() {
+        let parsed = Cli::try_parse_from(["parlang", "--core", "trace", "f.par"]);
+        let cli = parsed.expect("--core with trace is accepted");
+        assert!(!wants_repl(&cli));
+    }
+
+    #[test]
+    fn core_repl_evaluates_arithmetic() {
+        let mut state = ReplState::new_core();
+        let response = state.eval_input("1 + 2");
+        assert_eq!(response.type_line, None);
+        assert_eq!(response.outcome, Ok("3".to_string()));
+    }
+
+    #[test]
+    fn core_repl_let_persists_across_inputs() {
+        let mut state = ReplState::new_core();
+        let first = state.eval_input("let x = 41;");
+        assert_eq!(first.outcome, Ok("Declarations added.".to_string()));
+        let second = state.eval_input("x + 1");
+        assert_eq!(second.outcome, Ok("42".to_string()));
+    }
+
+    #[test]
+    fn core_repl_data_then_match() {
+        let mut state = ReplState::new_core();
+        let first = state.eval_input("data Color = Red | Green;");
+        assert_eq!(first.outcome, Ok("Declarations added.".to_string()));
+        let second = state.eval_input("match Green with | Red -> 1 | Green -> 2");
+        assert_eq!(second.outcome, Ok("2".to_string()));
+    }
+
+    #[test]
+    fn core_repl_elaboration_error_does_not_commit() {
+        let mut state = ReplState::new_core();
+        let failed = state.eval_input("let t = (1, 2) == (1, 2);");
+        let bad = &failed.outcome;
+        assert!(
+            matches!(bad, Err(e) if e.starts_with("elaboration error")),
+            "{bad:?}"
+        );
+        let later = state.eval_input("t");
+        let unbound = &later.outcome;
+        assert!(
+            matches!(unbound, Err(e) if e.starts_with("type error")),
+            "{unbound:?}"
+        );
+    }
+
+    #[test]
+    fn surface_repl_unchanged_by_core_mode() {
+        let mut state = ReplState::new();
+        let response = state.eval_input("1 + 2");
+        assert_eq!(response.type_line.as_deref(), Some("Type: Int"));
+        assert_eq!(response.outcome, Ok("3".to_string()));
     }
 }
