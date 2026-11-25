@@ -49,6 +49,29 @@ struct ReplResponse {
     outcome: Result<String, String>,
 }
 
+/// Persistent REPL evaluator state: the value and type environments that
+/// successfully evaluated inputs commit to.
+struct ReplState {
+    env: Environment,
+    type_env: TypeEnv,
+}
+
+impl ReplState {
+    /// Creates an empty surface-evaluator REPL state.
+    fn new() -> Self {
+        Self {
+            env: Environment::new(),
+            type_env: TypeEnv::new(),
+        }
+    }
+
+    /// Parses, type-checks and evaluates `input`, committing the new
+    /// environments only when every stage succeeds.
+    fn eval_input(&mut self, input: &str) -> ReplResponse {
+        evaluate_repl_input(input, &mut self.env, &mut self.type_env)
+    }
+}
+
 /// Which pipeline stage to dump.
 #[derive(Copy, Clone, clap::ValueEnum)]
 enum Stage {
@@ -313,11 +336,10 @@ fn start_repl_worker(
     std::thread::Builder::new()
         .stack_size(EVALUATOR_STACK_SIZE)
         .spawn(move || {
-            let mut env = Environment::new();
-            let mut type_env = TypeEnv::new();
+            let mut state = ReplState::new();
 
             while let Ok(input) = input_receiver.recv() {
-                let response = evaluate_repl_input(&input, &mut env, &mut type_env);
+                let response = state.eval_input(&input);
                 if response_sender.send(response).is_err() {
                     return;
                 }
