@@ -62,8 +62,14 @@
           ];
 
           # The ParLang book (book/): pandoc + LuaLaTeX, fonts for the sandbox.
-          bookFonts = [ pkgs.dejavu_fonts pkgs.noto-fonts-cjk-sans pkgs.noto-fonts-monochrome-emoji ];
-          bookFontDirs = pkgs.lib.concatMapStringsSep ":" (font: "${font}/share/fonts") bookFonts;
+          # Font leaf directories (no subdirectory search needed): texmf.cnf appends
+          # // only after the whole expanded $OSFONTDIR, so a recursive root would
+          # only work for the last entry.
+          bookFontDirs = pkgs.lib.concatStringsSep ":" [
+            "${pkgs.dejavu_fonts}/share/fonts/truetype"
+            "${pkgs.noto-fonts-cjk-sans}/share/fonts/opentype/noto-cjk"
+            "${pkgs.noto-fonts-monochrome-emoji}/share/fonts/noto"
+          ];
           bookTex = pkgs.texliveMedium.withPackages (ps: with ps; [ latexmk fvextra lineno upquote ]);
 
           # The book only runs the interpreter; its tests run in packages.parlang.

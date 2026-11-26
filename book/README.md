@@ -46,6 +46,10 @@ A clean build is the test: the build fails on missing glyphs, undefined
 references or citations, and rerun warnings left after latexmk. Overfull
 boxes are reported as a warning with their count; review them.
 
+Fonts come only from the flake: `luaotfload.conf` stops luaotfload from
+scanning system fonts, so a local `nix develop .#book` build uses exactly
+the fonts of `nix build .#parlang-book`.
+
 ## Adding a chapter
 
 Add a `doc|docs/NAME.md` line to `chapters.txt` in the right part. The
