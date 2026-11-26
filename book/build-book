@@ -178,7 +178,8 @@ while IFS= read -r path; do
   glyph_sources+=("$path")
 done < <(find crates/parlang/examples -name '*.par' -print | LC_ALL=C sort)
 glyph_sources+=("$dump_dir"/*.txt "$gen_dir"/*.tex)
-pandoc lua book/tools/glyphs.lua "$gen_dir/glyph-table.tex" "${glyph_sources[@]}"
+# texlua (LuaTeX's Lua 5.3), not pandoc lua: pandoc lua aborted with "double free or corruption" in the pinned nixpkgs.
+texlua book/tools/glyphs.lua "$gen_dir/glyph-table.tex" "${glyph_sources[@]}"
 (cd book && latexmk -lualatex -interaction=nonstopmode -halt-on-error -file-line-error -outdir=build glyph-test.tex)
 check_latex_log book/build/glyph-test.log
 
