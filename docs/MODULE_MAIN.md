@@ -381,8 +381,15 @@ match fs::read_to_string(filename) {
     Ok(contents) => {
         match parse_program(&contents) {
             Ok(program) => {
-                if let Err(error) = typecheck_program(&program) {
-                    eprintln!("type error: {error}");
+                let typed = match typecheck_program_typed(&program) {
+                    Ok(typed) => typed,
+                    Err(error) => {
+                        eprintln!("type error: {error}");
+                        process::exit(1);
+                    }
+                };
+                if let Some(reason) = requires_dictionary_passing(&typed) {
+                    eprintln!("{reason}");
                     process::exit(1);
                 }
                 match eval_program(&program, &Environment::new()) {
@@ -455,7 +462,8 @@ flowchart LR
 
 **Error Handling**:
 - Parse errors from `parse_program()` are reported directly (already strings)
-- Type errors from `typecheck_program()` stop execution before evaluation
+- Type errors from `typecheck_program_typed()` stop execution before evaluation
+- A program that declares a class or instance, or uses a class method, is then rejected by `requires_dictionary_passing` with `type classes are not executable yet: ...` until dictionary passing (M2.3)
 - Evaluation errors from `eval_program()` are converted to strings via `.map_err(|e| e.to_string())`
 
 ### `repl()`
@@ -666,21 +674,27 @@ Evaluation error: Division by zero
 ```rust
 fn repl() {
     let mut env = Environment::new();  // Mutable environment
+    let mut type_env = TypeEnv::new();
     // ... in evaluation loop:
     let program = parse_program(input)?;
-    typecheck_program(&program)?;
+    let mut next_type_env = type_env.clone();
+    let typed = typecheck_program_typed_with_env(&program, &mut next_type_env)?;
+    if let Some(reason) = requires_dictionary_passing(&typed) {
+        return Err(reason);
+    }
     match eval_program_with_env(&program, &env) {
         Ok((value, new_env)) => {
             println!("{}", value);
-            // Persist declarations evaluated as part of this submission.
+            // Persist declarations and types only after success.
             env = new_env;
+            type_env = next_type_env;
         }
         // ...
     }
 }
 ```
 
-The REPL uses `parse_program`, `typecheck_program`, and
+The REPL uses `parse_program`, `typecheck_program_typed_with_env`, and
 `eval_program_with_env` for each submission. The latter returns both the value
 and the environment containing declarations evaluated by that submission.
 
@@ -907,7 +921,7 @@ Errors in the REPL are **non-fatal** - they are printed but the REPL continues:
 
 ```rust
 match parse_program(input) {
-    Ok(program) => match typecheck_program_with_env(&program, &mut type_env) {
+    Ok(program) => match typecheck_program_typed_with_env(&program, &mut type_env) {
         Ok(_) => match eval_program(&program, &env) {
             Ok(value) => println!("{}", value),
             Err(e) => eprintln!("Evaluation error: {}", e),  // Continue
@@ -1336,7 +1350,10 @@ and evaluates it. `main()` performs these operations directly:
 
 ```rust
 let program = parse_program(&contents)?;
-typecheck_program(&program)?;
+let typed = typecheck_program_typed(&program)?;
+if let Some(reason) = requires_dictionary_passing(&typed) {
+    return Err(reason);
+}
 let env = Environment::new();
 let value = eval_program(&program, &env)?;
 println!("{value}");
@@ -1505,7 +1522,7 @@ main 5
 
 - **[`lib.rs`](./ARCHITECTURE.md)**: Defines the public API exported to main.rs
 - **[`parser.rs`](./MODULE_PARSER.md)**: Provides `parse_program()` for main.rs
-- **[`typechecker.rs`](./MODULE_TYPECHECKER.md)**: Provides `typecheck_program()` for main.rs
+- **[`typechecker.rs`](./MODULE_TYPECHECKER.md)**: Provides `typecheck_program_typed()` and `typecheck_program_typed_with_env()` for main.rs
 - **[`eval.rs`](./MODULE_EVAL.md)**: Provides `eval_program()`, `extend_env_with_program()`, and `Environment`
 - **[`ast.rs`](./MODULE_AST.md)**: Defines the `Program`, `Decl`, and `Expr` types used by the program APIs
 
