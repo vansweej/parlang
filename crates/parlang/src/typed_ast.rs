@@ -183,6 +183,26 @@ pub fn typed_program_to_text(program: &TypedProgram) -> String {
     out
 }
 
+/// Why `program` cannot run before dictionary passing (M2.3), or `None` when
+/// it uses no type class: its first `class` declaration, else its first
+/// class-method use.
+///
+/// Both evaluators and both REPLs report exactly this text, so a
+/// class-using program is rejected the same way on every front end.
+pub fn requires_dictionary_passing(program: &TypedProgram) -> Option<String> {
+    let class = program.decls.iter().find_map(|decl| match decl {
+        TypedDecl::Class { name, .. } => Some(format!("class {name}")),
+        _ => None,
+    });
+    let what = class.or_else(|| {
+        program
+            .method_uses
+            .first()
+            .map(|method| format!("method {method}"))
+    })?;
+    Some(format!("type classes are not executable yet: {what}"))
+}
+
 fn indent(out: &mut String, depth: usize) {
     for _ in 0..depth {
         out.push_str("  ");
