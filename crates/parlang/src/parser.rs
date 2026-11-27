@@ -583,11 +583,15 @@ parser! {
     where [Input: Stream<Token = char>]
     {
         choice((
-            // Try applied type first: List a, Option Int
-            // But reject "in" keyword
+            // Left-associative type application (Haskell style): a type
+            // constructor or type variable head applied to atomic arguments,
+            // so `Wrap Option Int` is `(Wrap Option) Int` and `f a` applies
+            // the variable `f`. Declaration keywords cannot be heads. Each
+            // argument is wrapped in `attempt` because `type_field_atom`
+            // consumes a keyword before rejecting it.
             attempt((
                 raw_identifier().then(|name| {
-                    if name == "in" || !starts_with_uppercase(&name) {
+                    if matches!(name.as_str(), "in" | "data" | "type") {
                         combine::unexpected("type constructor")
                             .map(|()| String::new())
                             .right()
@@ -595,8 +599,14 @@ parser! {
                         combine::value(name).left()
                     }
                 }).skip(spaces()),
-                many1(type_annotation_atom().skip(spaces()))
-            ).map(|(name, args)| TypeAnnotation::App(name, args))),
+                many1(attempt(type_field_atom().skip(spaces())))
+            ).map(|(name, args)| {
+                if starts_with_uppercase(&name) {
+                    TypeAnnotation::App(name, args)
+                } else {
+                    TypeAnnotation::VarApp(name, args)
+                }
+            })),
             type_field_atom(),
         ))
     }
@@ -2206,6 +2216,51 @@ mod tests {
             format!("{program}"),
             "(data Tree a = Leaf | Node (Tree a) a (Tree a); 0)"
         );
+    }
+
+    #[test]
+    fn test_type_application_is_left_associative() {
+        let expr = parse("fun (w : Wrap Option Int) -> w").unwrap();
+        let Expr::Fun(_, Some(ann), _) = &expr else {
+            panic!("expected annotated Fun, got {expr:?}");
+        };
+        let expected = TypeAnnotation::App(
+            "Wrap".to_string(),
+            vec![
+                TypeAnnotation::Concrete("Option".to_string()),
+                TypeAnnotation::Concrete("Int".to_string()),
+            ],
+        );
+        assert_eq!(*ann, expected);
+    }
+
+    #[test]
+    fn test_variable_headed_type_application() {
+        let expr = parse("fun (x : f a) -> x").unwrap();
+        let Expr::Fun(_, Some(ann), _) = &expr else {
+            panic!("expected annotated Fun, got {expr:?}");
+        };
+        let expected =
+            TypeAnnotation::VarApp("f".to_string(), vec![TypeAnnotation::Var("a".to_string())]);
+        assert_eq!(*ann, expected);
+        assert_eq!(format!("{expr}"), "(fun (x : f a) -> x)");
+        let decl = parse("data Fix f = In (f (Fix f)) in 0").unwrap();
+        assert_eq!(format!("{decl}"), "(data Fix f = In (f (Fix f)) in 0)");
+        assert_eq!(parse(&format!("{decl}")).unwrap(), decl);
+    }
+
+    #[test]
+    fn test_applied_let_annotations_parse() {
+        for source in [
+            "let x : f a = y in x",
+            "let x : List a = y in x",
+            "let x : Either a b = y in x",
+        ] {
+            let expr = parse(source).unwrap();
+            let Expr::Let(_, Some(_), _, _) = &expr else {
+                panic!("expected annotated Let for {source}, got {expr:?}");
+            };
+        }
     }
 
     #[test]

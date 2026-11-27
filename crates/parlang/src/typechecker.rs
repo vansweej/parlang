@@ -383,6 +383,18 @@ fn type_annotation_to_type(
                 .collect();
             Type::SumType(name.clone(), arg_types)
         }
+        crate::ast::TypeAnnotation::VarApp(name, args) => {
+            let head = type_param_map
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| env.fresh_var());
+            let arg_types: Vec<Type> = args
+                .iter()
+                .map(|arg| type_annotation_to_type(arg, type_param_map, env))
+                .collect();
+            // Parameter-map heads are type variables, so the fallback is unused.
+            crate::types::apply_type_args(head.clone(), arg_types).unwrap_or(head)
+        }
     }
 }
 
@@ -447,6 +459,9 @@ fn check_payload_arity(field: &crate::ast::TypeAnnotation, env: &TypeEnv) -> Res
             args.iter()
                 .try_for_each(|arg| check_payload_arity(arg, env))
         }
+        crate::ast::TypeAnnotation::VarApp(_, args) => args
+            .iter()
+            .try_for_each(|arg| check_payload_arity(arg, env)),
     }
 }
 
@@ -852,6 +867,18 @@ fn resolve_annotation_with_vars(
                 .map(|arg| resolve_annotation_with_vars(arg, env, vars))
                 .collect::<Result<Vec<Type>, TypeError>>()?;
             Ok(Type::SumType(name.clone(), arg_types))
+        }
+        crate::ast::TypeAnnotation::VarApp(name, args) => {
+            let head = vars
+                .entry(name.clone())
+                .or_insert_with(|| env.fresh_var())
+                .clone();
+            let applied = args
+                .iter()
+                .map(|arg| resolve_annotation_with_vars(arg, env, vars))
+                .collect::<Result<Vec<Type>, TypeError>>()?;
+            // Annotation heads are type variables, so the fallback is unused.
+            Ok(crate::types::apply_type_args(head.clone(), applied).unwrap_or(head))
         }
     }
 }
