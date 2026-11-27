@@ -165,6 +165,14 @@ impl TypeEnv {
         self.bindings.get(name)
     }
 
+    /// Whether any binding's scheme carries class constraints, so that the
+    /// binding takes dictionaries after dictionary insertion (M2.3).
+    pub fn has_constrained_bindings(&self) -> bool {
+        self.bindings
+            .values()
+            .any(|scheme| !scheme.constraints.is_empty())
+    }
+
     /// The head and the instantiated context of the instance whose head
     /// matches the single argument of `constraint`, or `None` when no
     /// instance of its class (built-ins included) matches.
@@ -3026,6 +3034,18 @@ pub fn typecheck_program_typed_with_env(
 mod tests {
     use super::*;
     use crate::parser::parse_expr as parse;
+
+    #[test]
+    fn has_constrained_bindings_sees_constrained_top_level_lets() {
+        let mut env = TypeEnv::new();
+        assert!(!env.has_constrained_bindings());
+        let plain = crate::parser::parse_program("let id = fun x -> x;").unwrap();
+        typecheck_program_typed_with_env(&plain, &mut env).unwrap();
+        assert!(!env.has_constrained_bindings());
+        let same = crate::parser::parse_program("let same = fun x -> fun y -> x == y;").unwrap();
+        typecheck_program_typed_with_env(&same, &mut env).unwrap();
+        assert!(env.has_constrained_bindings());
+    }
 
     #[test]
     fn unify_var_app_binds_head_to_partial_data_type() {
