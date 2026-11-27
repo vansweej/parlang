@@ -33,6 +33,12 @@ pub struct TypeEnv {
     data_kinds: HashMap<String, Vec<parlang_core::Kind>>,
     /// Instance heads per class name (only the built-in `Eq` instances for now).
     instances: HashMap<String, Vec<Type>>,
+    /// Declared classes by name, seeded with the built-in `Eq`.
+    classes: HashMap<String, ClassInfo>,
+    /// Class methods by name, with their owning class and constrained scheme.
+    methods: HashMap<String, MethodInfo>,
+    /// Class methods referenced by name, shared by every clone like `wanted`.
+    method_uses: MethodUses,
     /// Wanted class constraints not yet discharged or generalized, shared by
     /// every clone of this environment (see `WantedConstraints`).
     wanted: WantedConstraints,
@@ -46,8 +52,35 @@ pub struct TypeEnv {
 /// calls back into inference, so two borrows can never overlap.
 type WantedConstraints = Rc<RefCell<Vec<Constraint>>>;
 
+/// Shared accumulator of the class-method names that an `Expr::Var` resolved
+/// to because no binding shadows them, deduplicated in first-use order. Same
+/// borrow invariant as `WantedConstraints`.
+type MethodUses = Rc<RefCell<Vec<String>>>;
+
+/// A type class: its parameter, the parameter's inferred kind and its
+/// method schemes in declaration order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassInfo {
+    /// Name of the class parameter as written, e.g. `a`.
+    pub param: String,
+    /// Inferred kind of the class parameter (`*` for `Eq`).
+    pub param_kind: parlang_core::Kind,
+    /// Each method name with its constrained scheme `forall p. C p => ty`.
+    pub methods: Vec<(String, TypeScheme)>,
+}
+
+/// A class method: its owning class and its constrained scheme.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MethodInfo {
+    /// Name of the class declaring this method.
+    pub class: String,
+    /// Scheme quantifying the class parameter first, under `Class param`.
+    pub scheme: TypeScheme,
+}
+
 impl TypeEnv {
     pub fn new() -> Self {
+        let (classes, methods) = builtin_classes();
         TypeEnv {
             bindings: HashMap::new(),
             next_var: 0,
@@ -55,6 +88,9 @@ impl TypeEnv {
             constructors: HashMap::new(),
             data_kinds: HashMap::new(),
             instances: builtin_instances(),
+            classes,
+            methods,
+            method_uses: Rc::default(),
             wanted: Rc::default(),
         }
     }
@@ -83,6 +119,33 @@ impl TypeEnv {
     pub fn lookup_instantiated(&mut self, name: &str) -> Option<(Type, Vec<Type>)> {
         let scheme = self.bindings.get(name)?.clone();
         Some(self.instantiate_with_args(&scheme))
+    }
+
+    /// Instantiate the scheme of the class method `name` like
+    /// `lookup_instantiated` (its class constraint becomes wanted) and record
+    /// the use. Callers try `bindings` first, so any binding shadows a method.
+    fn lookup_method(&mut self, name: &str) -> Option<(Type, Vec<Type>)> {
+        let scheme = self.methods.get(name)?.scheme.clone();
+        self.record_method_use(name);
+        Some(self.instantiate_with_args(&scheme))
+    }
+
+    /// Record a use of the class method `name`, once, in the shared accumulator.
+    fn record_method_use(&self, name: &str) {
+        let mut uses = self.method_uses.borrow_mut();
+        if !uses.iter().any(|used| used == name) {
+            uses.push(name.to_string());
+        }
+    }
+
+    /// The class named `name`, if declared (the built-in `Eq` included).
+    pub fn class_info(&self, name: &str) -> Option<&ClassInfo> {
+        self.classes.get(name)
+    }
+
+    /// The class method named `name`, if any class declares it.
+    pub fn method_info(&self, name: &str) -> Option<&MethodInfo> {
+        self.methods.get(name)
     }
 
     /// Bind a variable to a type scheme
@@ -299,6 +362,51 @@ fn builtin_instances() -> HashMap<String, Vec<Type>> {
         vec![Type::Int, Type::Bool, Type::Char, Type::Float],
     );
     instances
+}
+
+/// The scheme of a method of `class` whose signature resolved to `ty`:
+/// quantify `param` first, then every other free variable of `ty` in order,
+/// under the single constraint `class param`.
+fn class_method_scheme(class: &str, param: &TypeVar, ty: Type) -> TypeScheme {
+    let mut others: Vec<TypeVar> = free_type_vars(&ty)
+        .into_iter()
+        .filter(|var| var != param)
+        .collect();
+    others.sort();
+    let mut vars = vec![param.clone()];
+    vars.extend(others);
+    let mut scheme = TypeScheme::poly(vars, ty);
+    scheme.constraints.push(Constraint {
+        class: class.to_string(),
+        args: vec![Type::Var(param.clone())],
+    });
+    scheme
+}
+
+/// The built-in class `Eq a` with its single method
+/// `eq : forall a. Eq a => a -> a -> Bool`, as the class and method tables
+/// seeded into every new `TypeEnv`.
+fn builtin_classes() -> (HashMap<String, ClassInfo>, HashMap<String, MethodInfo>) {
+    let param = TypeVar(0);
+    let var = Type::Var(param.clone());
+    let eq_ty = Type::Fun(
+        Box::new(var.clone()),
+        Box::new(Type::Fun(Box::new(var), Box::new(Type::Bool))),
+    );
+    let scheme = class_method_scheme("Eq", &param, eq_ty);
+    let class = ClassInfo {
+        param: "a".to_string(),
+        param_kind: parlang_core::Kind::Star,
+        methods: vec![("eq".to_string(), scheme.clone())],
+    };
+    let method = MethodInfo {
+        class: "Eq".to_string(),
+        scheme,
+    };
+    (
+        HashMap::from([("Eq".to_string(), class)]),
+        HashMap::from([("eq".to_string(), method)]),
+    )
 }
 
 /// Whether `ty` is headed by a type variable (`t` or an applied `t a`).
@@ -607,6 +715,15 @@ pub enum TypeError {
     /// A constraint mentions a type variable that is neither generalized nor
     /// fixed by the environment (Haskell 98: no defaulting).
     AmbiguousConstraint(String),
+    /// A class name declared twice (the built-in `Eq` included).
+    DuplicateClass(String),
+    /// A method name already declared by a class (the built-in `eq` included).
+    DuplicateMethod(String),
+    /// A method signature that does not mention its class parameter (Haskell 98).
+    MethodSignatureMissingClassParam {
+        class: String,
+        method: String,
+    },
 }
 
 impl fmt::Display for TypeError {
@@ -681,15 +798,35 @@ impl fmt::Display for TypeError {
                     "Kind mismatch for {ty}: expected kind {expected}, found {found}"
                 )
             }
+            TypeError::ClassesNotSupportedYet(_)
+            | TypeError::NoInstance(_)
+            | TypeError::AmbiguousConstraint(_)
+            | TypeError::DuplicateClass(_)
+            | TypeError::DuplicateMethod(_)
+            | TypeError::MethodSignatureMissingClassParam { .. } => self.fmt_class_error(f),
+        }
+    }
+}
+
+impl TypeError {
+    /// Display text of the type-class errors, split out of `Display::fmt`
+    /// to keep that function short.
+    fn fmt_class_error(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
             TypeError::ClassesNotSupportedYet(what) => {
                 write!(f, "type classes are not supported yet: {what}")
             }
-            TypeError::NoInstance(constraint) => {
-                write!(f, "no instance for {constraint}")
-            }
+            TypeError::NoInstance(constraint) => write!(f, "no instance for {constraint}"),
             TypeError::AmbiguousConstraint(constraint) => {
                 write!(f, "ambiguous type variable in constraint {constraint}")
             }
+            TypeError::DuplicateClass(name) => write!(f, "Duplicate class: {name}"),
+            TypeError::DuplicateMethod(name) => write!(f, "Duplicate class method: {name}"),
+            TypeError::MethodSignatureMissingClassParam { class, method } => write!(
+                f,
+                "Method '{method}' of class {class} does not mention the class parameter"
+            ),
+            other => write!(f, "{other:?}"),
         }
     }
 }
@@ -1927,6 +2064,7 @@ fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitutio
         Expr::Var(name) => {
             let (ty, args) = env
                 .lookup_instantiated(name)
+                .or_else(|| env.lookup_method(name))
                 .ok_or_else(|| TypeError::UnboundVariable(name.clone()))?;
             Ok(leaf(TypedExprKind::Var(name.clone(), args), ty))
         }
@@ -2158,6 +2296,79 @@ fn infer_decl_let(
     Ok((resolved_value, scheme))
 }
 
+/// Whether the type variable `name` occurs anywhere in `ann`.
+fn annotation_mentions_var(ann: &crate::ast::TypeAnnotation, name: &str) -> bool {
+    use crate::ast::TypeAnnotation as Ann;
+    match ann {
+        Ann::Concrete(_) => false,
+        Ann::Var(var) => var == name,
+        Ann::Fun(arg, ret) => {
+            annotation_mentions_var(arg, name) || annotation_mentions_var(ret, name)
+        }
+        Ann::App(_, args) => args.iter().any(|arg| annotation_mentions_var(arg, name)),
+        Ann::VarApp(var, args) => {
+            var == name || args.iter().any(|arg| annotation_mentions_var(arg, name))
+        }
+    }
+}
+
+/// Check one `class` declaration, register the class and its methods in
+/// `program_env`, and return its typed declaration.
+///
+/// The parameter's kind is inferred from all method signatures. Each method
+/// scheme quantifies the parameter first, then the signature's other type
+/// variables, under the single constraint `name param`.
+fn check_class_decl(
+    name: &str,
+    param: &str,
+    methods: &[(String, crate::ast::TypeAnnotation)],
+    doc: Option<&str>,
+    program_env: &mut TypeEnv,
+) -> Result<TypedDecl, TypeError> {
+    if program_env.classes.contains_key(name) {
+        return Err(TypeError::DuplicateClass(name.to_string()));
+    }
+    let param_kind = crate::kind_check::infer_class_param_kind(program_env, param, methods)?;
+    let param_var = TypeVar(program_env.next_var);
+    program_env.advance_past(&param_var);
+    let mut schemes: Vec<(String, TypeScheme)> = Vec::with_capacity(methods.len());
+    for (method, sig) in methods {
+        let declared = schemes.iter().any(|(seen, _)| seen == method);
+        if declared || program_env.methods.contains_key(method) {
+            return Err(TypeError::DuplicateMethod(method.clone()));
+        }
+        if !annotation_mentions_var(sig, param) {
+            return Err(TypeError::MethodSignatureMissingClassParam {
+                class: name.to_string(),
+                method: method.clone(),
+            });
+        }
+        let mut vars = HashMap::from([(param.to_string(), Type::Var(param_var.clone()))]);
+        let ty = resolve_annotation_with_vars(sig, program_env, &mut vars)?;
+        schemes.push((method.clone(), class_method_scheme(name, &param_var, ty)));
+    }
+    for (method, scheme) in &schemes {
+        let info = MethodInfo {
+            class: name.to_string(),
+            scheme: scheme.clone(),
+        };
+        program_env.methods.insert(method.clone(), info);
+    }
+    let class = ClassInfo {
+        param: param.to_string(),
+        param_kind: param_kind.clone(),
+        methods: schemes.clone(),
+    };
+    program_env.classes.insert(name.to_string(), class);
+    Ok(TypedDecl::Class {
+        name: name.to_string(),
+        param: param.to_string(),
+        param_kind,
+        methods: schemes,
+        doc: doc.map(str::to_string),
+    })
+}
+
 /// Run the final declaration pass, binding each top-level `let` and collecting
 /// the typed declarations in source order.
 ///
@@ -2205,9 +2416,21 @@ fn collect_typed_decls(
                 ty_expr: ty_expr.clone(),
                 doc: doc.clone(),
             }),
-            Decl::Class { name, .. } => {
-                return Err(TypeError::ClassesNotSupportedYet(format!("class {name}")));
-            }
+            // Classes are checked in declaration order, like lets: a method is
+            // not visible to declarations before its class.
+            Decl::Class {
+                name,
+                param,
+                methods,
+                doc,
+                ..
+            } => decls.push(check_class_decl(
+                name,
+                param,
+                methods,
+                doc.as_deref(),
+                program_env,
+            )?),
             Decl::Instance { class, .. } => {
                 return Err(TypeError::ClassesNotSupportedYet(format!(
                     "instance {class}"
@@ -2292,6 +2515,7 @@ pub fn typecheck_program_typed_with_env(
 ) -> Result<TypedProgram, TypeError> {
     let mut program_env = env.clone();
     program_env.wanted = Rc::default();
+    program_env.method_uses = Rc::default();
 
     let mut type_names = HashSet::new();
     let mut constructor_names = HashSet::new();
@@ -2318,10 +2542,8 @@ pub fn typecheck_program_typed_with_env(
                 }
                 aliases.insert(name.clone(), ty_expr.clone());
             }
-            Decl::Let { .. } => {}
-            Decl::Class { name, .. } => {
-                return Err(TypeError::ClassesNotSupportedYet(format!("class {name}")));
-            }
+            // Classes are checked in declaration order by `collect_typed_decls`.
+            Decl::Let { .. } | Decl::Class { .. } => {}
             Decl::Instance { class, .. } => {
                 return Err(TypeError::ClassesNotSupportedYet(format!(
                     "instance {class}"
@@ -2361,11 +2583,13 @@ pub fn typecheck_program_typed_with_env(
 
     let (typed_body, ty) = infer_program_body(program.body.as_ref(), &mut program_env)?;
 
+    let method_uses = RefCell::take(&program_env.method_uses);
     *env = program_env;
     Ok(TypedProgram {
         decls,
         body: typed_body,
         ty,
+        method_uses,
     })
 }
 
@@ -2453,6 +2677,99 @@ mod tests {
     fn check_program(source: &str) -> crate::typed_ast::TypedProgram {
         let program = crate::parser::parse_program(source).unwrap();
         typecheck_program_typed(&program).unwrap()
+    }
+
+    #[test]
+    fn constructor_class_infers_higher_kinded_param() {
+        let source = "class Container f where { empty : f Int; size : f Int -> Int };\n0";
+        let program = check_program(source);
+        let TypedDecl::Class {
+            name,
+            param_kind,
+            methods,
+            ..
+        } = &program.decls[0]
+        else {
+            panic!("expected Class decl")
+        };
+        assert_eq!(name, "Container");
+        let star = parlang_core::Kind::Star;
+        assert_eq!(*param_kind, parlang_core::Kind::arrow(star.clone(), star));
+        let (method, scheme) = &methods[0];
+        assert_eq!(method, "empty");
+        let param = scheme.vars[0].clone();
+        assert_eq!(scheme.ty, Type::VarApp(param.clone(), vec![Type::Int]));
+        let expected = Constraint {
+            class: "Container".to_string(),
+            args: vec![Type::Var(param)],
+        };
+        assert_eq!(scheme.constraints, vec![expected]);
+        assert_eq!(methods[1].0, "size");
+    }
+
+    #[test]
+    fn user_class_method_is_constrained_and_needs_an_instance() {
+        let source = "class Show a where { show : a -> Int };\nlet g = fun x -> show x;\n0";
+        let program = check_program(source);
+        let TypedDecl::Let { scheme, .. } = &program.decls[1] else {
+            panic!("expected Let decl")
+        };
+        assert_eq!(scheme.constraints.len(), 1);
+        assert_eq!(scheme.constraints[0].class, "Show");
+        assert_eq!(program.method_uses, vec!["show".to_string()]);
+        let applied = program_result("class Show a where { show : a -> Int };\nshow 1");
+        assert_eq!(
+            applied.map(|typed| typed.ty),
+            Err(TypeError::NoInstance("Show Int".to_string()))
+        );
+    }
+
+    #[test]
+    fn methods_are_visible_only_after_their_class() {
+        let source = "let g = fun x -> show x;\nclass Show a where { show : a -> Int };\n0";
+        assert_eq!(
+            program_result(source).map(|typed| typed.ty),
+            Err(TypeError::UnboundVariable("show".to_string()))
+        );
+    }
+
+    #[test]
+    fn class_declaration_errors() {
+        let missing = TypeError::MethodSignatureMissingClassParam {
+            class: "C".to_string(),
+            method: "m".to_string(),
+        };
+        let cases = [
+            (
+                "class Eq a where {};\n0",
+                TypeError::DuplicateClass("Eq".to_string()),
+            ),
+            (
+                "class C a where {};\nclass C b where {};\n0",
+                TypeError::DuplicateClass("C".to_string()),
+            ),
+            (
+                "class C a where { m : a };\nclass D b where { m : b };\n0",
+                TypeError::DuplicateMethod("m".to_string()),
+            ),
+            (
+                "class C a where { eq : a };\n0",
+                TypeError::DuplicateMethod("eq".to_string()),
+            ),
+            ("class C a where { m : Int };\n0", missing),
+        ];
+        for (source, expected) in cases {
+            assert_eq!(
+                program_result(source).map(|typed| typed.ty),
+                Err(expected),
+                "{source}"
+            );
+        }
+        let kinds = program_result("class C f where { m : f -> f Int };\n0");
+        assert!(
+            matches!(kinds, Err(TypeError::KindMismatch(..))),
+            "{kinds:?}"
+        );
     }
 
     #[test]
@@ -3116,5 +3433,82 @@ mod tests {
             env.generalize_constrained(&Type::Bool, lost, &HashMap::new()),
             Err(TypeError::AmbiguousConstraint("Eq t2".to_string()))
         );
+    }
+
+    fn program_result(source: &str) -> Result<crate::typed_ast::TypedProgram, TypeError> {
+        let program = crate::parser::parse_program(source).unwrap();
+        typecheck_program_typed(&program)
+    }
+
+    #[test]
+    fn builtin_eq_class_is_seeded() {
+        let env = TypeEnv::new();
+        let class = env.class_info("Eq").unwrap();
+        assert_eq!(class.param_kind, parlang_core::Kind::Star);
+        assert_eq!(class.methods.len(), 1);
+        let method = env.method_info("eq").unwrap();
+        assert_eq!(method.class, "Eq");
+        assert_eq!(
+            method.scheme.to_string(),
+            "forall t0. Eq t0 => t0 -> t0 -> Bool"
+        );
+    }
+
+    #[test]
+    fn eq_method_typechecks_on_builtin_instances() {
+        for source in ["eq 1 2", "eq 'a' 'b'", "eq true false"] {
+            let program = check_program(source);
+            assert_eq!(program.ty, Type::Bool, "{source}");
+            assert_eq!(program.method_uses, vec!["eq".to_string()], "{source}");
+        }
+    }
+
+    #[test]
+    fn eq_method_without_instance_is_rejected() {
+        let result = program_result("eq (1, 2) (1, 2)");
+        assert!(
+            matches!(result, Err(TypeError::NoInstance(_))),
+            "{result:?}"
+        );
+    }
+
+    #[test]
+    fn eq_method_generalizes_with_its_constraint() {
+        let program = check_program("let f = fun x -> eq x x;\n0");
+        let TypedDecl::Let { scheme, .. } = &program.decls[0] else {
+            panic!("expected Let decl")
+        };
+        assert_eq!(scheme.vars.len(), 1);
+        assert_eq!(scheme.constraints.len(), 1);
+        assert_eq!(scheme.constraints[0].class, "Eq");
+        let param = Type::Var(scheme.vars[0].clone());
+        assert_eq!(scheme.ty, Type::Fun(Box::new(param), Box::new(Type::Bool)));
+    }
+
+    #[test]
+    fn user_bindings_shadow_the_eq_method() {
+        for source in [
+            "let eq = fun x -> x + 1;\neq 2",
+            "let eq = fun x -> x + 1 in eq 2",
+            "(fun eq -> eq 2) (fun x -> x + 1)",
+            "let down = rec eq -> fun n -> if n == 0 then 0 else eq (n - 1) in down 3",
+        ] {
+            let program = check_program(source);
+            assert_eq!(program.ty, Type::Int, "{source}");
+            assert!(program.method_uses.is_empty(), "{source}");
+        }
+    }
+
+    #[test]
+    fn equality_operator_ignores_a_shadowing_eq() {
+        let program = check_program("let eq = 5;\nif 1 == 2 then eq else 0");
+        assert_eq!(program.ty, Type::Int);
+        assert!(program.method_uses.is_empty());
+    }
+
+    #[test]
+    fn method_uses_are_deduplicated() {
+        let program = check_program("let a = eq 1 2;\neq true a");
+        assert_eq!(program.method_uses, vec!["eq".to_string()]);
     }
 }

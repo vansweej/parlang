@@ -11,6 +11,9 @@ use parlang_core::{
 /// Elaborates `program` to Core without running Core Lint.
 fn elaborate_only(program: &Program) -> Result<Elaborated, String> {
     let typed = typecheck_program_typed(program).map_err(|e| format!("type error: {e}"))?;
+    if let Some(reason) = crate::typed_ast::requires_dictionary_passing(&typed) {
+        return Err(reason);
+    }
     elaborate_program(&typed).map_err(|e| format!("elaboration error: {e}"))
 }
 
@@ -212,6 +215,18 @@ mod tests {
     fn run_core_type_error() {
         let result = run_core(&prog("1 + true"));
         assert!(matches!(result, Err(ref e) if e.starts_with("type error: ")));
+    }
+
+    #[test]
+    fn core_rejects_type_classes_until_dictionary_passing() {
+        let method = "type classes are not executable yet: method eq".to_string();
+        assert_eq!(run_core(&prog("eq 1 2")), Err(method.clone()));
+        assert_eq!(dump_core(&prog("eq 1 2"), false), Err(method));
+        assert_eq!(
+            run_core(&prog("class Show a where { show : a -> Int };\n0")),
+            Err("type classes are not executable yet: class Show".to_string())
+        );
+        assert_eq!(run_core(&prog("1 == 2")), Ok("false\n".to_string()));
     }
 
     #[test]

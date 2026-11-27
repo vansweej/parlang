@@ -6,9 +6,11 @@
 /// - AST dumping to stdout as text IR (--dump) or DOT (--dump-dot), parsed, typed, core or lint (--stage)
 /// - Core evaluation (--core) and Core machine tracing (trace subcommand)
 use clap::{Parser, Subcommand};
+use parlang::typed_ast::requires_dictionary_passing;
 use parlang::{
     eval_program, eval_program_with_env, parse_program, program_to_dot, run_on_evaluator_stack,
-    typecheck_program, typecheck_program_with_env, Environment, TypeEnv, EVALUATOR_STACK_SIZE,
+    typecheck_program_typed, typecheck_program_typed_with_env, Environment, TypeEnv,
+    EVALUATOR_STACK_SIZE,
 };
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -235,8 +237,11 @@ fn run_file(cli: &Cli, filename: &str) -> Result<String, String> {
         return parlang::pipeline::run_core(&program);
     }
 
-    // Type check before evaluating
-    typecheck_program(&program).map_err(|e| format!("type error: {e}"))?;
+    // Type check, then reject class-using programs until dictionary passing (M2.3).
+    let typed = typecheck_program_typed(&program).map_err(|e| format!("type error: {e}"))?;
+    if let Some(reason) = requires_dictionary_passing(&typed) {
+        return Err(reason);
+    }
 
     let value = run_on_evaluator_stack(move || {
         let env = Environment::new();
@@ -448,8 +453,8 @@ fn evaluate_repl_input(input: &str, env: &mut Environment, type_env: &mut TypeEn
         }
     };
     let mut next_type_env = type_env.clone();
-    let ty = match typecheck_program_with_env(&program, &mut next_type_env) {
-        Ok(ty) => ty,
+    let typed = match typecheck_program_typed_with_env(&program, &mut next_type_env) {
+        Ok(typed) => typed,
         Err(error) => {
             return ReplResponse {
                 type_line: None,
@@ -457,6 +462,13 @@ fn evaluate_repl_input(input: &str, env: &mut Environment, type_env: &mut TypeEn
             };
         }
     };
+    if let Some(reason) = requires_dictionary_passing(&typed) {
+        return ReplResponse {
+            type_line: None,
+            outcome: Err(reason),
+        };
+    }
+    let ty = typed.ty;
     let type_line = program.body.is_some().then(|| format!("Type: {ty}"));
     let (value, new_env) = match eval_program_with_env(&program, env) {
         Ok(result) => result,
@@ -596,6 +608,48 @@ mod tests {
             matches!(&out, Err(e) if e.starts_with("Parse error")),
             "{out:?}"
         );
+    }
+
+    #[test]
+    fn class_programs_are_rejected_identically_by_both_evaluators() {
+        let cases = [
+            (
+                "class_decl",
+                "class Show a where { show : a -> Int };\n0",
+                "type classes are not executable yet: class Show",
+            ),
+            (
+                "method_use",
+                "eq 1 2",
+                "type classes are not executable yet: method eq",
+            ),
+        ];
+        for (name, src, expected) in cases {
+            assert_eq!(run_src(name, src, &[]), Err(expected.to_string()), "{src}");
+            let core = run_src(name, src, &["--core"]);
+            assert_eq!(core, Err(expected.to_string()), "{src}");
+        }
+        assert_eq!(run_src("eq_op", "1 == 2", &[]), Ok("false\n".to_string()));
+        let core_eq = run_src("eq_op_core", "1 == 2", &["--core"]);
+        assert_eq!(core_eq, Ok("false\n".to_string()));
+    }
+
+    #[test]
+    fn repls_reject_class_input_without_committing() {
+        let class_error = "type classes are not executable yet: class Show".to_string();
+        let method_error = "type classes are not executable yet: method eq".to_string();
+        for mut state in [ReplState::new(), ReplState::new_core()] {
+            let declared = state.eval_input("class Show a where { show : a -> Int };");
+            assert_eq!(declared.outcome, Err(class_error.clone()));
+            let used = state.eval_input("eq 1 2");
+            assert_eq!(used.outcome, Err(method_error.clone()));
+            let later = state.eval_input("let g = fun x -> show x;");
+            let unbound = &later.outcome;
+            assert!(
+                matches!(unbound, Err(e) if e.to_lowercase().starts_with("type error")),
+                "{unbound:?}"
+            );
+        }
     }
 
     #[test]

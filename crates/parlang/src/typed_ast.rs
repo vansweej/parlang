@@ -142,6 +142,15 @@ pub enum TypedDecl {
         ty_expr: TypeExpr,
         doc: Option<String>,
     },
+    /// A checked `class` declaration: its parameter with the inferred kind,
+    /// and each method's constrained scheme in declaration order.
+    Class {
+        name: String,
+        param: String,
+        param_kind: parlang_core::Kind,
+        methods: Vec<(String, TypeScheme)>,
+        doc: Option<String>,
+    },
 }
 
 /// Typed mirror of [`crate::ast::Program`]: typed declarations, an optional
@@ -151,6 +160,10 @@ pub struct TypedProgram {
     pub decls: Vec<TypedDecl>,
     pub body: Option<TypedExpr>,
     pub ty: Type,
+    /// Class methods referenced by name (`==` and `!=` do not count),
+    /// deduplicated in first-use order. A non-empty list means the program
+    /// needs dictionary passing (M2.3) to run.
+    pub method_uses: Vec<String>,
 }
 
 /// Render a [`TypedProgram`] as an indented text tree (2 spaces per level).
@@ -168,6 +181,26 @@ pub fn typed_program_to_text(program: &TypedProgram) -> String {
         write_expr(&mut out, "body", body, 1);
     }
     out
+}
+
+/// Why `program` cannot run before dictionary passing (M2.3), or `None` when
+/// it uses no type class: its first `class` declaration, else its first
+/// class-method use.
+///
+/// Both evaluators and both REPLs report exactly this text, so a
+/// class-using program is rejected the same way on every front end.
+pub fn requires_dictionary_passing(program: &TypedProgram) -> Option<String> {
+    let class = program.decls.iter().find_map(|decl| match decl {
+        TypedDecl::Class { name, .. } => Some(format!("class {name}")),
+        _ => None,
+    });
+    let what = class.or_else(|| {
+        program
+            .method_uses
+            .first()
+            .map(|method| format!("method {method}"))
+    })?;
+    Some(format!("type classes are not executable yet: {what}"))
 }
 
 fn indent(out: &mut String, depth: usize) {
@@ -236,6 +269,19 @@ fn write_decl(out: &mut String, index: usize, decl: &TypedDecl, depth: usize) {
         }
         TypedDecl::TypeAlias { name, ty_expr, .. } => {
             let _ = writeln!(out, "decl {index}: TypeAlias {name} = {ty_expr}");
+        }
+        TypedDecl::Class {
+            name,
+            param,
+            param_kind,
+            methods,
+            ..
+        } => {
+            let _ = writeln!(out, "decl {index}: Class {name} {param} :: {param_kind}");
+            for (method, scheme) in methods {
+                indent(out, depth + 1);
+                let _ = writeln!(out, "method: {method} : {scheme}");
+            }
         }
     }
 }

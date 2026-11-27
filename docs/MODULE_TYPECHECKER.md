@@ -239,6 +239,14 @@ Equality operators (`==`, `!=`) require both sides to have the same type `t` and
 The built-in `Eq` instances are `Int`, `Bool`, `Char` and `Float`; `Eq` on any other type constructor (tuples, lists and strings, records, functions, unit, data types) is a `NoInstance` error.
 A constraint on a type variable is generalized into the binding's scheme (for example `forall t0. Eq t0 => t0 -> t0 -> Bool`). A program body or REPL expression is implicitly generalized, so a residual constraint is accepted when all of its variables occur in the body's type. Any other constraint whose variable is neither generalized nor fixed is an `AmbiguousConstraint` error (Haskell 98: no defaulting).
 
+### Type Classes and Methods
+
+`Eq` is a real built-in class, `class Eq a where { eq : a -> a -> Bool }`, seeded into every `TypeEnv` (`class_info`, `method_info`). The method `eq` has the scheme `forall a. Eq a => a -> a -> Bool`, so `eq 1 2 : Bool` and `let f = fun x -> eq x x` gets `forall t. Eq t => t -> Bool`. A variable resolves to a binding first and falls back to a class method, so any user binding named `eq` (top-level or local `let`, a lambda or a `rec` binder) shadows the method; `==` and `!=` always mean `Eq`.
+
+A user `class C p where { m : ty; ... };` is checked in declaration order, like a `let`: a method is invisible to earlier declarations. The kind of `p` is inferred from all signatures (`class Container f where { empty : f Int }` gives `f : * -> *`). Each method gets the scheme `forall p ... . C p => ty`. Errors: `DuplicateClass` (including redeclaring `Eq`), `DuplicateMethod` (across all classes, including `eq`), `MethodSignatureMissingClassParam`, and `KindMismatch` inside signatures. User classes have no instances yet (M2.2b2b), so `C T` on a concrete `T` is `NoInstance`. `instance` declarations are still rejected with `ClassesNotSupportedYet`.
+
+`TypedProgram.method_uses` lists the methods a program uses by name. Until dictionary passing (M2.3), `typed_ast::requires_dictionary_passing` rejects any program with a class declaration or a method use, with the same text on both evaluators, both REPLs and the driver, for example `type classes are not executable yet: method eq`.
+
 ### If Expressions
 
 ```rust

@@ -276,10 +276,18 @@ fn malformed_class_and_instance_headers_are_rejected() {
 }
 
 #[test]
-fn parsed_class_program_is_rejected_by_the_typechecker() {
+fn redeclaring_the_builtin_eq_class_is_rejected() {
     assert_eq!(
         run("class Eq a where { eq : a -> a -> Bool }; 1"),
-        Err("type classes are not supported yet: class Eq".to_string())
+        Err("Duplicate class: Eq".to_string())
+    );
+}
+
+#[test]
+fn parsed_user_class_program_is_rejected_by_the_evaluator() {
+    assert_eq!(
+        run("class Show a where { show : a -> Int }; 1"),
+        Err("type classes are not executable yet: class Show".to_string())
     );
 }
 
@@ -411,10 +419,53 @@ fn class_and_instance_decls_render_as_dot() {
 }
 
 #[test]
-fn typechecker_rejects_class_and_instance_decls() {
+fn class_declaration_renders_in_typed_text_and_dot() {
+    let source = "class Container f where { empty : f Int; size : f Int -> Int };\n0";
+    let program = parse_program(source).unwrap();
+    let typed = parlang::typecheck_program_typed(&program).unwrap();
+    let text = parlang::typed_program_to_text(&typed);
+    assert!(
+        text.contains("decl 0: Class Container f :: * -> *"),
+        "{text}"
+    );
+    assert!(text.contains("method: empty : forall "), "{text}");
+    let dot = parlang::typed_program_to_dot(&typed);
+    assert!(dot.contains("Class\\nContainer f"), "{dot}");
+    assert!(dot.contains("Method\\nsize : forall "), "{dot}");
+}
+
+#[test]
+fn repl_api_persists_class_declarations() {
+    let mut type_env = TypeEnv::new();
+    let declaration = parse_program("class Show a where { show : a -> Int };").unwrap();
+    assert_eq!(
+        typecheck_program_with_env(&declaration, &mut type_env),
+        Ok(parlang::Type::Int)
+    );
+    let use_site = parse_program("let g = fun x -> show x;").unwrap();
+    assert!(typecheck_program_with_env(&use_site, &mut type_env).is_ok());
+    assert_eq!(
+        typecheck_program_with_env(&declaration, &mut type_env),
+        Err(TypeError::DuplicateClass("Show".to_string()))
+    );
+}
+
+#[test]
+fn typechecker_checks_class_and_rejects_instance_decls() {
     assert_eq!(
         typecheck_program(&single_decl_program(sample_class_decl())),
-        Err(TypeError::ClassesNotSupportedYet("class Eq".to_string()))
+        Err(TypeError::DuplicateClass("Eq".to_string()))
+    );
+    let marker = Decl::Class {
+        name: "Marker".to_string(),
+        param: "a".to_string(),
+        superclasses: vec![],
+        methods: vec![("mark".to_string(), TypeAnnotation::Var("a".to_string()))],
+        doc: None,
+    };
+    assert_eq!(
+        typecheck_program(&single_decl_program(marker)),
+        Ok(parlang::Type::Int)
     );
     assert_eq!(
         typecheck_program(&single_decl_program(sample_instance_decl())),

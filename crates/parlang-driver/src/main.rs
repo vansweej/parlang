@@ -149,8 +149,15 @@ fn main() -> ExitCode {
         return print_outcome(parlang::pipeline::run_core(&program));
     }
 
-    if let Err(err) = parlang::typecheck_program(&program) {
-        eprintln!("type error: {err}");
+    let typed = match parlang::typecheck_program_typed(&program) {
+        Ok(typed) => typed,
+        Err(err) => {
+            eprintln!("type error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Some(reason) = parlang::typed_ast::requires_dictionary_passing(&typed) {
+        eprintln!("{reason}");
         return ExitCode::FAILURE;
     }
 
