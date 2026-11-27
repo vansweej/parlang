@@ -9,9 +9,9 @@
 
 use crate::ast::TypeAnnotation;
 use crate::typechecker::{TypeEnv, TypeError};
-use crate::types::Type;
+use crate::types::{Type, TypeVar};
 use parlang_core::Kind;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// A kind under inference: `*`, an arrow, or an unsolved kind variable.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -342,4 +342,156 @@ pub(crate) fn infer_data_kinds(
 /// unknown type names.
 pub(crate) fn check_annotation_kinds(env: &TypeEnv, ann: &TypeAnnotation) -> Result<(), TypeError> {
     KindChecker::new(env, Site::Annotation).check(ann, &KindTerm::Star)
+}
+
+/// Kind inference over the type variables of one resolved surface `Type`.
+struct VarKinds<'data> {
+    /// Parameter kinds of every known data type, keyed by type name.
+    data_kinds: &'data BTreeMap<String, Vec<Kind>>,
+    solver: KindSolver,
+    /// Kinds of the type variables seen so far.
+    vars: BTreeMap<TypeVar, KindTerm>,
+}
+
+impl VarKinds<'_> {
+    fn var_kind(&mut self, var: &TypeVar) -> KindTerm {
+        let solver = &mut self.solver;
+        self.vars
+            .entry(var.clone())
+            .or_insert_with(|| solver.fresh())
+            .clone()
+    }
+
+    /// Constrain `ty` to have kind `expected`. A failed unification is
+    /// ignored: it cannot happen on a type-checked program, and Core Lint
+    /// re-checks every kind.
+    fn visit(&mut self, ty: &Type, expected: &KindTerm) {
+        match ty {
+            Type::Int | Type::Bool | Type::Char | Type::Float | Type::Unit => {
+                self.solver.unify(&KindTerm::Star, expected);
+            }
+            Type::Fun(arg, ret) => {
+                self.visit(arg, &KindTerm::Star);
+                self.visit(ret, &KindTerm::Star);
+                self.solver.unify(&KindTerm::Star, expected);
+            }
+            Type::Tuple(items) => {
+                for item in items {
+                    self.visit(item, &KindTerm::Star);
+                }
+                self.solver.unify(&KindTerm::Star, expected);
+            }
+            Type::Record(fields) => {
+                for field in fields.values() {
+                    self.visit(field, &KindTerm::Star);
+                }
+                self.solver.unify(&KindTerm::Star, expected);
+            }
+            Type::Var(var) => {
+                let found = self.var_kind(var);
+                self.solver.unify(&found, expected);
+            }
+            Type::SumType(name, args) => {
+                let params: Vec<KindTerm> = self
+                    .data_kinds
+                    .get(name)
+                    .map(|kinds| kinds.iter().map(KindTerm::of_kind).collect())
+                    .unwrap_or_default();
+                for (index, arg) in args.iter().enumerate() {
+                    let kind = params.get(index).cloned().unwrap_or(KindTerm::Star);
+                    self.visit(arg, &kind);
+                }
+                let rest = params.get(args.len()..).unwrap_or_default();
+                let found = arrows(rest, KindTerm::Star);
+                self.solver.unify(&found, expected);
+            }
+            Type::VarApp(var, args) => {
+                let mut arg_kinds = Vec::with_capacity(args.len());
+                for arg in args {
+                    let kind = self.solver.fresh();
+                    self.visit(arg, &kind);
+                    arg_kinds.push(kind);
+                }
+                let found = self.var_kind(var);
+                self.solver
+                    .unify(&found, &arrows(&arg_kinds, expected.clone()));
+            }
+        }
+    }
+}
+
+/// Infer the kind of every type variable occurring in `ty`, given the
+/// parameter kinds `data_kinds` of the data types it mentions.
+///
+/// `ty` is checked against `*`. A partially applied data type gets the
+/// kind of its remaining parameters, and an applied variable `f a` gets an
+/// arrow kind. Unsolved kinds default to `*`. Unknown data names and
+/// unification failures cannot occur on a type-checked program; they are
+/// ignored rather than reported, leaving Core Lint as the safety net.
+pub(crate) fn infer_type_var_kinds(
+    data_kinds: &BTreeMap<String, Vec<Kind>>,
+    ty: &Type,
+) -> BTreeMap<TypeVar, Kind> {
+    let mut inference = VarKinds {
+        data_kinds,
+        solver: KindSolver::default(),
+        vars: BTreeMap::new(),
+    };
+    inference.visit(ty, &KindTerm::Star);
+    inference
+        .vars
+        .iter()
+        .map(|(var, kind)| (var.clone(), inference.solver.finish(kind)))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The parameter kinds of `Wrap f a`: `[* -> *, *]`.
+    fn wrap_kinds() -> BTreeMap<String, Vec<Kind>> {
+        let mut data_kinds = BTreeMap::new();
+        data_kinds.insert(
+            "Wrap".to_string(),
+            vec![Kind::arrow(Kind::Star, Kind::Star), Kind::Star],
+        );
+        data_kinds
+    }
+
+    /// `Wrap f a -> f a` gives `f : * -> *` and `a : *`.
+    #[test]
+    fn infer_type_var_kinds_wrap_scheme() {
+        let head = TypeVar(0);
+        let elem = TypeVar(1);
+        let wrap = Type::SumType(
+            "Wrap".to_string(),
+            vec![Type::Var(head.clone()), Type::Var(elem.clone())],
+        );
+        let applied = Type::VarApp(head.clone(), vec![Type::Var(elem.clone())]);
+        let ty = Type::Fun(Box::new(wrap), Box::new(applied));
+        let kinds = infer_type_var_kinds(&wrap_kinds(), &ty);
+        let star_to_star = Kind::arrow(Kind::Star, Kind::Star);
+        assert_eq!(kinds.get(&head), Some(&star_to_star));
+        assert_eq!(kinds.get(&elem), Some(&Kind::Star));
+    }
+
+    /// A variable applied to two arguments gets `* -> * -> *`.
+    #[test]
+    fn infer_type_var_kinds_binary_application() {
+        let head = TypeVar(3);
+        let ty = Type::VarApp(head.clone(), vec![Type::Int, Type::Bool]);
+        let kinds = infer_type_var_kinds(&BTreeMap::new(), &ty);
+        let expected = Kind::arrow(Kind::Star, Kind::arrow(Kind::Star, Kind::Star));
+        assert_eq!(kinds.get(&head), Some(&expected));
+    }
+
+    /// Variables under an unknown data name, or used at `*`, default to `*`.
+    #[test]
+    fn infer_type_var_kinds_defaults_to_star() {
+        let elem = TypeVar(5);
+        let ty = Type::SumType("Mystery".to_string(), vec![Type::Var(elem.clone())]);
+        let kinds = infer_type_var_kinds(&wrap_kinds(), &ty);
+        assert_eq!(kinds.get(&elem), Some(&Kind::Star));
+    }
 }

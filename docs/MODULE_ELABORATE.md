@@ -37,12 +37,14 @@ expected surface-derived type.
   named Core type variable `tN` (where `N` is the surface variable's id).
   A variable NOT in that scope (a residual, never-instantiated type
   variable) defaults to `Unit`.
+- An applied type variable `f a` (`VarApp`) whose head is in scope becomes a
+  left-nested Core application headed by `Var(tN)`. A residual head is
+  rejected with an `Unsupported` error.
 - Sum types translate to a left-nested Core type application: the type's name
-  as the head, applied in order to each translated type argument. Before
-  building the application, the number of type arguments is checked against
-  the parameter count recorded when the data type was registered; a mismatch
-  is rejected with an `Unsupported` error naming the type and the expected and
-  actual argument counts.
+  as the head, applied in order to each translated type argument. Partial
+  application (fewer arguments than parameters, as in `Wrap Option Int`) is
+  allowed and kind-checked by Core Lint; over-application is rejected with an
+  `Unsupported` error naming the type and both argument counts.
 - Tuples of arity two or more translate through a synthesized tuple type
   constructor, named `(,)`, `(,,)`, and so on (one comma per additional
   component beyond the first), with type parameters named `p1` through `pn`.
@@ -63,7 +65,9 @@ concrete base types; any other concrete name becomes a nullary Core type
 constructor reference. This mapping performs no alias resolution of its own;
 the typechecker rejects type aliases and unknown names in data payloads at
 declaration time, so a data declaration's payload annotations contain only
-base types, declared data types, and type variables. Each data
+base types, declared data types, and type variables. The parameter kinds
+come from the typechecker (`param_kinds` on `TypedDecl::Data` and
+`TypedExprKind::TypeDef`). Each data
 declaration is registered into the `LintEnv` through
 `LintEnv::try_with_data`, which validates the declaration (rejecting
 duplicate type names, duplicate type parameters, and duplicate constructor
@@ -84,7 +88,8 @@ it.
   to the elaborated argument term.
 - **`let`** elaborates its value under the generalization recorded by the
   typechecker: for each of the let's generalized type variables, the
-  elaborated value is wrapped in a Core `TyLam`, with the first generalized
+  elaborated value is wrapped in a Core `TyLam` whose kind is inferred from
+  the scheme by `kind_check::infer_type_var_kinds`, with the first generalized
   variable ending up as the outermost `TyLam`. The body is then elaborated
   and bound using a Core `Let` over the (possibly `TyLam`-wrapped) value.
 - **`rec`** elaborates its function body and requires the result to already
@@ -175,10 +180,11 @@ Match expressions are compiled to Core decision trees by `elaborate/match_compil
   typechecker does permit a `rec` binding whose body does not elaborate to a
   function value, but Core's `LetRec` requires its bound value to already be
   a `Lam`, so such a `rec` cannot be elaborated.
-- **A data type applied to the wrong number of type arguments** is rejected
-  as unsupported. Annotations no longer reach this case: the surface
-  typechecker rejects a bare parameterized data name such as `(x : List)`
-  for a one-parameter `List` type earlier, with
-  `TypeError::TypeConstructorArityMismatch`. It remains reachable through a
-  type alias such as `type MyList = List`, which still resolves to
-  `SumType(name, [])` (zero type arguments).
+- **A data type applied to too many type arguments** is rejected as
+  unsupported. Under-application, such as `SumType(name, [])` from a type
+  alias like `type MyList = List` or a higher-kinded argument, is accepted
+  and left to Core Lint's kind checker.
+- **A residual applied type variable** (an `f a` whose head was never
+  generalized or instantiated) is rejected as unsupported. A bare residual
+  variable used at a non-`*` kind defaults to `Unit` and Core Lint rejects
+  it with `KindMismatch`.

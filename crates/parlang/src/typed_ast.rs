@@ -57,6 +57,8 @@ pub enum TypedExprKind {
     TypeDef {
         name: String,
         type_params: Vec<String>,
+        /// Inferred kind of each type parameter, parallel to `type_params`.
+        param_kinds: Vec<parlang_core::Kind>,
         constructors: Vec<(String, Vec<TypeAnnotation>)>,
         body: Box<TypedExpr>,
     },
@@ -130,6 +132,8 @@ pub enum TypedDecl {
     Data {
         name: String,
         type_params: Vec<String>,
+        /// Inferred kind of each type parameter, parallel to `type_params`.
+        param_kinds: Vec<parlang_core::Kind>,
         constructors: Vec<(String, Vec<TypeAnnotation>)>,
         doc: Option<String>,
     },
