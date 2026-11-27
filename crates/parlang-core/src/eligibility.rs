@@ -4,7 +4,7 @@
 //! program may be compiled to a data-parallel kernel. Rule ids are stable and
 //! never renumbered; see `docs/adr/0010-kernel-eligibility-predicate.md`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::fmt::{self, Display, Formatter};
 
 use crate::lint::{LintEnv, RESERVED_PRIMS};
@@ -278,6 +278,7 @@ struct Walker<'a> {
     joins: BTreeMap<&'a str, (usize, bool)>,
     locals: BTreeSet<&'a str>,
     callees: BTreeMap<&'a str, usize>,
+    used: Vec<&'a str>,
     violations: Vec<Violation>,
 }
 
@@ -295,6 +296,7 @@ impl<'a> Walker<'a> {
             joins: BTreeMap::new(),
             locals: BTreeSet::new(),
             callees,
+            used: Vec::new(),
             violations: Vec::new(),
         }
     }
@@ -313,8 +315,13 @@ impl<'a> Walker<'a> {
         }
     }
 
+    /// Resolves a callee arity, recording first references in order.
     fn resolve_callee(&mut self, name: &'a str) -> Option<usize> {
-        self.callees.get(name).copied()
+        let arity = self.callees.get(name).copied()?;
+        if !self.used.contains(&name) {
+            self.used.push(name);
+        }
+        Some(arity)
     }
 
     fn classify(&mut self, name: &'a str) -> Result<Head, EligibilityError> {
@@ -528,7 +535,7 @@ fn check_binding<'a>(
     index: usize,
     env: &'a LintEnv,
     instantiation: &[Type],
-) -> Result<Vec<Violation>, EligibilityError> {
+) -> Result<(Vec<Violation>, Vec<&'a str>), EligibilityError> {
     let (Some(&(name, value)), Some(earlier)) = (bindings.get(index), bindings.get(..index)) else {
         return Err(EligibilityError::Malformed(format!(
             "no spine binding {index}"
@@ -542,7 +549,42 @@ fn check_binding<'a>(
     walker.bind_params(&shape);
     walker.self_call = shape.self_binder.map(|binder| (binder, shape.params.len()));
     walker.walk(shape.body, true)?;
-    Ok(walker.violations)
+    Ok((walker.violations, walker.used))
+}
+
+/// Checks the binding at `index` and, breadth-first in first-reference
+/// order, every spine binding it references. Memoised by binding index: a
+/// name can denote different bindings at different spine prefixes.
+///
+/// Callees are checked with an empty instantiation in this slice, so a
+/// generalised (`TyLam`-wrapped) callee is an `R5` violation even when the
+/// caller instantiates it at kernel types. Per-instantiation checking, by
+/// substituting the instantiation into binder types with
+/// `Type::subst_many`, is future work.
+fn check_with_callees(
+    bindings: &[(&str, &Term)],
+    index: usize,
+    env: &LintEnv,
+    instantiation: &[Type],
+) -> Result<Vec<Violation>, EligibilityError> {
+    let none: &[Type] = &[];
+    let mut violations = Vec::new();
+    let mut checked = BTreeSet::new();
+    let mut queue = VecDeque::from([(index, instantiation)]);
+    while let Some((current, types)) = queue.pop_front() {
+        if !checked.insert(current) {
+            continue;
+        }
+        let (found, used) = check_binding(bindings, current, env, types)?;
+        violations.extend(found);
+        let earlier = bindings.get(..current).unwrap_or_default();
+        for callee in used {
+            if let Some(position) = earlier.iter().rposition(|&(binder, _)| binder == callee) {
+                queue.push_back((position, none));
+            }
+        }
+    }
+    Ok(violations)
 }
 
 /// Builds a violation of `rule` in `function` at `node`.
@@ -579,7 +621,7 @@ pub fn check_function(
         .iter()
         .rposition(|&(binder, _)| binder == name)
         .ok_or_else(|| EligibilityError::UnknownFunction(name.to_string()))?;
-    let violations = check_binding(&bindings, index, env, instantiation)?;
+    let violations = check_with_callees(&bindings, index, env, instantiation)?;
     if violations.is_empty() {
         Ok(Report::Eligible)
     } else {
