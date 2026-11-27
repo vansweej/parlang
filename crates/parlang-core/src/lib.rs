@@ -16,10 +16,12 @@
 //! this crate yet; the surface-to-Core elaborator lands in roadmap slice 7.
 
 pub mod base_type;
+pub mod kind;
 pub mod term;
 pub mod ty;
 
 pub use base_type::BaseType;
+pub use kind::Kind;
 pub use term::{Alt, Lit, Term};
 pub use ty::Type;
 
