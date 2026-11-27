@@ -403,8 +403,8 @@ fn every_example_typechecks_and_runs() {
 /// the elaboration error must contain. Every other example must elaborate,
 /// run on Core, and agree with the surface evaluator.
 const EXPECTED_CORE_REJECTIONS: &[(&str, &str)] = &[
-    ("examples/stdlib/map.par", "equality"),
-    ("examples/string.par", "equality"),
+    ("examples/stdlib/map.par", "dictionary passing"),
+    ("examples/string.par", "dictionary passing"),
     ("examples/use_recursion.par", "load"),
     ("examples/use_stdlib.par", "load"),
     ("examples/use_strings.par", "load"),

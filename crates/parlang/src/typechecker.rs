@@ -1131,9 +1131,13 @@ fn infer_binop(
             infer_ordering_binop(left_ty, &right_typed.ty, &s1, &s2)?
         }
         BinOp::Eq | BinOp::Neq => {
-            // Equality works on any type, but both sides must match
+            // Equality needs an Eq instance for the shared operand type
             let s3 = unify(&left_ty, &right_typed.ty)?;
             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+            env.want(Constraint {
+                class: "Eq".to_string(),
+                args: vec![apply_subst(&subst, &left_ty)],
+            });
             (Type::Bool, subst)
         }
     };

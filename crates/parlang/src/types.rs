@@ -40,10 +40,10 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeVar(pub usize);
 
-/// A typeclass constraint attached to a quantified type variable.
+/// A type class constraint such as `Eq t0`.
 ///
-/// Reserved for forward compatibility; no constraints are produced by the
-/// current type checker.
+/// The type checker emits `Eq` constraints for `==` and `!=`; constraints on
+/// quantified type variables are recorded in `TypeScheme::constraints`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Constraint {
     /// Typeclass name, e.g. `Eq`.
@@ -59,7 +59,7 @@ pub struct TypeScheme {
     pub vars: Vec<TypeVar>,
     /// The type
     pub ty: Type,
-    /// Typeclass constraints. Always empty this slice (forward-compat).
+    /// Class constraints over the quantified variables, sorted by rendering.
     pub constraints: Vec<Constraint>,
 }
 
