@@ -451,3 +451,35 @@ fn test_cli_trace_step_limit() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("step limit"), "stderr was: {stderr}");
 }
+
+#[test]
+fn test_cli_kernel_check() {
+    let test_file = env::temp_dir().join("test_cli_kernel_check.par");
+    fs::write(&test_file, "let inc = fun x -> x + 1;\n0").unwrap();
+    let path = test_file.to_str().unwrap();
+    let ok = Command::new("cargo")
+        .args(["run", "--quiet", "--", "kernel-check", path, "--fn", "inc"])
+        .output()
+        .expect("Failed to execute command");
+    let _ = fs::remove_file(&test_file);
+    assert!(ok.status.success());
+    let stdout = String::from_utf8_lossy(&ok.stdout);
+    assert_eq!(stdout.trim(), "eligible: inc");
+
+    let factorial = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/factorial.par");
+    let bad = Command::new("cargo")
+        .args([
+            "run",
+            "--quiet",
+            "--",
+            "kernel-check",
+            factorial,
+            "--fn",
+            "factorial",
+        ])
+        .output()
+        .expect("Failed to execute command");
+    assert!(!bad.status.success());
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    assert!(stderr.contains("R3 recursion"), "stderr was: {stderr}");
+}
