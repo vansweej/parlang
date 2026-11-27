@@ -183,6 +183,22 @@ enum Commands {
         #[arg(long)]
         raw: bool,
     },
+    /// Check whether a top-level function is kernel-eligible (slice 8 predicate).
+    KernelCheck {
+        /// Input file (.par file)
+        file: String,
+        /// Name of the top-level function to check.
+        #[arg(long = "fn")]
+        name: String,
+    },
+}
+
+/// Kernel-check function `name` in `file`, returning the verdict or the error text.
+fn run_kernel_check(file: &str, name: &str) -> Result<String, String> {
+    fs::read_to_string(file)
+        .map_err(|e| format!("Failed to read file '{file}': {e}"))
+        .and_then(|contents| parse_program(&contents).map_err(|e| format!("Parse error: {e}")))
+        .and_then(|program| parlang::pipeline::kernel_check(&program, name))
 }
 
 /// Trace `file` on the Core machine, returning the trace text or the error line.
@@ -198,7 +214,7 @@ fn run_trace(file: &str, fuel: usize, raw: bool) -> Result<String, String> {
 fn wants_repl(cli: &Cli) -> bool {
     match &cli.command {
         Some(Commands::Repl) => true,
-        Some(Commands::Trace { .. }) => false,
+        Some(Commands::Trace { .. } | Commands::KernelCheck { .. }) => false,
         None => cli.file.is_none(),
     }
 }
@@ -239,6 +255,9 @@ fn run_file(cli: &Cli, filename: &str) -> Result<String, String> {
 fn run(cli: &Cli) -> Result<String, String> {
     if let Some(Commands::Trace { file, fuel, raw }) = &cli.command {
         return run_trace(file, *fuel, *raw);
+    }
+    if let Some(Commands::KernelCheck { file, name }) = &cli.command {
+        return run_kernel_check(file, name);
     }
     let Some(filename) = &cli.file else {
         return Err("Error: no input file given".to_string());
@@ -534,6 +553,40 @@ mod tests {
         let first = text.lines().find(|l| !l.trim().is_empty());
         assert!(first.is_some_and(|l| l.starts_with("0: ")), "{text}");
         assert!(text.contains("result: 7"), "{text}");
+    }
+
+    #[test]
+    fn kernel_check_reports_eligible() {
+        let path = temp_program("kc_ok", "let inc = fun x -> x + 1;\n0");
+        let path_text = path.to_string_lossy().into_owned();
+        let out = run_args(&["kernel-check", path_text.as_str(), "--fn", "inc"]);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(out, Ok("eligible: inc\n".to_string()));
+    }
+
+    #[test]
+    fn kernel_check_reports_rejection() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/factorial.par");
+        let out = run_args(&["kernel-check", path, "--fn", "factorial"]);
+        let err = out.expect_err("factorial is recursive");
+        assert!(err.starts_with("rejected: factorial\n"), "{err}");
+        assert!(err.contains("  R3 recursion: factorial: "), "{err}");
+    }
+
+    #[test]
+    fn kernel_check_unknown_function() {
+        let path = temp_program("kc_unknown", "1");
+        let path_text = path.to_string_lossy().into_owned();
+        let out = run_args(&["kernel-check", path_text.as_str(), "--fn", "nope"]);
+        let _ = std::fs::remove_file(&path);
+        let expected = "kernel-check error: unknown function: nope";
+        assert_eq!(out, Err(expected.to_string()));
+    }
+
+    #[test]
+    fn kernel_check_requires_fn_flag() {
+        let parsed = Cli::try_parse_from(["parlang", "kernel-check", "x.par"]);
+        assert!(parsed.is_err());
     }
 
     #[test]

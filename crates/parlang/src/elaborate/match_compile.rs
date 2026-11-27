@@ -328,7 +328,7 @@ impl Elab {
                 continue;
             }
 
-            let name = self.fresh_name("j");
+            let name = self.fresh_name(parlang_core::eligibility::JOIN_POINT_TAG);
             let mut params: Vec<(String, Type)> = Vec::new();
             for (pname, pty) in &arm.bindings {
                 if let Some(existing) = params.iter_mut().find(|(n, _)| n == pname) {
