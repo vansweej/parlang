@@ -144,6 +144,13 @@ impl LintEnv {
         self.types.get(name)
     }
 
+    /// Looks up the name of the data type that declares constructor `ctor`,
+    /// for example `List` for `Cons`.
+    #[must_use]
+    pub fn owner_of(&self, ctor: &str) -> Option<&str> {
+        self.ctor_owner.get(ctor).map(String::as_str)
+    }
+
     /// Pushes a term-variable binding onto the context stack.
     fn push_term(&mut self, name: &str, ty: Type) {
         self.terms.push((name.to_string(), ty));
@@ -588,7 +595,7 @@ fn synth_tyapp(env: &mut LintEnv, t: &Term, ty: &Type) -> Result<Type, LintError
     Ok(body.subst(&a, ty))
 }
 
-const RESERVED_PRIMS: &[&str] = &["if", "+", "-", "*", "/", "<", "eq"];
+pub(crate) const RESERVED_PRIMS: &[&str] = &["if", "+", "-", "*", "/", "<", "eq"];
 
 fn synth_con(
     env: &mut LintEnv,
