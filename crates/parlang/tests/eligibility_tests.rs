@@ -196,3 +196,112 @@ fn data_reaching_list_is_rejected_r1() -> Result<(), Box<dyn Error>> {
     assert_eq!(check_function(&root, &env, "size", &[])?, expected);
     Ok(())
 }
+
+const FACTORIAL: &str = "let factorial = rec f -> fun n ->
+    if n == 0
+    then 1
+    else n * f (n - 1);
+";
+
+fn report_of(src: &str, name: &str) -> Result<Report, Box<dyn Error>> {
+    let elab = core_of_program(&parse_program(src)?)?;
+    Ok(check_function(&elab.term, &elab.env, name, &[])?)
+}
+
+fn rules_of(report: &Report) -> Vec<Rule> {
+    match report {
+        Report::Eligible => vec![],
+        Report::Rejected(violations) => violations.iter().map(|v| v.rule).collect(),
+    }
+}
+
+fn factorial_r3() -> Report {
+    Report::Rejected(vec![Violation {
+        rule: Rule::Recursion,
+        function: "factorial".to_string(),
+        node: "(f -(n, 1))".to_string(),
+    }])
+}
+
+#[test]
+fn recursion_sum_to_n_and_gcd_are_eligible() -> Result<(), Box<dyn Error>> {
+    let src = "let sum_to_n = rec sum_helper -> fun acc -> fun n ->
+    if n == 0
+    then acc
+    else sum_helper (acc + n) (n - 1);
+
+let gcd = rec gcd_helper -> fun a -> fun b ->
+    if b == 0
+    then a
+    else gcd_helper b (a - (a / b) * b);
+
+0";
+    assert_eq!(report_of(src, "sum_to_n")?, Report::Eligible);
+    assert_eq!(report_of(src, "gcd")?, Report::Eligible);
+    Ok(())
+}
+
+#[test]
+fn factorial_non_tail_recursion_is_rejected_r3() -> Result<(), Box<dyn Error>> {
+    let src = format!("{FACTORIAL}\n0");
+    assert_eq!(report_of(&src, "factorial")?, factorial_r3());
+    Ok(())
+}
+
+#[test]
+fn non_recursive_adt_match_is_eligible() -> Result<(), Box<dyn Error>> {
+    let src = "data Shape = Circle Int | Square Int;
+let area = fun s -> match s with | Circle r -> r * r | Square w -> w * w;
+0";
+    assert_eq!(report_of(src, "area")?, Report::Eligible);
+    Ok(())
+}
+
+#[test]
+fn list_function_is_rejected_r4() -> Result<(), Box<dyn Error>> {
+    let src = "data List a = Nil | Cons a (List a);
+let len = fun xs -> match xs with | Nil -> 0 | Cons x rest -> 1;
+0";
+    let rules = rules_of(&report_of(src, "len")?);
+    assert!(rules.contains(&Rule::Data), "{rules:?}");
+    assert!(rules.contains(&Rule::KernelTypes), "{rules:?}");
+    Ok(())
+}
+
+#[test]
+fn higher_order_function_is_rejected_r2() -> Result<(), Box<dyn Error>> {
+    let src = "let apply = fun f -> fun x -> f x;\n0";
+    let rules = rules_of(&report_of(src, "apply")?);
+    assert!(rules.contains(&Rule::FirstOrder), "{rules:?}");
+    assert!(rules.contains(&Rule::KernelTypes), "{rules:?}");
+    Ok(())
+}
+
+#[test]
+fn tuple_match_uses_join_points_and_is_eligible() -> Result<(), Box<dyn Error>> {
+    let src = "data AB = A | B;
+let pairs = fun p -> match p with | (A, A) -> 1 | _ -> 2;
+0";
+    let elab = core_of_program(&parse_program(src)?)?;
+    let text = find_binding(&elab.term, "pairs").map(Term::to_text);
+    assert!(text.is_some_and(|t| t.contains("$j")));
+    let report = check_function(&elab.term, &elab.env, "pairs", &[])?;
+    assert_eq!(report, Report::Eligible);
+    Ok(())
+}
+
+#[test]
+fn ineligible_callee_violations_are_appended() -> Result<(), Box<dyn Error>> {
+    let src = format!("{FACTORIAL}let g = fun n -> factorial n;\n0");
+    assert_eq!(report_of(&src, "g")?, factorial_r3());
+    Ok(())
+}
+
+#[test]
+fn unbound_variable_is_malformed() -> Result<(), Box<dyn Error>> {
+    let root = let_("f", lam("x", base_ty(BaseType::Int), var("y")?)?, var("f")?)?;
+    let result = check_function(&root, &LintEnv::new(), "f", &[]);
+    let expected = EligibilityError::Malformed("unbound variable y".to_string());
+    assert_eq!(result, Err(expected));
+    Ok(())
+}
