@@ -246,19 +246,27 @@ fn run(cli: &Cli) -> Result<String, String> {
     run_file(cli, filename)
 }
 
+/// Returns the exact REPL start-up banner text, ending with an empty line;
+/// the `--core` notice line is included when `core` is set.
+fn banner(core: bool) -> String {
+    let hint = "Type expressions to evaluate them. Press Ctrl+C to exit.\n";
+    let mut text = format!(
+        "ParLang v{} - A small ML-alike functional language\n",
+        env!("CARGO_PKG_VERSION")
+    );
+    text.push_str(hint);
+    if core {
+        text.push_str("Evaluating on the Core CEK machine (--core).\n");
+    }
+    text.push('\n');
+    text
+}
+
 fn main() {
     let cli = Cli::parse();
 
     if wants_repl(&cli) {
-        println!(
-            "ParLang v{} - A small ML-alike functional language",
-            env!("CARGO_PKG_VERSION")
-        );
-        println!("Type expressions to evaluate them. Press Ctrl+C to exit.");
-        if cli.core {
-            println!("Evaluating on the Core CEK machine (--core).");
-        }
-        println!();
+        print!("{}", banner(cli.core));
         if !repl(cli.core) {
             process::exit(1);
         }
@@ -454,8 +462,8 @@ fn evaluate_repl_input(input: &str, env: &mut Environment, type_env: &mut TypeEn
 
 #[cfg(test)]
 mod tests {
-    use super::{run, wants_repl, Cli, ReplState};
-    use clap::Parser;
+    use super::{banner, run, wants_repl, Cli, ReplState};
+    use clap::{CommandFactory, Parser};
     use std::path::PathBuf;
 
     /// Writes `src` to a pid-unique temp file tagged `name` and returns its path.
@@ -724,5 +732,39 @@ mod tests {
         let response = state.eval_input("1 + 2");
         assert_eq!(response.type_line.as_deref(), Some("Type: Int"));
         assert_eq!(response.outcome, Ok("3".to_string()));
+    }
+
+    #[test]
+    fn banner_lines_match_main_output() {
+        let version = env!("CARGO_PKG_VERSION");
+        let head = format!("ParLang v{version} - A small ML-alike functional language\n");
+        let hint = "Type expressions to evaluate them. Press Ctrl+C to exit.\n";
+        let core_line = "Evaluating on the Core CEK machine (--core).\n";
+        assert_eq!(banner(false), format!("{head}{hint}\n"));
+        assert_eq!(banner(true), format!("{head}{hint}{core_line}\n"));
+    }
+
+    #[test]
+    fn module_main_doc_shows_current_help() {
+        let doc = include_str!("../../../docs/MODULE_MAIN.md");
+        let help = Cli::command().render_long_help().to_string();
+        let expected = help.trim_end();
+        assert!(
+            doc.contains(expected),
+            "docs/MODULE_MAIN.md Help Output is stale; rendered help:\n{expected}"
+        );
+    }
+
+    #[test]
+    fn docs_show_current_banners() {
+        let module_doc = include_str!("../../../docs/MODULE_MAIN.md");
+        let readme = include_str!("../../../README.md");
+        for text in [banner(false), banner(true)] {
+            assert!(
+                module_doc.contains(&text),
+                "docs/MODULE_MAIN.md lacks banner:\n{text}"
+            );
+            assert!(readme.contains(&text), "README.md lacks banner:\n{text}");
+        }
     }
 }

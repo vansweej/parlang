@@ -632,10 +632,20 @@ Run the interpreter without arguments to start an interactive REPL:
 cargo run
 ```
 
+Pass `--core` (`cargo run -- --core`) to evaluate REPL input on the Core CEK machine; the banner then reads:
+
+```
+ParLang v0.2.0 - A small ML-alike functional language
+Type expressions to evaluate them. Press Ctrl+C to exit.
+Evaluating on the Core CEK machine (--core).
+
+> 
+```
+
 The REPL automatically submits expressions when they are complete and parseable. Simply press Enter after typing your expression - no need for a blank line:
 
 ```
-ParLang v0.1.0 - A small ML-alike functional language
+ParLang v0.2.0 - A small ML-alike functional language
 Type expressions to evaluate them. Press Ctrl+C to exit.
 
 > 42

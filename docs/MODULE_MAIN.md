@@ -94,6 +94,7 @@ The main module uses [clap](https://github.com/clap-rs/clap) v4.5 with derive ma
 #[derive(Parser)]
 #[command(name = "parlang")]
 #[command(author, version, about = "A small ML-alike functional language", long_about = None)]
+#[command(group(clap::ArgGroup::new("dump_mode").args(["dump", "dump_dot"])))]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -101,23 +102,51 @@ struct Cli {
     /// Input file to execute (.par file)
     file: Option<String>,
 
-    /// Dump the parsed AST as text IR to stdout, then exit.
+    /// Dump the AST as text IR to stdout, then exit (skips evaluation).
     #[arg(long, conflicts_with = "dump_dot", requires = "file")]
     dump: bool,
 
-    /// Dump the parsed AST as Graphviz DOT to stdout, then exit.
+    /// Dump the AST as Graphviz DOT to stdout, then exit (skips evaluation).
     #[arg(long, requires = "file")]
     dump_dot: bool,
 
-    /// Pipeline stage to dump: `parsed` (default) or `typed` (requires --dump or --dump-dot).
+    /// Pipeline stage to dump: `parsed` (default), `typed`, `core` or `lint` (requires --dump or --dump-dot).
     #[arg(long, value_enum, requires = "dump_mode")]
     stage: Option<Stage>,
+
+    /// Evaluate on the Core CEK machine instead of the surface evaluator (file mode or REPL); redundant with the trace subcommand, which always runs on Core.
+    #[arg(long, conflicts_with = "dump_mode")]
+    core: bool,
+}
+
+/// Which pipeline stage to dump.
+#[derive(Copy, Clone, clap::ValueEnum)]
+enum Stage {
+    /// The AST straight from the parser.
+    Parsed,
+    /// The type-annotated AST after Hindley-Milner inference.
+    Typed,
+    /// The elaborated Core term (elaboration only, no Core lint).
+    Core,
+    /// The elaborated Core term checked by Core lint.
+    Lint,
 }
 
 #[derive(Subcommand)]
 enum Commands {
     /// Start interactive REPL
     Repl,
+    /// Trace a program's evaluation on the Core CEK machine.
+    Trace {
+        /// Input file to trace (.par file)
+        file: String,
+        /// Maximum number of machine steps before giving up.
+        #[arg(long, default_value_t = 10_000)]
+        fuel: usize,
+        /// Print every raw machine step instead of the reduction view.
+        #[arg(long)]
+        raw: bool,
+    },
 }
 ```
 
@@ -159,6 +188,10 @@ parlang -V                # Short form
 
 ### Help Output
 
+The block below is pinned by the `module_main_doc_shows_current_help` test in
+`crates/parlang/src/main.rs`; regenerate it from the test failure message when
+the CLI changes.
+
 ```
 $ parlang --help
 A small ML-alike functional language
@@ -166,19 +199,38 @@ A small ML-alike functional language
 Usage: parlang [OPTIONS] [FILE] [COMMAND]
 
 Commands:
-  repl  Start interactive REPL
-  help  Print this message or the help of the given subcommand(s)
+  repl   Start interactive REPL
+  trace  Trace a program's evaluation on the Core CEK machine
+  help   Print this message or the help of the given subcommand(s)
 
 Arguments:
-  [FILE]  Input file to execute (.par file)
+  [FILE]
+          Input file to execute (.par file)
 
 Options:
-  --dump                 Dump the parsed AST as text IR to stdout, then exit
-  --dump-dot             Dump the parsed AST as Graphviz DOT to stdout, then exit
-  --stage <STAGE>        Pipeline stage to dump [possible values: parsed, typed, core, lint]
-  --core                 Evaluate on the Core CEK machine instead of the surface evaluator
-  -h, --help             Print help
-  -V, --version          Print version
+      --dump
+          Dump the AST as text IR to stdout, then exit (skips evaluation)
+
+      --dump-dot
+          Dump the AST as Graphviz DOT to stdout, then exit (skips evaluation)
+
+      --stage <STAGE>
+          Pipeline stage to dump: `parsed` (default), `typed`, `core` or `lint` (requires --dump or --dump-dot)
+
+          Possible values:
+          - parsed: The AST straight from the parser
+          - typed:  The type-annotated AST after Hindley-Milner inference
+          - core:   The elaborated Core term (elaboration only, no Core lint)
+          - lint:   The elaborated Core term checked by Core lint
+
+      --core
+          Evaluate on the Core CEK machine instead of the surface evaluator (file mode or REPL); redundant with the trace subcommand, which always runs on Core
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
 ```
 
 ## Execution Modes
@@ -346,10 +398,28 @@ match fs::read_to_string(filename) {
 
 **REPL Mode Logic**:
 ```rust
-println!("ParLang v0.1.0 - A small ML-alike functional language");
-println!("Type expressions to evaluate them. Press Ctrl+C to exit.");
-println!();
-repl();
+fn banner(core: bool) -> String {
+    let hint = "Type expressions to evaluate them. Press Ctrl+C to exit.\n";
+    let mut text = format!(
+        "ParLang v{} - A small ML-alike functional language\n",
+        env!("CARGO_PKG_VERSION")
+    );
+    text.push_str(hint);
+    if core {
+        text.push_str("Evaluating on the Core CEK machine (--core).\n");
+    }
+    text.push('\n');
+    text
+}
+
+// in main():
+if wants_repl(&cli) {
+    print!("{}", banner(cli.core));
+    if !repl(cli.core) {
+        process::exit(1);
+    }
+    return;
+}
 ```
 
 **Exit Codes**:
@@ -460,8 +530,18 @@ The REPL uses two types of prompts:
 - `... ` - Continuation prompt for multiline input
 
 ```
-ParLang v0.1.0 - A small ML-alike functional language
+ParLang v0.2.0 - A small ML-alike functional language
 Type expressions to evaluate them. Press Ctrl+C to exit.
+
+> 
+```
+
+With `parlang --core` the banner gains a line naming the Core evaluator:
+
+```
+ParLang v0.2.0 - A small ML-alike functional language
+Type expressions to evaluate them. Press Ctrl+C to exit.
+Evaluating on the Core CEK machine (--core).
 
 > 
 ```
@@ -864,7 +944,7 @@ Err(e) => {
 
 ```bash
 $ parlang
-ParLang v0.1.0 - A small ML-alike functional language
+ParLang v0.2.0 - A small ML-alike functional language
 Type expressions to evaluate them. Press Ctrl+C to exit.
 
 > 
@@ -876,7 +956,7 @@ Or with Cargo:
 $ cargo run
     Finished dev [unoptimized + debuginfo] target(s) in 0.01s
      Running `target/debug/parlang`
-ParLang v0.1.0 - A small ML-alike functional language
+ParLang v0.2.0 - A small ML-alike functional language
 Type expressions to evaluate them. Press Ctrl+C to exit.
 
 > 
