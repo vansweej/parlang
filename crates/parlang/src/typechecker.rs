@@ -27,8 +27,8 @@ pub struct TypeEnv {
     type_aliases: HashMap<String, Type>,
     /// Constructor information: maps constructor name to its type info
     constructors: HashMap<String, ConstructorInfo>,
-    /// Declared data types: maps type name to its number of type parameters
-    data_arities: HashMap<String, usize>,
+    /// Declared data types: maps type name to its parameter kinds
+    data_kinds: HashMap<String, Vec<parlang_core::Kind>>,
 }
 
 impl TypeEnv {
@@ -38,7 +38,7 @@ impl TypeEnv {
             next_var: 0,
             type_aliases: HashMap::new(),
             constructors: HashMap::new(),
-            data_arities: HashMap::new(),
+            data_kinds: HashMap::new(),
         }
     }
 
@@ -166,14 +166,19 @@ impl TypeEnv {
         self.constructors.get(name)
     }
 
-    /// Record that data type `name` takes `arity` type parameters.
-    pub fn define_data_arity(&mut self, name: String, arity: usize) {
-        self.data_arities.insert(name, arity);
+    /// Record the parameter kinds of the data type `name`.
+    pub fn define_data_kinds(&mut self, name: String, kinds: Vec<parlang_core::Kind>) {
+        self.data_kinds.insert(name, kinds);
+    }
+
+    /// Parameter kinds of the declared data type `name`, if any.
+    pub fn data_kinds(&self, name: &str) -> Option<&[parlang_core::Kind]> {
+        self.data_kinds.get(name).map(Vec::as_slice)
     }
 
     /// Number of type parameters of the declared data type `name`, if any.
     pub fn data_arity(&self, name: &str) -> Option<usize> {
-        self.data_arities.get(name).copied()
+        self.data_kinds.get(name).map(Vec::len)
     }
 }
 
@@ -398,73 +403,6 @@ fn type_annotation_to_type(
     }
 }
 
-/// Whether `name` is one of the built-in base type names.
-fn is_base_type_name(name: &str) -> bool {
-    matches!(name, "Int" | "Bool" | "Char" | "Float")
-}
-
-/// Check that type constructor `name` is applied to `actual` type arguments.
-///
-/// Base types take no arguments; declared data types take exactly their
-/// declared number of parameters. Unknown names are accepted here; payload
-/// fields reject them first in `check_payload_head`.
-fn check_type_constructor_arity(name: &str, actual: usize, env: &TypeEnv) -> Result<(), TypeError> {
-    let expected = if is_base_type_name(name) {
-        Some(0)
-    } else {
-        env.data_arity(name)
-    };
-    match expected {
-        Some(expected) if expected != actual => Err(TypeError::TypeConstructorArityMismatch(
-            name.to_string(),
-            expected,
-            actual,
-        )),
-        _ => Ok(()),
-    }
-}
-
-/// Check that payload type constructor `name` is known and applied to `actual` arguments.
-///
-/// Base types and declared data types are checked for arity. Data types are
-/// tested first because top-level registration also defines placeholder
-/// aliases for data names. A type alias yields
-/// `TypeError::TypeAliasInDataPayload`; any other name is unknown.
-fn check_payload_head(name: &str, actual: usize, env: &TypeEnv) -> Result<(), TypeError> {
-    if is_base_type_name(name) || env.data_arity(name).is_some() {
-        return check_type_constructor_arity(name, actual, env);
-    }
-    if env.resolve_type_alias(name).is_some() {
-        return Err(TypeError::TypeAliasInDataPayload(name.to_string()));
-    }
-    Err(TypeError::UnboundVariable(format!(
-        "Unknown type constructor in data declaration: {name}"
-    )))
-}
-
-/// Validate a data constructor payload field at declaration time.
-///
-/// Every type constructor name must be a base type or a declared data type
-/// applied to its declared number of arguments; see `check_payload_head`.
-fn check_payload_arity(field: &crate::ast::TypeAnnotation, env: &TypeEnv) -> Result<(), TypeError> {
-    match field {
-        crate::ast::TypeAnnotation::Var(_) => Ok(()),
-        crate::ast::TypeAnnotation::Concrete(name) => check_payload_head(name, 0, env),
-        crate::ast::TypeAnnotation::Fun(arg, ret) => {
-            check_payload_arity(arg, env)?;
-            check_payload_arity(ret, env)
-        }
-        crate::ast::TypeAnnotation::App(name, args) => {
-            check_payload_head(name, args.len(), env)?;
-            args.iter()
-                .try_for_each(|arg| check_payload_arity(arg, env))
-        }
-        crate::ast::TypeAnnotation::VarApp(_, args) => args
-            .iter()
-            .try_for_each(|arg| check_payload_arity(arg, env)),
-    }
-}
-
 /// Type checking errors
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeError {
@@ -498,6 +436,9 @@ pub enum TypeError {
     /// A type alias was used in a data constructor payload, which is not
     /// supported yet because payload annotations are not alias-expanded.
     TypeAliasInDataPayload(String),
+    /// A type whose kind does not fit its position: type, expected kind,
+    /// found kind (e.g. `Int` where `* -> *` is expected).
+    KindMismatch(String, String, String),
     /// A `match` whose arms do not cover every value; `missing` holds witness patterns.
     NonExhaustiveMatch {
         missing: Vec<String>,
@@ -569,6 +510,12 @@ impl fmt::Display for TypeError {
             }
             TypeError::TypeAliasInDataPayload(name) => {
                 write!(f, "Type alias in data payload is not supported yet: {name}")
+            }
+            TypeError::KindMismatch(ty, expected, found) => {
+                write!(
+                    f,
+                    "Kind mismatch for {ty}: expected kind {expected}, found {found}"
+                )
             }
         }
     }
@@ -809,6 +756,7 @@ fn resolve_type_annotation(
     ty_ann: &crate::ast::TypeAnnotation,
     env: &mut TypeEnv,
 ) -> Result<Type, TypeError> {
+    crate::kind_check::check_annotation_kinds(env, ty_ann)?;
     let mut vars = HashMap::new();
     resolve_annotation_with_vars(ty_ann, env, &mut vars)
 }
@@ -828,18 +776,13 @@ fn resolve_annotation_with_vars(
                 "Bool" => Ok(Type::Bool),
                 "Char" => Ok(Type::Char),
                 "Float" => Ok(Type::Float),
-                _ => match env.data_arity(name) {
-                    Some(0) => Ok(Type::SumType(name.clone(), vec![])),
-                    Some(expected) => Err(TypeError::TypeConstructorArityMismatch(
-                        name.clone(),
-                        expected,
-                        0,
-                    )),
-                    // Try to resolve as type alias
-                    None => env
-                        .resolve_type_alias(name)
-                        .ok_or_else(|| TypeError::UnboundVariable(name.clone())),
-                },
+                // Kinds were checked by `resolve_type_annotation`, so a bare
+                // parameterised data type here is a partial application.
+                _ if env.data_arity(name).is_some() => Ok(Type::SumType(name.clone(), vec![])),
+                // Try to resolve as type alias
+                _ => env
+                    .resolve_type_alias(name)
+                    .ok_or_else(|| TypeError::UnboundVariable(name.clone())),
             }
         }
         crate::ast::TypeAnnotation::Var(name) => {
@@ -856,12 +799,6 @@ fn resolve_annotation_with_vars(
             Ok(Type::Fun(Box::new(arg_ty), Box::new(ret_ty)))
         }
         crate::ast::TypeAnnotation::App(name, args) => {
-            check_type_constructor_arity(name, args.len(), env)?;
-            if env.data_arity(name).is_none() {
-                return Err(TypeError::UnboundVariable(format!(
-                    "Unknown type constructor in annotation: {name}"
-                )));
-            }
             let arg_types = args
                 .iter()
                 .map(|arg| resolve_annotation_with_vars(arg, env, vars))
@@ -1717,11 +1654,16 @@ fn infer_type_def(
     body: &Expr,
     env: &mut TypeEnv,
 ) -> Result<(TypedExpr, Substitution), TypeError> {
-    env.define_data_arity(name.to_string(), type_params.len());
+    let sig = crate::kind_check::DataSig {
+        name,
+        params: type_params,
+        ctors: constructors,
+    };
+    for (data_name, kinds) in crate::kind_check::infer_data_kinds(env, std::slice::from_ref(&sig))?
+    {
+        env.define_data_kinds(data_name, kinds);
+    }
     for (ctor_name, payload_types) in constructors {
-        for field in payload_types {
-            check_payload_arity(field, env)?;
-        }
         let info = ConstructorInfo {
             type_params: type_params.to_vec(),
             payload_types: payload_types.clone(),
@@ -2065,6 +2007,32 @@ pub fn typecheck_program(program: &Program) -> Result<Type, TypeError> {
     Ok(typecheck_program_typed(program)?.ty)
 }
 
+/// Infer the parameter kinds of every top-level `data` declaration as one
+/// mutually recursive group and record them in `env`.
+fn define_program_data_kinds(program: &Program, env: &mut TypeEnv) -> Result<(), TypeError> {
+    let sigs: Vec<crate::kind_check::DataSig<'_>> = program
+        .decls
+        .iter()
+        .filter_map(|decl| match decl {
+            Decl::Data {
+                name,
+                type_params,
+                constructors,
+                ..
+            } => Some(crate::kind_check::DataSig {
+                name,
+                params: type_params,
+                ctors: constructors,
+            }),
+            _ => None,
+        })
+        .collect();
+    for (name, kinds) in crate::kind_check::infer_data_kinds(env, &sigs)? {
+        env.define_data_kinds(name, kinds);
+    }
+    Ok(())
+}
+
 /// Type check a top-level program and persist its declarations in `env` on success,
 /// returning the fully resolved typed program AST.
 ///
@@ -2085,16 +2053,12 @@ pub fn typecheck_program_typed_with_env(
     for decl in &program.decls {
         match decl {
             Decl::Data {
-                name,
-                type_params,
-                constructors,
-                ..
+                name, constructors, ..
             } => {
                 if !type_names.insert(name.clone()) {
                     return Err(TypeError::DuplicateTypeName(name.clone()));
                 }
                 program_env.define_type_alias(name.clone(), Type::SumType(name.clone(), vec![]));
-                program_env.define_data_arity(name.clone(), type_params.len());
                 for (constructor_name, _) in constructors {
                     if !constructor_names.insert(constructor_name.clone()) {
                         return Err(TypeError::DuplicateConstructor(constructor_name.clone()));
@@ -2116,6 +2080,7 @@ pub fn typecheck_program_typed_with_env(
         program_env.define_type_alias(name.clone(), ty);
     }
 
+    define_program_data_kinds(program, &mut program_env)?;
     for decl in &program.decls {
         if let Decl::Data {
             name,
@@ -2125,9 +2090,6 @@ pub fn typecheck_program_typed_with_env(
         } = decl
         {
             for (constructor_name, payload_types) in constructors {
-                for field in payload_types {
-                    check_payload_arity(field, &program_env)?;
-                }
                 program_env.register_constructor(
                     constructor_name.clone(),
                     ConstructorInfo {
