@@ -149,7 +149,8 @@ fn main() -> ExitCode {
         return print_outcome(parlang::pipeline::run_core(&program));
     }
 
-    let typed = match parlang::typecheck_program_typed(&program) {
+    let mut type_env = parlang::TypeEnv::new();
+    let typed = match parlang::typecheck_program_typed_with_env(&program, &mut type_env) {
         Ok(typed) => typed,
         Err(err) => {
             eprintln!("type error: {err}");
@@ -160,6 +161,13 @@ fn main() -> ExitCode {
         eprintln!("{reason}");
         return ExitCode::FAILURE;
     }
+    let program = match parlang::pipeline::surface_program(&program, &typed, &type_env) {
+        Ok(program) => program,
+        Err(message) => {
+            eprintln!("{message}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     match parlang::run_on_evaluator_stack(move || {
         let env = parlang::Environment::new();
