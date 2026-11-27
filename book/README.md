@@ -50,6 +50,18 @@ highlighted keywords, comments or literals. A substituted font shape (for
 example a missing bold mono for keywords) also fails the build. The EPUB
 stays plain.
 
+## Diagrams
+
+Mermaid blocks are rendered from committed files in `book/diagrams/`, named
+after the SHA-1 of the block text: a PDF for the print edition and a PNG for
+the EPUB. `build-book` fails if a render is missing or no longer used. After
+adding or changing a diagram, run the book build (it lists what is missing),
+then run `bash book/tools/render-diagrams` on the host and commit
+`book/diagrams/`. The script runs mermaid-cli through `nix shell`; mermaid-cli
+drives Chromium, so it cannot run in the nix sandbox. It also deletes renders
+that no diagram uses. If a block does not render, the script names the
+document it came from and exits with an error after rendering the rest.
+
 ## Glyph coverage
 
 `build-book` lists every non-ASCII character used by the sources, prints
@@ -80,6 +92,6 @@ first level-one heading of the file becomes the chapter title.
 
 ## Follow-ups
 
-Rendering mermaid diagrams is not part of this edition. `docs/EXAMPLES.md`
-joins the book once a test checks its snippets, and `docs/ARCHITECTURE.md`
-and `docs/MODULE_EVAL.md` once they are brought up to date.
+`docs/EXAMPLES.md` joins the book once a test checks its snippets, and
+`docs/ARCHITECTURE.md` and `docs/MODULE_EVAL.md` once they are brought up to
+date.
