@@ -1,6 +1,8 @@
+use parlang::ast::TypeAnnotation;
 use parlang::{
-    eval_program, eval_program_with_env, parse_program, typecheck_program,
-    typecheck_program_with_env, Environment, TypeEnv, TypeError, Value,
+    eval_program, eval_program_with_env, parse_program, program_to_dot, typecheck_program,
+    typecheck_program_with_env, Decl, Environment, EvalError, Expr, Program, TypeEnv, TypeError,
+    Value,
 };
 
 fn run(source: &str) -> Result<Value, String> {
@@ -126,5 +128,128 @@ fn repl_api_persists_top_level_data_declarations() {
     assert_eq!(
         eval_program(&use_site, &value_env),
         Ok(Value::Variant("Red".to_string(), vec![]))
+    );
+}
+
+fn sample_class_decl() -> Decl {
+    Decl::Class {
+        name: "Eq".to_string(),
+        param: "a".to_string(),
+        superclasses: vec![],
+        methods: vec![("eq".to_string(), TypeAnnotation::Var("a".to_string()))],
+        doc: None,
+    }
+}
+
+fn sample_instance_decl() -> Decl {
+    Decl::Instance {
+        class: "Eq".to_string(),
+        context: vec![("Eq".to_string(), "a".to_string())],
+        head: TypeAnnotation::App(
+            "Option".to_string(),
+            vec![TypeAnnotation::Var("a".to_string())],
+        ),
+        methods: vec![("eq".to_string(), Expr::Int(0))],
+        doc: None,
+    }
+}
+
+fn single_decl_program(decl: Decl) -> Program {
+    Program {
+        decls: vec![decl],
+        body: None,
+    }
+}
+
+#[test]
+fn class_decl_displays_with_braced_methods() {
+    assert_eq!(
+        single_decl_program(sample_class_decl()).to_string(),
+        "(class Eq a where { eq : a })"
+    );
+    let marker = Decl::Class {
+        name: "Marker".to_string(),
+        param: "a".to_string(),
+        superclasses: vec![],
+        methods: vec![],
+        doc: None,
+    };
+    assert_eq!(
+        single_decl_program(marker).to_string(),
+        "(class Marker a where { })"
+    );
+}
+
+#[test]
+fn class_decl_displays_superclass_context() {
+    let ord = Decl::Class {
+        name: "Ord".to_string(),
+        param: "a".to_string(),
+        superclasses: vec![("Eq".to_string(), "a".to_string())],
+        methods: vec![("cmp".to_string(), TypeAnnotation::Var("a".to_string()))],
+        doc: None,
+    };
+    assert_eq!(
+        single_decl_program(ord).to_string(),
+        "(class (Eq a) => Ord a where { cmp : a })"
+    );
+}
+
+#[test]
+fn instance_decl_displays_context_and_parenthesised_head() {
+    assert_eq!(
+        single_decl_program(sample_instance_decl()).to_string(),
+        "(instance (Eq a) => Eq (Option a) where { eq = 0 })"
+    );
+}
+
+#[test]
+fn class_and_instance_decls_render_as_dot() {
+    let program = Program {
+        decls: vec![sample_class_decl(), sample_instance_decl()],
+        body: None,
+    };
+    let dot = program_to_dot(&program);
+    assert!(dot.contains("Class\\nEq a"), "{dot}");
+    assert!(dot.contains("Method\\neq : a"), "{dot}");
+    assert!(dot.contains("Instance\\nEq (Option a)"), "{dot}");
+    assert!(dot.contains("[label=\"decl 1\"]"), "{dot}");
+}
+
+#[test]
+fn typechecker_rejects_class_and_instance_decls() {
+    assert_eq!(
+        typecheck_program(&single_decl_program(sample_class_decl())),
+        Err(TypeError::ClassesNotSupportedYet("class Eq".to_string()))
+    );
+    assert_eq!(
+        typecheck_program(&single_decl_program(sample_instance_decl())),
+        Err(TypeError::ClassesNotSupportedYet("instance Eq".to_string()))
+    );
+    assert_eq!(
+        TypeError::ClassesNotSupportedYet("class Eq".to_string()).to_string(),
+        "type classes are not supported yet: class Eq"
+    );
+}
+
+#[test]
+fn evaluator_rejects_class_and_instance_decls() {
+    assert_eq!(
+        eval_program(
+            &single_decl_program(sample_class_decl()),
+            &Environment::new()
+        ),
+        Err(EvalError::ClassesNotExecutable("class Eq".to_string()))
+    );
+    assert_eq!(
+        eval_program(
+            &single_decl_program(sample_instance_decl()),
+            &Environment::new()
+        ),
+        Err(EvalError::ClassesNotExecutable("instance Eq".to_string()))
+    );
+    assert_eq!(
+        EvalError::ClassesNotExecutable("instance Eq".to_string()).to_string(),
+        "type classes are not executable yet: instance Eq"
     );
 }

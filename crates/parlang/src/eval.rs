@@ -403,6 +403,10 @@ pub enum EvalError {
     PatternMatchNonExhaustive,
     /// Evaluation exceeded the non-tail recursion policy limit.
     RecursionLimit,
+    /// TEMPORARY (M2.2a): a `class`/`instance` declaration reached the
+    /// evaluator (e.g. in a `load`ed library, which skips typechecking). The
+    /// payload names it, e.g. `class Eq`. Removed by dictionary passing (M2.3).
+    ClassesNotExecutable(String),
 }
 
 impl fmt::Display for EvalError {
@@ -435,6 +439,9 @@ impl fmt::Display for EvalError {
                 write!(f, "Pattern match is non-exhaustive")
             }
             EvalError::RecursionLimit => write!(f, "recursion limit exceeded"),
+            EvalError::ClassesNotExecutable(what) => {
+                write!(f, "type classes are not executable yet: {what}")
+            }
         }
     }
 }
@@ -1353,6 +1360,12 @@ pub fn extend_env_with_program(
                 current_env = current_env.extend(name.clone(), value);
             }
             Decl::Data { .. } | Decl::TypeAlias { .. } => {}
+            Decl::Class { name, .. } => {
+                return Err(EvalError::ClassesNotExecutable(format!("class {name}")));
+            }
+            Decl::Instance { class, .. } => {
+                return Err(EvalError::ClassesNotExecutable(format!("instance {class}")));
+            }
         }
     }
     match &program.body {

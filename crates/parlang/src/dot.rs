@@ -15,7 +15,7 @@
 /// let dot_output = ast_to_dot(&expr);
 /// fs::write("ast.dot", dot_output).unwrap();
 /// ```
-use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program};
+use crate::ast::{BinOp, Decl, Expr, Literal, Pattern, Program, TypeAnnotation};
 use crate::typed_ast::{TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedProgram};
 use std::fmt::Write;
 use std::io;
@@ -148,6 +148,9 @@ pub fn program_to_dot(program: &Program) -> String {
                 );
                 let _ = writeln!(output, "  {decl_id} -> {type_id} [label=\"type\"];");
             }
+            Decl::Class { .. } | Decl::Instance { .. } => {
+                dot_class_like_decl(decl, &program_id, index, &mut output, &mut gen);
+            }
         }
     }
     if let Some(body) = &program.body {
@@ -157,6 +160,85 @@ pub fn program_to_dot(program: &Program) -> String {
 
     output.push_str("}\n");
     output
+}
+
+/// Write the DOT nodes of a `class` or `instance` declaration and link it to
+/// the program node; other declaration kinds are handled by `program_to_dot`.
+fn dot_class_like_decl(
+    decl: &Decl,
+    program_id: &str,
+    index: usize,
+    output: &mut String,
+    gen: &mut NodeIdGenerator,
+) {
+    let decl_id = match decl {
+        Decl::Class {
+            name,
+            param,
+            methods,
+            ..
+        } => dot_class(name, param, methods, output, gen),
+        Decl::Instance {
+            class,
+            head,
+            methods,
+            ..
+        } => dot_instance(class, head, methods, output, gen),
+        Decl::Let { .. } | Decl::Data { .. } | Decl::TypeAlias { .. } => return,
+    };
+    let _ = writeln!(
+        output,
+        "  {program_id} -> {decl_id} [label=\"decl {index}\"];"
+    );
+}
+
+/// Write the DOT nodes of a `class` declaration (one child per method
+/// signature) and return the declaration node id.
+fn dot_class(
+    name: &str,
+    param: &str,
+    methods: &[(String, TypeAnnotation)],
+    output: &mut String,
+    gen: &mut NodeIdGenerator,
+) -> String {
+    let decl_id = gen.next();
+    let label = format!("Class\\n{} {}", escape_label(name), escape_label(param));
+    let _ = writeln!(output, "  {decl_id} [label=\"{label}\"];");
+    for (method, ty) in methods {
+        let method_id = gen.next();
+        let method_label = escape_label(&format!("{method} : {ty}"));
+        let _ = writeln!(output, "  {method_id} [label=\"Method\\n{method_label}\"];");
+        let _ = writeln!(output, "  {decl_id} -> {method_id} [label=\"method\"];");
+    }
+    decl_id
+}
+
+/// Write the DOT nodes of an `instance` declaration (one child per method,
+/// each linked to its value expression) and return the declaration node id.
+/// An applied head is parenthesised to match the `Program` Display output.
+fn dot_instance(
+    class: &str,
+    head: &TypeAnnotation,
+    methods: &[(String, Expr)],
+    output: &mut String,
+    gen: &mut NodeIdGenerator,
+) -> String {
+    let decl_id = gen.next();
+    let head_text = match head {
+        TypeAnnotation::App(..) | TypeAnnotation::VarApp(..) => format!("({head})"),
+        _ => head.to_string(),
+    };
+    let label = escape_label(&format!("{class} {head_text}"));
+    let _ = writeln!(output, "  {decl_id} [label=\"Instance\\n{label}\"];");
+    for (method, value) in methods {
+        let method_id = gen.next();
+        let method_label = escape_label(method);
+        let _ = writeln!(output, "  {method_id} [label=\"Method\\n{method_label}\"];");
+        let _ = writeln!(output, "  {decl_id} -> {method_id} [label=\"method\"];");
+        let value_id = expr_to_dot(value, output, gen);
+        let _ = writeln!(output, "  {method_id} -> {value_id} [label=\"value\"];");
+    }
+    decl_id
 }
 
 /// Write DOT representation of an expression to a file
