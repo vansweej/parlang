@@ -12,7 +12,7 @@ This module implements Algorithm W, the classic type inference algorithm for fun
 
 The type environment maintains variable bindings, generates fresh type variables, and records the declared type aliases, constructors and data types:
 
-````rust
+```rust
 pub struct TypeEnv {
     bindings: HashMap<String, TypeScheme>,
     next_var: usize,
@@ -20,7 +20,7 @@ pub struct TypeEnv {
     constructors: HashMap<String, ConstructorInfo>,
     data_kinds: HashMap<String, Vec<parlang_core::Kind>>,
 }
-````
+```
 
 `type_aliases` maps alias names to their types, `constructors` maps each constructor name to its type information, and `data_kinds` maps each declared data type to the kinds of its type parameters.
 
