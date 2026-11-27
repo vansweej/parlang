@@ -200,7 +200,7 @@ fn identifier<Input>() -> impl Parser<Input, Output = String>
 - Cannot be a keyword
 
 **Keywords** (rejected):
-- `let`, `in`, `if`, `then`, `else`, `fun`, `true`, `false`, `load`, `rec`, `match`, `with`, `type`, `data`
+- `let`, `in`, `if`, `then`, `else`, `fun`, `true`, `false`, `load`, `rec`, `match`, `with`, `type`, `data`, `class`, `instance`, `where`
 
 **Implementation**:
 The shared `KEYWORDS` constant contains the reserved-word slice, which
