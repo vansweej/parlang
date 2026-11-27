@@ -355,7 +355,8 @@ fn is_base_type_name(name: &str) -> bool {
 /// Check that type constructor `name` is applied to `actual` type arguments.
 ///
 /// Base types take no arguments; declared data types take exactly their
-/// declared number of parameters. Unknown names are accepted here.
+/// declared number of parameters. Unknown names are accepted here; payload
+/// fields reject them first in `check_payload_head`.
 fn check_type_constructor_arity(name: &str, actual: usize, env: &TypeEnv) -> Result<(), TypeError> {
     let expected = if is_base_type_name(name) {
         Some(0)
@@ -372,17 +373,38 @@ fn check_type_constructor_arity(name: &str, actual: usize, env: &TypeEnv) -> Res
     }
 }
 
-/// Validate the type-constructor arities inside a data constructor payload field.
+/// Check that payload type constructor `name` is known and applied to `actual` arguments.
+///
+/// Base types and declared data types are checked for arity. Data types are
+/// tested first because top-level registration also defines placeholder
+/// aliases for data names. A type alias yields
+/// `TypeError::TypeAliasInDataPayload`; any other name is unknown.
+fn check_payload_head(name: &str, actual: usize, env: &TypeEnv) -> Result<(), TypeError> {
+    if is_base_type_name(name) || env.data_arity(name).is_some() {
+        return check_type_constructor_arity(name, actual, env);
+    }
+    if env.resolve_type_alias(name).is_some() {
+        return Err(TypeError::TypeAliasInDataPayload(name.to_string()));
+    }
+    Err(TypeError::UnboundVariable(format!(
+        "Unknown type constructor in data declaration: {name}"
+    )))
+}
+
+/// Validate a data constructor payload field at declaration time.
+///
+/// Every type constructor name must be a base type or a declared data type
+/// applied to its declared number of arguments; see `check_payload_head`.
 fn check_payload_arity(field: &crate::ast::TypeAnnotation, env: &TypeEnv) -> Result<(), TypeError> {
     match field {
         crate::ast::TypeAnnotation::Var(_) => Ok(()),
-        crate::ast::TypeAnnotation::Concrete(name) => check_type_constructor_arity(name, 0, env),
+        crate::ast::TypeAnnotation::Concrete(name) => check_payload_head(name, 0, env),
         crate::ast::TypeAnnotation::Fun(arg, ret) => {
             check_payload_arity(arg, env)?;
             check_payload_arity(ret, env)
         }
         crate::ast::TypeAnnotation::App(name, args) => {
-            check_type_constructor_arity(name, args.len(), env)?;
+            check_payload_head(name, args.len(), env)?;
             args.iter()
                 .try_for_each(|arg| check_payload_arity(arg, env))
         }
@@ -419,6 +441,9 @@ pub enum TypeError {
     /// A type constructor applied to the wrong number of type arguments:
     /// type name, expected, actual (expected is 0 for base types).
     TypeConstructorArityMismatch(String, usize, usize),
+    /// A type alias was used in a data constructor payload, which is not
+    /// supported yet because payload annotations are not alias-expanded.
+    TypeAliasInDataPayload(String),
     /// A `match` whose arms do not cover every value; `missing` holds witness patterns.
     NonExhaustiveMatch {
         missing: Vec<String>,
@@ -487,6 +512,9 @@ impl fmt::Display for TypeError {
                     f,
                     "Type constructor '{name}' expects {expected} type arguments, but got {actual}"
                 )
+            }
+            TypeError::TypeAliasInDataPayload(name) => {
+                write!(f, "Type alias in data payload is not supported yet: {name}")
             }
         }
     }

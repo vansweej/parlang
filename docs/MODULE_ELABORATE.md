@@ -61,9 +61,9 @@ types by a mapping that mirrors the surface `type_annotation_to_type`
 function: only the names `Int`, `Bool`, `Char`, and `Float` are recognized as
 concrete base types; any other concrete name becomes a nullary Core type
 constructor reference. This mapping performs no alias resolution of its own;
-surface type aliases are already resolved to concrete `Type`s by the
-typechecker before elaboration runs, so a data declaration's payload
-annotations are expected to already be in this base, resolved form. Each data
+the typechecker rejects type aliases and unknown names in data payloads at
+declaration time, so a data declaration's payload annotations contain only
+base types, declared data types, and type variables. Each data
 declaration is registered into the `LintEnv` through
 `LintEnv::try_with_data`, which validates the declaration (rejecting
 duplicate type names, duplicate type parameters, and duplicate constructor
