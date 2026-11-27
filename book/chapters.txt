@@ -24,6 +24,7 @@ doc|docs/MODULE_ELABORATE.md
 doc|docs/MODULE_CORE_LINT.md
 doc|docs/MODULE_CORE_EVAL.md
 doc|docs/MODULE_CORE_PRELUDE.md
+doc|docs/KERNEL_ELIGIBILITY.md
 md|book/front/reduction-walkthrough.md
 part|Environment and tooling|book/front/part-tooling.md
 doc|docs/MODULE_MAIN.md
@@ -41,4 +42,5 @@ doc|docs/adr/0006-core-system-f-term-erasure.md
 doc|docs/adr/0007-core-explicit-typing-and-lint.md
 doc|docs/adr/0008-core-cek-machine.md
 doc|docs/adr/0009-surface-to-core-elaboration.md
+doc|docs/adr/0010-kernel-eligibility-predicate.md
 #glyphs
