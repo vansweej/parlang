@@ -41,6 +41,16 @@
             nativeBuildInputs = [ pkgs.pkg-config ];
             buildInputs = [ pkgs.openssl.dev ];
             PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
+
+            # editor_grammar_tests run the real tree-sitter (generate needs
+            # node) and bat CLIs and fail instead of skipping without them.
+            nativeCheckInputs = [ pkgs.bat pkgs.nodejs pkgs.tree-sitter ];
+            preCheck = ''
+              export HOME="$TMPDIR"
+              export XDG_CACHE_HOME="$TMPDIR/.cache"
+            '';
+
+            meta.mainProgram = "parlang";
           };
 
           treeSitterParlang = pkgs.tree-sitter.buildGrammar {
@@ -100,6 +110,25 @@
               runHook postInstall
             '';
           };
+
+          # Lint for the hand-written book sources; cheap, unlike the book
+          # build itself, which is not a check.
+          bookLint = pkgs.runCommand "parlang-book-lint"
+            {
+              nativeBuildInputs = [ bookTex pkgs.shellcheck pkgs.shfmt ];
+            }
+            ''
+              cd ${./book}
+              shellcheck build-book
+              shfmt -i 2 -ci -sr -d build-book
+              chktex --version > /dev/null
+              chktex -q -v0 -I0 -l .chktexrc preamble.tex glyph-test.tex parlang-book.tex > "$TMPDIR/chktex.out" 2> "$TMPDIR/chktex.err" || true
+              if grep -Eq '^[^:]+:[0-9]+:[0-9]+:' "$TMPDIR/chktex.out"; then
+                cat "$TMPDIR/chktex.out" "$TMPDIR/chktex.err"
+                exit 1
+              fi
+              touch "$out"
+            '';
         in
         rec {
           packages = {
@@ -147,6 +176,7 @@
 
           checks = {
             inherit (packages) tree-sitter-parlang parlang-nvim parlang-bat-syntax;
+            book-lint = bookLint;
           };
         }
       );
