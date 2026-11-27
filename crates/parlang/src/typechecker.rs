@@ -27,8 +27,8 @@ pub struct TypeEnv {
     type_aliases: HashMap<String, Type>,
     /// Constructor information: maps constructor name to its type info
     constructors: HashMap<String, ConstructorInfo>,
-    /// Declared data types: maps type name to its number of type parameters
-    data_arities: HashMap<String, usize>,
+    /// Declared data types: maps type name to its parameter kinds
+    data_kinds: HashMap<String, Vec<parlang_core::Kind>>,
 }
 
 impl TypeEnv {
@@ -38,7 +38,7 @@ impl TypeEnv {
             next_var: 0,
             type_aliases: HashMap::new(),
             constructors: HashMap::new(),
-            data_arities: HashMap::new(),
+            data_kinds: HashMap::new(),
         }
     }
 
@@ -166,14 +166,19 @@ impl TypeEnv {
         self.constructors.get(name)
     }
 
-    /// Record that data type `name` takes `arity` type parameters.
-    pub fn define_data_arity(&mut self, name: String, arity: usize) {
-        self.data_arities.insert(name, arity);
+    /// Record the parameter kinds of the data type `name`.
+    pub fn define_data_kinds(&mut self, name: String, kinds: Vec<parlang_core::Kind>) {
+        self.data_kinds.insert(name, kinds);
+    }
+
+    /// Parameter kinds of the declared data type `name`, if any.
+    pub fn data_kinds(&self, name: &str) -> Option<&[parlang_core::Kind]> {
+        self.data_kinds.get(name).map(Vec::as_slice)
     }
 
     /// Number of type parameters of the declared data type `name`, if any.
     pub fn data_arity(&self, name: &str) -> Option<usize> {
-        self.data_arities.get(name).copied()
+        self.data_kinds.get(name).map(Vec::len)
     }
 }
 
@@ -242,12 +247,43 @@ fn apply_subst_with_visited(
                 .collect();
             Type::SumType(name.clone(), new_args)
         }
+        Type::VarApp(var, args) => subst_var_app(subst, var, args, visited),
         Type::Tuple(elements) => Type::Tuple(
             elements
                 .iter()
                 .map(|elem| apply_subst_with_visited(subst, elem, visited))
                 .collect(),
         ),
+    }
+}
+
+/// Substitute inside the applied type variable `var args`, re-flattening the
+/// result when `var` is bound to a data type or another applied variable.
+fn subst_var_app(
+    subst: &Substitution,
+    var: &TypeVar,
+    args: &[Type],
+    visited: &mut HashSet<TypeVar>,
+) -> Type {
+    let new_args: Vec<Type> = args
+        .iter()
+        .map(|arg| apply_subst_with_visited(subst, arg, visited))
+        .collect();
+    // Kinding invariant: applied variables come from kind-checked annotations
+    // and payloads, and unification binds an applied variable's head only in
+    // `unify_var_app`, to a type constructor. Any other binding would be
+    // ill-kinded, so it is kept unsubstituted instead of dropping arguments.
+    match apply_subst_with_visited(subst, &Type::Var(var.clone()), visited) {
+        Type::Var(head) => Type::VarApp(head, new_args),
+        Type::VarApp(head, mut prefix) => {
+            prefix.extend(new_args);
+            Type::VarApp(head, prefix)
+        }
+        Type::SumType(name, mut prefix) => {
+            prefix.extend(new_args);
+            Type::SumType(name, prefix)
+        }
+        _ => Type::VarApp(var.clone(), new_args),
     }
 }
 
@@ -289,6 +325,14 @@ fn free_type_vars(ty: &Type) -> HashSet<TypeVar> {
         }
         Type::SumType(_name, args) => {
             let mut set = HashSet::new();
+            for arg in args {
+                set.extend(free_type_vars(arg));
+            }
+            set
+        }
+        Type::VarApp(var, args) => {
+            let mut set = HashSet::new();
+            set.insert(var.clone());
             for arg in args {
                 set.extend(free_type_vars(arg));
             }
@@ -344,69 +388,17 @@ fn type_annotation_to_type(
                 .collect();
             Type::SumType(name.clone(), arg_types)
         }
-    }
-}
-
-/// Whether `name` is one of the built-in base type names.
-fn is_base_type_name(name: &str) -> bool {
-    matches!(name, "Int" | "Bool" | "Char" | "Float")
-}
-
-/// Check that type constructor `name` is applied to `actual` type arguments.
-///
-/// Base types take no arguments; declared data types take exactly their
-/// declared number of parameters. Unknown names are accepted here; payload
-/// fields reject them first in `check_payload_head`.
-fn check_type_constructor_arity(name: &str, actual: usize, env: &TypeEnv) -> Result<(), TypeError> {
-    let expected = if is_base_type_name(name) {
-        Some(0)
-    } else {
-        env.data_arity(name)
-    };
-    match expected {
-        Some(expected) if expected != actual => Err(TypeError::TypeConstructorArityMismatch(
-            name.to_string(),
-            expected,
-            actual,
-        )),
-        _ => Ok(()),
-    }
-}
-
-/// Check that payload type constructor `name` is known and applied to `actual` arguments.
-///
-/// Base types and declared data types are checked for arity. Data types are
-/// tested first because top-level registration also defines placeholder
-/// aliases for data names. A type alias yields
-/// `TypeError::TypeAliasInDataPayload`; any other name is unknown.
-fn check_payload_head(name: &str, actual: usize, env: &TypeEnv) -> Result<(), TypeError> {
-    if is_base_type_name(name) || env.data_arity(name).is_some() {
-        return check_type_constructor_arity(name, actual, env);
-    }
-    if env.resolve_type_alias(name).is_some() {
-        return Err(TypeError::TypeAliasInDataPayload(name.to_string()));
-    }
-    Err(TypeError::UnboundVariable(format!(
-        "Unknown type constructor in data declaration: {name}"
-    )))
-}
-
-/// Validate a data constructor payload field at declaration time.
-///
-/// Every type constructor name must be a base type or a declared data type
-/// applied to its declared number of arguments; see `check_payload_head`.
-fn check_payload_arity(field: &crate::ast::TypeAnnotation, env: &TypeEnv) -> Result<(), TypeError> {
-    match field {
-        crate::ast::TypeAnnotation::Var(_) => Ok(()),
-        crate::ast::TypeAnnotation::Concrete(name) => check_payload_head(name, 0, env),
-        crate::ast::TypeAnnotation::Fun(arg, ret) => {
-            check_payload_arity(arg, env)?;
-            check_payload_arity(ret, env)
-        }
-        crate::ast::TypeAnnotation::App(name, args) => {
-            check_payload_head(name, args.len(), env)?;
-            args.iter()
-                .try_for_each(|arg| check_payload_arity(arg, env))
+        crate::ast::TypeAnnotation::VarApp(name, args) => {
+            let head = type_param_map
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| env.fresh_var());
+            let arg_types: Vec<Type> = args
+                .iter()
+                .map(|arg| type_annotation_to_type(arg, type_param_map, env))
+                .collect();
+            // Parameter-map heads are type variables, so the fallback is unused.
+            crate::types::apply_type_args(head.clone(), arg_types).unwrap_or(head)
         }
     }
 }
@@ -444,6 +436,9 @@ pub enum TypeError {
     /// A type alias was used in a data constructor payload, which is not
     /// supported yet because payload annotations are not alias-expanded.
     TypeAliasInDataPayload(String),
+    /// A type whose kind does not fit its position: type, expected kind,
+    /// found kind (e.g. `Int` where `* -> *` is expected).
+    KindMismatch(String, String, String),
     /// A `match` whose arms do not cover every value; `missing` holds witness patterns.
     NonExhaustiveMatch {
         missing: Vec<String>,
@@ -516,6 +511,12 @@ impl fmt::Display for TypeError {
             TypeError::TypeAliasInDataPayload(name) => {
                 write!(f, "Type alias in data payload is not supported yet: {name}")
             }
+            TypeError::KindMismatch(ty, expected, found) => {
+                write!(
+                    f,
+                    "Kind mismatch for {ty}: expected kind {expected}, found {found}"
+                )
+            }
         }
     }
 }
@@ -568,30 +569,17 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
 
         (Type::SumType(name1, args1), Type::SumType(name2, args2)) => {
             // Sum types must have the same name and same number of type arguments
-            if name1 != name2 {
+            if name1 != name2 || args1.len() != args2.len() {
                 return Err(TypeError::UnificationError(
                     Box::new(t1.clone()),
                     Box::new(t2.clone()),
                 ));
             }
+            unify_pairwise(args1, args2)
+        }
 
-            if args1.len() != args2.len() {
-                return Err(TypeError::UnificationError(
-                    Box::new(t1.clone()),
-                    Box::new(t2.clone()),
-                ));
-            }
-
-            // Unify all type arguments
-            let mut subst = HashMap::new();
-            for (type_arg1, type_arg2) in args1.iter().zip(args2.iter()) {
-                let type_arg1 = apply_subst(&subst, type_arg1);
-                let type_arg2 = apply_subst(&subst, type_arg2);
-                let s = unify(&type_arg1, &type_arg2)?;
-                subst = compose_subst(&s, &subst);
-            }
-
-            Ok(subst)
+        (Type::VarApp(var, args), other) | (other, Type::VarApp(var, args)) => {
+            unify_var_app(var, args, other, t1, t2)
         }
 
         (Type::Tuple(left), Type::Tuple(right)) => {
@@ -616,6 +604,57 @@ fn unify(t1: &Type, t2: &Type) -> Result<Substitution, TypeError> {
             Box::new(t2.clone()),
         )),
     }
+}
+
+/// Unify two equally long type lists pairwise, threading the substitution.
+fn unify_pairwise(left: &[Type], right: &[Type]) -> Result<Substitution, TypeError> {
+    let mut subst = HashMap::new();
+    for (left_ty, right_ty) in left.iter().zip(right) {
+        let s = unify(
+            &apply_subst(&subst, left_ty),
+            &apply_subst(&subst, right_ty),
+        )?;
+        subst = compose_subst(&s, &subst);
+    }
+    Ok(subst)
+}
+
+/// Unify the applied type variable `var args` with `other`.
+///
+/// `other` must be an application with at least as many arguments: `var` is
+/// bound to `other` without its last `args.len()` arguments (a partially
+/// applied data type or applied variable) and the remaining arguments are
+/// unified pairwise. A shorter applied variable on the other side swaps the
+/// roles. `t1` and `t2` are the original pair, used for error reporting.
+fn unify_var_app(
+    var: &TypeVar,
+    args: &[Type],
+    other: &Type,
+    t1: &Type,
+    t2: &Type,
+) -> Result<Substitution, TypeError> {
+    let mismatch = || TypeError::UnificationError(Box::new(t1.clone()), Box::new(t2.clone()));
+    let (head, other_args) = match other {
+        Type::SumType(name, other_args) => (Type::SumType(name.clone(), vec![]), other_args),
+        Type::VarApp(other_var, other_args) => (Type::Var(other_var.clone()), other_args),
+        _ => return Err(mismatch()),
+    };
+    if other_args.len() < args.len() {
+        return match other {
+            Type::VarApp(other_var, _) => {
+                let swapped = Type::VarApp(var.clone(), args.to_vec());
+                unify_var_app(other_var, other_args, &swapped, t1, t2)
+            }
+            _ => Err(mismatch()),
+        };
+    }
+    let (prefix, suffix) = other_args.split_at(other_args.len() - args.len());
+    let head = crate::types::apply_type_args(head, prefix.to_vec()).ok_or_else(mismatch)?;
+    let bound = bind_var(var.clone(), head)?;
+    let left: Vec<Type> = args.iter().map(|arg| apply_subst(&bound, arg)).collect();
+    let right: Vec<Type> = suffix.iter().map(|arg| apply_subst(&bound, arg)).collect();
+    let rest = unify_pairwise(&left, &right)?;
+    Ok(compose_subst(&rest, &bound))
 }
 
 /// Bind a type variable to a type
@@ -717,6 +756,7 @@ fn resolve_type_annotation(
     ty_ann: &crate::ast::TypeAnnotation,
     env: &mut TypeEnv,
 ) -> Result<Type, TypeError> {
+    crate::kind_check::check_annotation_kinds(env, ty_ann)?;
     let mut vars = HashMap::new();
     resolve_annotation_with_vars(ty_ann, env, &mut vars)
 }
@@ -736,18 +776,13 @@ fn resolve_annotation_with_vars(
                 "Bool" => Ok(Type::Bool),
                 "Char" => Ok(Type::Char),
                 "Float" => Ok(Type::Float),
-                _ => match env.data_arity(name) {
-                    Some(0) => Ok(Type::SumType(name.clone(), vec![])),
-                    Some(expected) => Err(TypeError::TypeConstructorArityMismatch(
-                        name.clone(),
-                        expected,
-                        0,
-                    )),
-                    // Try to resolve as type alias
-                    None => env
-                        .resolve_type_alias(name)
-                        .ok_or_else(|| TypeError::UnboundVariable(name.clone())),
-                },
+                // Kinds were checked by `resolve_type_annotation`, so a bare
+                // parameterised data type here is a partial application.
+                _ if env.data_arity(name).is_some() => Ok(Type::SumType(name.clone(), vec![])),
+                // Try to resolve as type alias
+                _ => env
+                    .resolve_type_alias(name)
+                    .ok_or_else(|| TypeError::UnboundVariable(name.clone())),
             }
         }
         crate::ast::TypeAnnotation::Var(name) => {
@@ -764,17 +799,23 @@ fn resolve_annotation_with_vars(
             Ok(Type::Fun(Box::new(arg_ty), Box::new(ret_ty)))
         }
         crate::ast::TypeAnnotation::App(name, args) => {
-            check_type_constructor_arity(name, args.len(), env)?;
-            if env.data_arity(name).is_none() {
-                return Err(TypeError::UnboundVariable(format!(
-                    "Unknown type constructor in annotation: {name}"
-                )));
-            }
             let arg_types = args
                 .iter()
                 .map(|arg| resolve_annotation_with_vars(arg, env, vars))
                 .collect::<Result<Vec<Type>, TypeError>>()?;
             Ok(Type::SumType(name.clone(), arg_types))
+        }
+        crate::ast::TypeAnnotation::VarApp(name, args) => {
+            let head = vars
+                .entry(name.clone())
+                .or_insert_with(|| env.fresh_var())
+                .clone();
+            let applied = args
+                .iter()
+                .map(|arg| resolve_annotation_with_vars(arg, env, vars))
+                .collect::<Result<Vec<Type>, TypeError>>()?;
+            // Annotation heads are type variables, so the fallback is unused.
+            Ok(crate::types::apply_type_args(head.clone(), applied).unwrap_or(head))
         }
     }
 }
@@ -1613,11 +1654,16 @@ fn infer_type_def(
     body: &Expr,
     env: &mut TypeEnv,
 ) -> Result<(TypedExpr, Substitution), TypeError> {
-    env.define_data_arity(name.to_string(), type_params.len());
+    let sig = crate::kind_check::DataSig {
+        name,
+        params: type_params,
+        ctors: constructors,
+    };
+    for (data_name, kinds) in crate::kind_check::infer_data_kinds(env, std::slice::from_ref(&sig))?
+    {
+        env.define_data_kinds(data_name, kinds);
+    }
     for (ctor_name, payload_types) in constructors {
-        for field in payload_types {
-            check_payload_arity(field, env)?;
-        }
         let info = ConstructorInfo {
             type_params: type_params.to_vec(),
             payload_types: payload_types.clone(),
@@ -1961,6 +2007,32 @@ pub fn typecheck_program(program: &Program) -> Result<Type, TypeError> {
     Ok(typecheck_program_typed(program)?.ty)
 }
 
+/// Infer the parameter kinds of every top-level `data` declaration as one
+/// mutually recursive group and record them in `env`.
+fn define_program_data_kinds(program: &Program, env: &mut TypeEnv) -> Result<(), TypeError> {
+    let sigs: Vec<crate::kind_check::DataSig<'_>> = program
+        .decls
+        .iter()
+        .filter_map(|decl| match decl {
+            Decl::Data {
+                name,
+                type_params,
+                constructors,
+                ..
+            } => Some(crate::kind_check::DataSig {
+                name,
+                params: type_params,
+                ctors: constructors,
+            }),
+            _ => None,
+        })
+        .collect();
+    for (name, kinds) in crate::kind_check::infer_data_kinds(env, &sigs)? {
+        env.define_data_kinds(name, kinds);
+    }
+    Ok(())
+}
+
 /// Type check a top-level program and persist its declarations in `env` on success,
 /// returning the fully resolved typed program AST.
 ///
@@ -1981,16 +2053,12 @@ pub fn typecheck_program_typed_with_env(
     for decl in &program.decls {
         match decl {
             Decl::Data {
-                name,
-                type_params,
-                constructors,
-                ..
+                name, constructors, ..
             } => {
                 if !type_names.insert(name.clone()) {
                     return Err(TypeError::DuplicateTypeName(name.clone()));
                 }
                 program_env.define_type_alias(name.clone(), Type::SumType(name.clone(), vec![]));
-                program_env.define_data_arity(name.clone(), type_params.len());
                 for (constructor_name, _) in constructors {
                     if !constructor_names.insert(constructor_name.clone()) {
                         return Err(TypeError::DuplicateConstructor(constructor_name.clone()));
@@ -2012,6 +2080,7 @@ pub fn typecheck_program_typed_with_env(
         program_env.define_type_alias(name.clone(), ty);
     }
 
+    define_program_data_kinds(program, &mut program_env)?;
     for decl in &program.decls {
         if let Decl::Data {
             name,
@@ -2021,9 +2090,6 @@ pub fn typecheck_program_typed_with_env(
         } = decl
         {
             for (constructor_name, payload_types) in constructors {
-                for field in payload_types {
-                    check_payload_arity(field, &program_env)?;
-                }
                 program_env.register_constructor(
                     constructor_name.clone(),
                     ConstructorInfo {
@@ -2060,6 +2126,35 @@ pub fn typecheck_program_typed_with_env(
 mod tests {
     use super::*;
     use crate::parser::parse_expr as parse;
+
+    #[test]
+    fn unify_var_app_binds_head_to_partial_data_type() {
+        let applied = Type::VarApp(TypeVar(0), vec![Type::Var(TypeVar(1))]);
+        let option_int = Type::SumType("Option".to_string(), vec![Type::Int]);
+        let subst = unify(&applied, &option_int).unwrap();
+        assert_eq!(apply_subst(&subst, &applied), option_int);
+        let head = apply_subst(&subst, &Type::Var(TypeVar(0)));
+        assert_eq!(head, Type::SumType("Option".to_string(), vec![]));
+    }
+
+    #[test]
+    fn unify_var_app_with_longer_var_app_binds_prefix() {
+        let short = Type::VarApp(TypeVar(0), vec![Type::Int]);
+        let long = Type::VarApp(TypeVar(1), vec![Type::Bool, Type::Int]);
+        let subst = unify(&long, &short).unwrap();
+        assert_eq!(apply_subst(&subst, &short), apply_subst(&subst, &long));
+    }
+
+    #[test]
+    fn unify_var_app_rejects_base_types_and_cycles() {
+        let applied = Type::VarApp(TypeVar(0), vec![Type::Int]);
+        assert!(unify(&applied, &Type::Int).is_err());
+        let longer = Type::VarApp(TypeVar(0), vec![Type::Bool, Type::Int]);
+        assert!(matches!(
+            unify(&applied, &longer),
+            Err(TypeError::OccursCheckFailed(..))
+        ));
+    }
 
     fn check_typed(source: &str) -> Result<crate::typed_ast::TypedExpr, TypeError> {
         let expr = parse(source).unwrap();

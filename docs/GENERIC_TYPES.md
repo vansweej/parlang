@@ -266,9 +266,9 @@ Each constructor stores:
 
 ### Current Limitations
 
-1. **No Higher-Kinded Types**: Type constructors must be fully applied (e.g., can't have `List` without a type argument in expressions)
+1. **Higher-Kinded Types (surface only)**: data parameters may be type constructors, e.g. `data Wrap f a = MkWrap (f a)` with `Wrap Option Int`. Kinds are inferred; parameters that nothing constrains default to kind `*`, so `data Phantom f = P` gives `f : *`. Type classes and Core elaboration of such programs come later.
 2. **No Type Constraints**: No way to constrain type parameters (e.g., "must be comparable")
-3. **Limited Type Annotations**: Type annotations are supported on `let` bindings (e.g. `let x : Int = 42`), but applied-type annotations (e.g. `Option Int`) and standalone-expression annotations (e.g. `(42 : Int)`) are not supported
+3. **Limited Type Annotations**: Annotations on `fun` parameters and `let` bindings support applied types such as `Option Int` and `f a`; standalone-expression annotations (e.g. `(42 : Int)`) are not supported
 
 ### Planned Enhancements
 

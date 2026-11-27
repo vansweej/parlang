@@ -34,6 +34,7 @@ pub mod ast;
 pub mod dot;
 pub mod elaborate;
 pub mod eval;
+mod kind_check;
 pub mod match_coverage;
 pub mod parser;
 pub mod pipeline;

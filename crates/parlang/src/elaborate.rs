@@ -91,6 +91,16 @@ fn unsupported(construct: &str, reason: &str) -> ElabError {
     }
 }
 
+/// Whether `ann` applies a type variable anywhere (a higher-kinded use).
+fn ann_applies_var(ann: &TypeAnnotation) -> bool {
+    match ann {
+        TypeAnnotation::VarApp(..) => true,
+        TypeAnnotation::Concrete(_) | TypeAnnotation::Var(_) => false,
+        TypeAnnotation::Fun(arg, ret) => ann_applies_var(arg) || ann_applies_var(ret),
+        TypeAnnotation::App(_, args) => args.iter().any(ann_applies_var),
+    }
+}
+
 /// Mutable elaboration state threaded through the translation.
 #[derive(Default)]
 struct Elab {
@@ -163,6 +173,10 @@ impl Elab {
                 }
                 Ok(acc)
             }
+            Type::VarApp(..) => Err(unsupported(
+                "type",
+                "higher-kinded type variable applications are not elaborated yet",
+            )),
             Type::Tuple(items) => self.conv_tuple_type(items),
             Type::Record(fields) => self.conv_record_type(fields),
         }
@@ -185,6 +199,13 @@ impl Elab {
             }
             TypeAnnotation::App(n, args) => {
                 let mut acc = CoreType::Con(n.clone());
+                for arg in args {
+                    acc = CoreType::App(Box::new(acc), Box::new(Self::conv_ann(arg)));
+                }
+                acc
+            }
+            TypeAnnotation::VarApp(p, args) => {
+                let mut acc = CoreType::Var(p.clone());
                 for arg in args {
                     acc = CoreType::App(Box::new(acc), Box::new(Self::conv_ann(arg)));
                 }
@@ -415,6 +436,12 @@ impl Elab {
         params: &[String],
         ctors: &[(String, Vec<TypeAnnotation>)],
     ) -> Result<(), ElabError> {
+        if ctors.iter().flat_map(|(_, anns)| anns).any(ann_applies_var) {
+            return Err(unsupported(
+                "data",
+                "higher-kinded type parameters are not elaborated yet",
+            ));
+        }
         let dt = DataType {
             name: name.to_string(),
             params: params.to_vec(),

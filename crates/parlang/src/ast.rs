@@ -116,6 +116,9 @@ pub enum TypeAnnotation {
     Fun(Box<TypeAnnotation>, Box<TypeAnnotation>),
     /// Applied type: Option Int, List a
     App(String, Vec<TypeAnnotation>),
+    /// Applied type variable: `f a`, a type variable applied to one or more
+    /// arguments (higher-kinded use)
+    VarApp(String, Vec<TypeAnnotation>),
 }
 
 /// A top-level declaration. The enum carries `Let`, `Data`, and `TypeAlias`
@@ -307,7 +310,7 @@ fn fmt_type_def(
 /// constructor payloads and for the arguments of `TypeAnnotation::App`.
 fn fmt_payload_field(f: &mut fmt::Formatter, ty: &TypeAnnotation) -> fmt::Result {
     match ty {
-        TypeAnnotation::App(..) => write!(f, " ({ty})"),
+        TypeAnnotation::App(..) | TypeAnnotation::VarApp(..) => write!(f, " ({ty})"),
         _ => write!(f, " {ty}"),
     }
 }
@@ -478,7 +481,7 @@ impl fmt::Display for TypeAnnotation {
         match self {
             TypeAnnotation::Concrete(name) | TypeAnnotation::Var(name) => write!(f, "{name}"),
             TypeAnnotation::Fun(arg, ret) => write!(f, "({arg} -> {ret})"),
-            TypeAnnotation::App(name, args) => {
+            TypeAnnotation::App(name, args) | TypeAnnotation::VarApp(name, args) => {
                 write!(f, "{name}")?;
                 for arg in args {
                     fmt_payload_field(f, arg)?;

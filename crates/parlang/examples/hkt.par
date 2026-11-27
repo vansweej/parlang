@@ -1,0 +1,7 @@
+data Option a = None | Some a;
+data List a = Nil | Cons a (List a);
+data Wrap f a = MkWrap (f a);
+let unwrap = fun w -> match w with | MkWrap x -> x;
+let w1 = MkWrap (Some 1);
+let w2 = MkWrap (Cons 1 Nil);
+unwrap w1

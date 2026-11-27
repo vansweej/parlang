@@ -501,3 +501,87 @@ fn test_annotation_type_variables_stay_flexible() {
     let expr = parse_expr(src).unwrap();
     assert_eq!(typecheck(&expr), Ok(Type::Int));
 }
+
+#[test]
+fn test_variable_headed_annotation_typechecks() {
+    let expr = parse_expr("fun (x : f a) -> x").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    let Type::Fun(arg, ret) = &ty else {
+        panic!("expected a function type, got {ty}");
+    };
+    assert_eq!(arg, ret);
+    assert!(matches!(**arg, Type::VarApp(..)), "got {ty}");
+}
+
+#[test]
+fn test_partially_applied_constructor_annotation() {
+    let src = "data Option a = None | Some a ;\n\
+               data Wrap f a = MkWrap (f a) ;\n\
+               (fun (w : Wrap Option Int) -> w) (MkWrap (Some 1))";
+    let program = parse_program(src).unwrap();
+    let ty = parlang::typecheck_program(&program).unwrap();
+    assert_eq!(ty.to_string(), "Wrap Option Int");
+}
+
+#[test]
+fn test_wrap_annotation_with_variable_heads() {
+    let src = "data Wrap f a = MkWrap (f a) ;\n\
+               fun (w : Wrap f a) -> match w with | MkWrap x -> x";
+    let program = parse_program(src).unwrap();
+    let ty = parlang::typecheck_program(&program).unwrap();
+    let Type::Fun(arg, ret) = &ty else {
+        panic!("expected a function type, got {ty}");
+    };
+    assert!(matches!(&**arg, Type::SumType(name, args) if name == "Wrap" && args.len() == 2));
+    assert!(matches!(**ret, Type::VarApp(..)), "got {ty}");
+}
+
+#[test]
+fn test_type_application_is_left_associative_in_annotations() {
+    let src = format!("{LIST_DECL}data Option a = None | Some a in fun (x : List Option Int) -> x");
+    let expr = parse_expr(&src).unwrap();
+    assert_eq!(
+        typecheck(&expr),
+        Err(parlang::TypeError::TypeConstructorArityMismatch(
+            "List".to_string(),
+            1,
+            2
+        ))
+    );
+}
+
+/// Unconstrained data parameters default to kind `*` (Haskell 98), so a
+/// constructor cannot be passed to them
+#[test]
+fn test_phantom_parameter_defaults_to_star() {
+    let src = "data Option a = None | Some a ;\n\
+               data Phantom f = P ;\n\
+               fun (x : Phantom Option) -> x";
+    let program = parse_program(src).unwrap();
+    assert_eq!(
+        parlang::typecheck_program(&program),
+        Err(parlang::TypeError::TypeConstructorArityMismatch(
+            "Option".to_string(),
+            1,
+            0
+        ))
+    );
+}
+
+/// An alias of a bare constructor is a partial application, rejected where
+/// a plain type is expected
+#[test]
+fn test_constructor_alias_is_rejected_at_star_position() {
+    let src = "type MyList = List ;\n\
+               data List a = Nil | Cons a (List a) ;\n\
+               fun (x : MyList) -> x";
+    let program = parse_program(src).unwrap();
+    assert_eq!(
+        parlang::typecheck_program(&program),
+        Err(parlang::TypeError::TypeConstructorArityMismatch(
+            "MyList".to_string(),
+            1,
+            0
+        ))
+    );
+}

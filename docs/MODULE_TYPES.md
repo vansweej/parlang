@@ -23,6 +23,7 @@ pub enum Type {
     Var(TypeVar),               // Type variable for polymorphism
     Record(HashMap<String, Type>), // Record type
     SumType(String, Vec<Type>), // Generic sum type
+    VarApp(TypeVar, Vec<Type>), // Applied type variable (f a)
     Tuple(Vec<Type>),           // Tuple type: (T1, T2, ...)
 }
 ```
@@ -138,7 +139,7 @@ Type::Fun(Fun(Int, Bool),
           Bool)               // "(Int -> Bool) -> Bool"
 ```
 
-Function arguments are parenthesized when they are themselves function types to maintain clarity.
+Function arguments are parenthesized when they are themselves function types to maintain clarity. Type arguments are parenthesized when they are applied types or function types, so nested types print unambiguously: `List (Option Int)`, `Wrap Option Int`, `List (Int -> Int)`.
 
 ### TypeScheme Display
 

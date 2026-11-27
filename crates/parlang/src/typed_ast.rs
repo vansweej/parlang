@@ -191,7 +191,7 @@ fn render_anns(anns: &[TypeAnnotation]) -> String {
     let mut s = String::new();
     for a in anns {
         match a {
-            TypeAnnotation::App(_, args) if !args.is_empty() => {
+            TypeAnnotation::App(_, args) | TypeAnnotation::VarApp(_, args) if !args.is_empty() => {
                 let _ = write!(s, " ({a})");
             }
             _ => {
