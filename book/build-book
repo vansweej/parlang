@@ -60,13 +60,19 @@ check_latex_log() {
     echo "book/build-book: LaTeX still asks for a rerun, see $1" >&2
     exit 1
   fi
-  # Pipe tables in pandoc's l-columns overflow on the first editions, so
-  # overfull boxes are reported, not fatal. Review the count; tightening this
-  # to a failure is a follow-up.
-  local overfull
-  overfull="$(grep -c '^Overfull \\hbox' "$1" || true)"
-  if [ "$overfull" -gt 0 ]; then
-    echo "book/build-book: WARNING: $overfull overfull hbox(es), see $1" >&2
+  # Overfull hboxes wider than 1pt fail the build; smaller ones are reported.
+  # Field 3 of an "Overfull \hbox (Wpt too wide) ..." line is "(Wpt".
+  local wide wide_count small
+  wide="$(awk '/^Overfull \\hbox/ { w = $3; gsub(/[(pt]/, "", w); if (w + 0 > 1.0) print }' "$1")"
+  small="$(awk '/^Overfull \\hbox/ { w = $3; gsub(/[(pt]/, "", w); if (w + 0 <= 1.0) n++ } END { print n + 0 }' "$1")"
+  if [ -n "$wide" ]; then
+    printf '%s\n' "$wide" >&2
+    wide_count="$(printf '%s\n' "$wide" | wc -l)"
+    echo "book/build-book: $wide_count overfull hbox(es) wider than 1pt, see $1" >&2
+    exit 1
+  fi
+  if [ "$small" -gt 0 ]; then
+    echo "book/build-book: WARNING: $small overfull hbox(es) of at most 1pt, see $1" >&2
   fi
 }
 
