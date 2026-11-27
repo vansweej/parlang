@@ -96,9 +96,11 @@ fn subst_env(term: &Term, env: &Environment, shadowed: &mut Vec<String>) -> Term
                 .map(|argument| subst_env(argument, env, shadowed))
                 .collect(),
         ),
-        Term::TyLam(binder, body) => {
-            Term::TyLam(binder.clone(), Box::new(subst_env(body, env, shadowed)))
-        }
+        Term::TyLam(binder, kind, body) => Term::TyLam(
+            binder.clone(),
+            kind.clone(),
+            Box::new(subst_env(body, env, shadowed)),
+        ),
         Term::TyApp(inner, ty) => {
             Term::TyApp(Box::new(subst_env(inner, env, shadowed)), ty.clone())
         }

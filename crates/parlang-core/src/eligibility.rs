@@ -141,7 +141,7 @@ struct FunctionShape<'a> {
 fn split_function(value: &Term) -> FunctionShape<'_> {
     let mut tylams: usize = 0;
     let mut cursor = value;
-    while let Term::TyLam(_, body) = cursor {
+    while let Term::TyLam(_, _, body) = cursor {
         tylams = tylams.saturating_add(1);
         cursor = body.as_ref();
     }

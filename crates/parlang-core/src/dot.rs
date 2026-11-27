@@ -89,7 +89,13 @@ fn node_label(term: &Term) -> String {
         Term::LetRec(name, ann, _, _) => format!("LetRec {name}: {ann}"),
         Term::Lit(lit) => lit_label(lit),
         Term::Con(name, _, _) => format!("Con {name}"),
-        Term::TyLam(binder, _) => format!("TyLam {binder}"),
+        Term::TyLam(binder, kind, _) => {
+            if kind.is_star() {
+                format!("TyLam {binder}")
+            } else {
+                format!("TyLam {binder} : {kind}")
+            }
+        }
         Term::TyApp(_, ty) => format!("TyApp @{ty}"),
         Term::Case(_, _) => "Case".to_string(),
     }
@@ -110,7 +116,7 @@ fn lit_label(lit: &Lit) -> String {
 fn children(term: &Term) -> Vec<&Term> {
     match term {
         Term::Var(_) | Term::Lit(_) => Vec::new(),
-        Term::Lam(_, _, body) | Term::TyLam(_, body) | Term::TyApp(body, _) => {
+        Term::Lam(_, _, body) | Term::TyLam(_, _, body) | Term::TyApp(body, _) => {
             vec![body.as_ref()]
         }
         Term::App(func, arg) => vec![func.as_ref(), arg.as_ref()],
@@ -174,9 +180,23 @@ mod tests {
 
     #[test]
     fn tylam_tyapp_dot_labels() {
-        let tl = Term::TyLam("a".to_string(), Box::new(Term::Var("x".to_string())));
+        let tl = Term::TyLam(
+            "a".to_string(),
+            crate::kind::Kind::Star,
+            Box::new(Term::Var("x".to_string())),
+        );
         let dot = core_to_dot(&tl);
         assert!(dot.contains("[label=\"TyLam a\"];"), "tylam label: {dot}");
+        let hk = Term::TyLam(
+            "f".to_string(),
+            crate::kind::Kind::arrow(crate::kind::Kind::Star, crate::kind::Kind::Star),
+            Box::new(Term::Var("x".to_string())),
+        );
+        let hk_dot = core_to_dot(&hk);
+        assert!(
+            hk_dot.contains("[label=\"TyLam f : * -> *\"];"),
+            "hk label: {hk_dot}"
+        );
         let ta = Term::TyApp(
             Box::new(Term::Var("f".to_string())),
             crate::ty::Type::Base(BaseType::Int),

@@ -563,7 +563,7 @@ fn synth(env: &mut LintEnv, term: &Term) -> Result<Type, LintError> {
         Term::App(f, a) => synth_app(env, f, a),
         Term::Let(x, v, b) => synth_let(env, x, v, b),
         Term::LetRec(x, ann, v, b) => synth_letrec(env, x, ann, v, b),
-        Term::TyLam(a, t) => synth_tylam(env, a, t),
+        Term::TyLam(a, k, t) => synth_tylam(env, a, k, t),
         Term::TyApp(t, ty) => synth_tyapp(env, t, ty),
         Term::Con(name, ty_args, args) => synth_con(env, name, ty_args, args),
         Term::Case(scrutinee, alts) => synth_case(env, scrutinee, alts),
@@ -619,7 +619,7 @@ fn synth_letrec(
     result
 }
 
-fn synth_tylam(env: &mut LintEnv, a: &str, t: &Term) -> Result<Type, LintError> {
+fn synth_tylam(env: &mut LintEnv, a: &str, k: &Kind, t: &Term) -> Result<Type, LintError> {
     if env.tyvars.contains(&a.to_string()) {
         return Err(LintError::ShadowedTypeVar(a.to_string()));
     }
@@ -627,7 +627,7 @@ fn synth_tylam(env: &mut LintEnv, a: &str, t: &Term) -> Result<Type, LintError> 
     let result = synth(env, t);
     env.pop_tyvar();
     let tt = result?;
-    Ok(Type::Forall(a.to_string(), Kind::Star, Box::new(tt)))
+    Ok(Type::Forall(a.to_string(), k.clone(), Box::new(tt)))
 }
 
 fn synth_tyapp(env: &mut LintEnv, t: &Term, ty: &Type) -> Result<Type, LintError> {
