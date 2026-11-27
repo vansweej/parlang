@@ -27,7 +27,7 @@ filter="book/filters/parlang.lua"
 chapters_tex="$build_dir/chapters.tex"
 
 rm -rf "$gen_dir"
-mkdir -p "$gen_dir" "$epub_dir" "$dump_dir" "$build_dir/texmf-var"
+mkdir -p "$gen_dir" "$gen_dir/diagrams" "$epub_dir" "$dump_dir" "$build_dir/texmf-var"
 
 export TEXMFVAR="${TEXMFVAR:-$repo_root/$build_dir/texmf-var}"
 export TEXMFCACHE="${TEXMFCACHE:-$repo_root/$build_dir/texmf-var}"
@@ -190,6 +190,35 @@ for macro in PLkw PLcom PLstr; do
     exit 1
   fi
 done
+
+# 3c. Diagrams: every mermaid block needs committed renders
+# book/diagrams/<sha1>.pdf and .png (filters/parlang.lua wrote the sources to
+# $gen_dir/diagrams); renders that no block uses are orphans. The marker
+# file tells book/tools/render-diagrams that the source list is complete.
+: > "$gen_dir/diagrams/complete"
+diagram_problems=0
+for src in "$gen_dir"/diagrams/*.mmd; do
+  [ -e "$src" ] || continue
+  name="$(basename "$src" .mmd)"
+  for ext in pdf png; do
+    if [ ! -f "book/diagrams/$name.$ext" ]; then
+      echo "book/build-book: missing diagram render book/diagrams/$name.$ext" >&2
+      diagram_problems=$((diagram_problems + 1))
+    fi
+  done
+done
+for render in book/diagrams/*.pdf book/diagrams/*.png; do
+  [ -e "$render" ] || continue
+  name="$(basename "${render%.*}")"
+  if [ ! -f "$gen_dir/diagrams/$name.mmd" ]; then
+    echo "book/build-book: unused diagram render $render" >&2
+    diagram_problems=$((diagram_problems + 1))
+  fi
+done
+if [ "$diagram_problems" -gt 0 ]; then
+  echo "book/build-book: run bash book/tools/render-diagrams, then commit book/diagrams/" >&2
+  exit 1
+fi
 
 # 4. Glyph coverage: collect sources plus every generated LaTeX fragment (so
 # characters pandoc introduces, e.g. smart quotes, are covered), generate the

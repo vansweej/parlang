@@ -121,6 +121,8 @@
               cd ${./book}
               shellcheck build-book
               shfmt -i 2 -ci -sr -d build-book
+              shellcheck tools/render-diagrams
+              shfmt -i 2 -ci -sr -d tools/render-diagrams
               chktex --version > /dev/null
               chktex -q -v0 -I0 -l .chktexrc preamble.tex glyph-test.tex parlang-book.tex > "$TMPDIR/chktex.out" 2> "$TMPDIR/chktex.err" || true
               if grep -Eq '^[^:]+:[0-9]+:[0-9]+:' "$TMPDIR/chktex.out"; then

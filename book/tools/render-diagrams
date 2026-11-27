@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Render the book's mermaid diagrams into book/diagrams/ (committed files).
+# Run on the host, not in the nix sandbox: mermaid-cli drives Chromium. A
+# book build must have run first, so that book/build/gen/diagrams/ holds
+# every diagram source:
+#   nix develop .#book --command bash book/build-book  # lists missing renders
+#   bash book/tools/render-diagrams
+#   git add book/diagrams
+# Renders that no diagram uses any more are deleted.
+set -euo pipefail
+
+book_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_root="$(dirname "$book_dir")"
+src_dir="$book_dir/build/gen/diagrams"
+out_dir="$book_dir/diagrams"
+
+if [ ! -f "$src_dir/complete" ]; then
+  echo "render-diagrams: run book/build-book first ($src_dir/complete is missing)" >&2
+  exit 1
+fi
+mkdir -p "$out_dir"
+mmdc=(nix shell --inputs-from "$repo_root" nixpkgs#mermaid-cli --command mmdc -q)
+rm -f "$out_dir"/.*.tmp.pdf "$out_dir"/.*.tmp.png
+failed=0
+for src in "$src_dir"/*.mmd; do
+  [ -e "$src" ] || continue
+  name="$(basename "$src" .mmd)"
+  for ext in pdf png; do
+    [ -s "$out_dir/$name.$ext" ] && continue
+    if [ "$ext" = pdf ]; then
+      opts=(--pdfFit)
+    else
+      opts=(-s 2 -b white)
+    fi
+    if "${mmdc[@]}" -i "$src" -o "$out_dir/.$name.tmp.$ext" "${opts[@]}"; then
+      mv "$out_dir/.$name.tmp.$ext" "$out_dir/$name.$ext"
+    else
+      rm -f "$out_dir/.$name.tmp.$ext"
+      echo "render-diagrams: cannot render $src ($(head -n 1 "$src"))" >&2
+      failed=$((failed + 1))
+    fi
+  done
+done
+for render in "$out_dir"/*.pdf "$out_dir"/*.png; do
+  [ -e "$render" ] || continue
+  name="$(basename "${render%.*}")"
+  if [ ! -f "$src_dir/$name.mmd" ]; then
+    rm "$render"
+    echo "render-diagrams: removed unused $render"
+  fi
+done
+if [ "$failed" -gt 0 ]; then
+  echo "render-diagrams: $failed render(s) failed; fix the mermaid block in the doc named above" >&2
+  exit 1
+fi
+echo "render-diagrams: book/diagrams/ is up to date"

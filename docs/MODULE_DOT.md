@@ -192,7 +192,7 @@ Similar to `expr_to_dot()` but handles pattern matching constructs.
 Returns the string representation of a binary operator.
 
 ```rust
-fn binop_label(op: &BinOp) -> &'static str
+fn binop_label(op: BinOp) -> &'static str
 ```
 
 Maps operators to their symbolic representation ("+", "-", "*", etc.).

@@ -1575,7 +1575,7 @@ graph LR
 ```mermaid
 graph LR
     Start([Start]) --> Choice{Expression Type}
-    Choice -->|Atom| Atom[Integer/Bool/Var/'(' expr ')']
+    Choice -->|Atom| Atom["Integer/Bool/Var/'(' expr ')'"]
     Choice -->|Let| Let["let x = e1 in e2"]
     Choice -->|If| If["if e1 then e2 else e3"]
     Choice -->|Fun| Fun["fun x -> e"]
