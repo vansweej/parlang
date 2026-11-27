@@ -31,6 +31,7 @@
 /// println!("Type: {}", ty); // prints "Type: Int -> Int"
 /// ```
 pub mod ast;
+pub mod dictionary;
 pub mod dot;
 pub mod elaborate;
 pub mod eval;

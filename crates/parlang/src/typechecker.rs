@@ -158,6 +158,32 @@ impl TypeEnv {
         self.methods.get(name)
     }
 
+    /// The scheme bound to `name`, if any: a top-level or REPL-persisted
+    /// binding with its class constraints. Class methods live in
+    /// `method_info` instead.
+    pub fn binding_scheme(&self, name: &str) -> Option<&TypeScheme> {
+        self.bindings.get(name)
+    }
+
+    /// The head and the instantiated context of the instance whose head
+    /// matches the single argument of `constraint`, or `None` when no
+    /// instance of its class (built-ins included) matches.
+    pub fn matching_instance(&self, constraint: &Constraint) -> Option<(Type, Vec<Constraint>)> {
+        let [arg] = constraint.args.as_slice() else {
+            return None;
+        };
+        let instances = self.instances.get(&constraint.class)?;
+        instances.iter().find_map(|instance| {
+            let bound = match_instance_head(&instance.head, arg)?;
+            let context = instance
+                .context
+                .iter()
+                .map(|given| apply_subst_constraint(&bound, given))
+                .collect();
+            Some((instance.head.clone(), context))
+        })
+    }
+
     /// Bind a variable to a type scheme
     pub fn bind(&mut self, name: String, scheme: TypeScheme) {
         self.bindings.insert(name, scheme);
@@ -272,19 +298,8 @@ impl TypeEnv {
     /// of `constraint`, instantiated at that argument, or `None` when no
     /// instance matches.
     fn instance_context(&self, constraint: &Constraint) -> Option<Vec<Constraint>> {
-        let [arg] = constraint.args.as_slice() else {
-            return None;
-        };
-        let instances = self.instances.get(&constraint.class)?;
-        instances.iter().find_map(|instance| {
-            let bound = match_instance_head(&instance.head, arg)?;
-            let context = instance
-                .context
-                .iter()
-                .map(|given| apply_subst_constraint(&bound, given))
-                .collect();
-            Some(context)
-        })
+        self.matching_instance(constraint)
+            .map(|(_, context)| context)
     }
 
     /// Record `constraint` as wanted in the shared accumulator.
@@ -377,7 +392,7 @@ impl Default for TypeEnv {
 }
 
 /// Substitution map from type variables to types
-type Substitution = HashMap<TypeVar, Type>;
+pub(crate) type Substitution = HashMap<TypeVar, Type>;
 
 /// Built-in class instances: `Eq` for `Int`, `Bool`, `Char` and `Float`,
 /// exactly the types the surface evaluator compares with `==` at run time.
@@ -471,7 +486,7 @@ fn constraint_vars(constraint: &Constraint) -> HashSet<TypeVar> {
 }
 
 /// Apply `subst` to every argument of `constraint`.
-fn apply_subst_constraint(subst: &Substitution, constraint: &Constraint) -> Constraint {
+pub(crate) fn apply_subst_constraint(subst: &Substitution, constraint: &Constraint) -> Constraint {
     Constraint {
         class: constraint.class.clone(),
         args: constraint
@@ -519,7 +534,7 @@ fn check_no_residual(
 ///
 /// # Returns
 /// A new type with all substitutable type variables replaced
-fn apply_subst(subst: &Substitution, ty: &Type) -> Type {
+pub(crate) fn apply_subst(subst: &Substitution, ty: &Type) -> Type {
     apply_subst_with_visited(subst, ty, &mut HashSet::new())
 }
 
