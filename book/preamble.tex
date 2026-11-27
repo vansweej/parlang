@@ -26,9 +26,28 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage{bookmark}
 
-\setlength{\emergencystretch}{3em}
+% Third-pass stretch for paragraphs with long unbreakable code tokens.
+\setlength{\emergencystretch}{6em}
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{6pt plus 2pt minus 1pt}
+
+% Table of contents: room for 3-digit page numbers and numbers like 10.10
+% (book.cls defaults: \@pnumwidth 1.55em, \@tocrmarg 2.55em,
+% section {1.5em}{2.3em}, subsection {3.8em}{3.2em}).
+\makeatletter
+\renewcommand*\@pnumwidth{2.2em}
+\renewcommand*\@tocrmarg{3.2em}
+\renewcommand*\l@section{\@dottedtocline{1}{1.5em}{3.0em}}
+\renewcommand*\l@subsection{\@dottedtocline{2}{4.5em}{3.9em}}
+
+% Ragged-right section headings: monospace code in a heading has spaces that
+% cannot stretch, so justified headings overflow. Same values as book.cls
+% (written without spaces after \@plus/\@minus, which chktex flags), plus
+% \raggedright (chapter heads are already ragged-right).
+\renewcommand\section{\@startsection{section}{1}{\z@}{-3.5ex\@plus-1ex\@minus-.2ex}{2.3ex\@plus.2ex}{\normalfont\Large\bfseries\raggedright}}
+\renewcommand\subsection{\@startsection{subsection}{2}{\z@}{-3.25ex\@plus-1ex\@minus-.2ex}{1.5ex\@plus.2ex}{\normalfont\large\bfseries\raggedright}}
+\renewcommand\subsubsection{\@startsection{subsubsection}{3}{\z@}{-3.25ex\@plus-1ex\@minus-.2ex}{1.5ex\@plus.2ex}{\normalfont\normalsize\bfseries\raggedright}}
+\makeatother
 
 % Macros emitted by pandoc's LaTeX writer (normally defined by its template).
 \providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
