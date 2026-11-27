@@ -35,6 +35,21 @@ from the repository.
 - Do not add `.par` files under `book/`: the editor grammar tests walk the
   whole workspace for them.
 
+## Listing highlighting
+
+ParLang listings in the PDF are highlighted by a small lexer in
+`filters/parlang.lua`. Keywords are read at build time from `KEYWORDS` in
+`crates/parlang/src/parser.rs` (the editor grammars are kept in sync with
+the same list by `editor_grammar_tests`). The lexer knows only comments
+(`--`, nested `{- -}`, and the `#` annotations the docs use), string and
+char literals, and identifiers. Every listing is checked by stripping the
+markup again: the build fails if the markup would change any text (the
+check proves the text is preserved, not that the colours are right).
+`build-book` also fails if the example-programs appendix has no
+highlighted keywords, comments or literals. A substituted font shape (for
+example a missing bold mono for keywords) also fails the build. The EPUB
+stays plain.
+
 ## Glyph coverage
 
 `build-book` lists every non-ASCII character used by the sources, prints
@@ -65,6 +80,5 @@ first level-one heading of the file becomes the chapter title.
 
 ## Follow-ups
 
-Rendering mermaid diagrams, syntax highlighting for ParLang listings and a
-chapter on using the nix flake (build, develop, run) are not part of this
-edition.
+Rendering mermaid diagrams and a chapter on using the nix flake (build,
+develop, run) are not part of this edition.
