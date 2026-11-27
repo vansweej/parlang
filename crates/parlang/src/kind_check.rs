@@ -344,6 +344,32 @@ pub(crate) fn check_annotation_kinds(env: &TypeEnv, ann: &TypeAnnotation) -> Res
     KindChecker::new(env, Site::Annotation).check(ann, &KindTerm::Star)
 }
 
+/// Infer the kind of the class parameter `param` from the method
+/// signatures in `methods`, checking that every signature has kind `*`.
+///
+/// The parameter's kind is shared by all signatures; every other type
+/// variable gets a fresh kind per signature. An unsolved parameter kind
+/// defaults to `*`, so `class Container f where { empty : f Int }` gives
+/// `f : * -> *`.
+///
+/// # Errors
+///
+/// Returns the errors of `check_annotation_kinds`, e.g. `KindMismatch` for
+/// `m : f -> f Int`.
+pub(crate) fn infer_class_param_kind(
+    env: &TypeEnv,
+    param: &str,
+    methods: &[(String, TypeAnnotation)],
+) -> Result<Kind, TypeError> {
+    let mut checker = KindChecker::new(env, Site::Annotation);
+    let param_kind = checker.solver.fresh();
+    for (_, sig) in methods {
+        checker.vars = HashMap::from([(param.to_string(), param_kind.clone())]);
+        checker.check(sig, &KindTerm::Star)?;
+    }
+    Ok(checker.solver.finish(&param_kind))
+}
+
 /// Kind inference over the type variables of one resolved surface `Type`.
 struct VarKinds<'data> {
     /// Parameter kinds of every known data type, keyed by type name.

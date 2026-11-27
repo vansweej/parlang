@@ -672,6 +672,12 @@ impl Elab {
                 // aliases to their underlying `Type` before inference
                 // records them on any node, so there is nothing to elaborate.
                 TypedDecl::TypeAlias { .. } => {}
+                TypedDecl::Class { .. } => {
+                    return Err(unsupported(
+                        "class declaration",
+                        "type classes need dictionary passing (M2.3)",
+                    ));
+                }
                 TypedDecl::Let {
                     name,
                     scheme,

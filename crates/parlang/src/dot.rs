@@ -959,7 +959,42 @@ fn typed_decl_to_dot(
             );
             let _ = writeln!(output, "  {decl_id} -> {type_id} [label=\"type\"];");
         }
+        TypedDecl::Class {
+            name,
+            param,
+            methods,
+            ..
+        } => {
+            let head = format!("{name} {param}");
+            typed_class_to_dot(program_id, index, &head, methods, output, gen);
+        }
     }
+}
+
+/// Emit a typed `class` declaration node labelled `Class` plus `head`, with
+/// one `Method` child per method scheme, linked from `program_id` as
+/// `decl <index>`.
+fn typed_class_to_dot(
+    program_id: &str,
+    index: usize,
+    head: &str,
+    methods: &[(String, crate::types::TypeScheme)],
+    output: &mut String,
+    gen: &mut NodeIdGenerator,
+) {
+    let decl_id = gen.next();
+    let label = escape_label(&format!("Class\n{head}"));
+    let _ = writeln!(output, "  {decl_id} [label=\"{label}\"];");
+    for (method, scheme) in methods {
+        let method_id = gen.next();
+        let method_label = escape_label(&format!("Method\n{method} : {scheme}"));
+        let _ = writeln!(output, "  {method_id} [label=\"{method_label}\"];");
+        let _ = writeln!(output, "  {decl_id} -> {method_id} [label=\"method\"];");
+    }
+    let _ = writeln!(
+        output,
+        "  {program_id} -> {decl_id} [label=\"decl {index}\"];"
+    );
 }
 
 /// Convert a [`TypedProgram`] to Graphviz DOT.

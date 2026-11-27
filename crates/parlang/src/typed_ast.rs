@@ -142,6 +142,15 @@ pub enum TypedDecl {
         ty_expr: TypeExpr,
         doc: Option<String>,
     },
+    /// A checked `class` declaration: its parameter with the inferred kind,
+    /// and each method's constrained scheme in declaration order.
+    Class {
+        name: String,
+        param: String,
+        param_kind: parlang_core::Kind,
+        methods: Vec<(String, TypeScheme)>,
+        doc: Option<String>,
+    },
 }
 
 /// Typed mirror of [`crate::ast::Program`]: typed declarations, an optional
@@ -240,6 +249,19 @@ fn write_decl(out: &mut String, index: usize, decl: &TypedDecl, depth: usize) {
         }
         TypedDecl::TypeAlias { name, ty_expr, .. } => {
             let _ = writeln!(out, "decl {index}: TypeAlias {name} = {ty_expr}");
+        }
+        TypedDecl::Class {
+            name,
+            param,
+            param_kind,
+            methods,
+            ..
+        } => {
+            let _ = writeln!(out, "decl {index}: Class {name} {param} :: {param_kind}");
+            for (method, scheme) in methods {
+                indent(out, depth + 1);
+                let _ = writeln!(out, "method: {method} : {scheme}");
+            }
         }
     }
 }
