@@ -210,10 +210,7 @@ impl fmt::Display for TypeScheme {
 impl fmt::Display for Constraint {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.class)?;
-        for arg in &self.args {
-            write!(f, " {arg}")?;
-        }
-        Ok(())
+        fmt_type_args(f, &self.args)
     }
 }
 
@@ -588,5 +585,14 @@ mod tests {
             args: vec![Type::Var(TypeVar(0))],
         });
         assert_eq!(format!("{scheme}"), "forall t0. Eq t0 => t0");
+    }
+
+    #[test]
+    fn test_display_constraint_parenthesises_applied_args() {
+        let constraint = Constraint {
+            class: "Eq".to_string(),
+            args: vec![Type::SumType("List".to_string(), vec![Type::Int])],
+        };
+        assert_eq!(format!("{constraint}"), "Eq (List Int)");
     }
 }
