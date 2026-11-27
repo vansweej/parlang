@@ -665,6 +665,43 @@ mod tests {
     }
 
     #[test]
+    fn core_repl_rejects_duplicate_data_declaration() {
+        let mut state = ReplState::new_core();
+        let first = state.eval_input("data Color = Red | Green;");
+        assert_eq!(first.outcome, Ok("Declarations added.".to_string()));
+        let duplicate = state.eval_input("data Color = Blue;");
+        assert_eq!(duplicate.type_line, None);
+        assert_eq!(
+            duplicate.outcome,
+            Err("type error: Duplicate type name: Color".to_string())
+        );
+        let kept = state.eval_input("match Green with | Red -> 1 | Green -> 2");
+        assert_eq!(kept.outcome, Ok("2".to_string()));
+        let rejected = state.eval_input("Blue");
+        assert_eq!(
+            rejected.outcome,
+            Err("type error: Unknown constructor: Blue".to_string())
+        );
+    }
+
+    #[test]
+    fn core_repl_rejects_constructor_reused_by_new_type() {
+        let mut state = ReplState::new_core();
+        let first = state.eval_input("data Color = Red | Green;");
+        assert_eq!(first.outcome, Ok("Declarations added.".to_string()));
+        let reused = state.eval_input("data Shade = Red;");
+        assert_eq!(reused.type_line, None);
+        assert_eq!(
+            reused.outcome,
+            Err("type error: Duplicate constructor: Red".to_string())
+        );
+        let kept = state.eval_input("match Red with | Red -> 1 | Green -> 2");
+        assert_eq!(kept.outcome, Ok("1".to_string()));
+        let fresh = state.eval_input("data Shade = Dark;");
+        assert_eq!(fresh.outcome, Ok("Declarations added.".to_string()));
+    }
+
+    #[test]
     fn core_repl_elaboration_error_does_not_commit() {
         let mut state = ReplState::new_core();
         let failed = state.eval_input("let t = (1, 2) == (1, 2);");
