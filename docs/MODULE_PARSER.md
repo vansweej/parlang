@@ -94,7 +94,7 @@ flowchart LR
 The entry point for parsing a complete ParLang program.
 
 ```rust
-pub fn program[Input]()(Input) -> Expr
+pub fn program[Input]()(Input) -> Program
 where [Input: Stream<Token = char>]
 {
     spaces().with(expr()).skip(spaces())
