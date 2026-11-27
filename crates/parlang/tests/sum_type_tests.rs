@@ -518,3 +518,68 @@ fn test_payload_recursion_and_forward_reference() {
     let expr = parse("data A = MkA B in data B = MkB in 0").expect("Parse failed");
     assert_eq!(parlang::typecheck(&expr), unknown_payload_type("B"));
 }
+
+/// Declarations shared by the higher-kinded tests below
+const HKT_DECLS: &str = "data Option a = None | Some a ;\n\
+                         data List a = Nil | Cons a (List a) ;\n\
+                         data Wrap f a = MkWrap (f a) ;\n\
+                         let unwrap = fun w -> match w with | MkWrap x -> x ;\n";
+
+/// A higher-kinded parameter accepts partially applied constructors
+#[test]
+fn test_hkt_wrap_types_option_and_list() {
+    let source = format!("{HKT_DECLS}unwrap (MkWrap (Some 1))");
+    let program = parlang::parse_program(&source).expect("Parse failed");
+    let option_int = parlang::Type::SumType("Option".to_string(), vec![parlang::Type::Int]);
+    assert_eq!(parlang::typecheck_program(&program), Ok(option_int));
+    let source = format!("{HKT_DECLS}MkWrap (Cons 1 Nil)");
+    let program = parlang::parse_program(&source).expect("Parse failed");
+    let wrapped = parlang::typecheck_program(&program).expect("Type error");
+    let list = parlang::Type::SumType("List".to_string(), vec![]);
+    let expected = parlang::Type::SumType("Wrap".to_string(), vec![list, parlang::Type::Int]);
+    assert_eq!(wrapped, expected);
+    assert_eq!(wrapped.to_string(), "Wrap List Int");
+}
+
+/// The surface evaluator runs the higher-kinded example
+#[test]
+fn test_hkt_wrap_evaluates() {
+    let source = format!("{HKT_DECLS}unwrap (MkWrap (Some 1))");
+    let program = parlang::parse_program(&source).expect("Parse failed");
+    let value = parlang::eval_program(&program, &Environment::new()).expect("Eval failed");
+    assert_eq!(value.to_string(), "Some(1)");
+}
+
+/// Fix and Compose infer higher-kinded parameters
+#[test]
+fn test_hkt_fix_and_compose_declarations() {
+    let source = "data Fix f = In (f (Fix f)) ;\n\
+                  data Compose f g a = MkCompose (f (g a)) ;\n0";
+    let program = parlang::parse_program(source).expect("Parse failed");
+    assert_eq!(parlang::typecheck_program(&program), Ok(parlang::Type::Int));
+}
+
+/// Ill-kinded declarations and annotations are kind errors
+#[test]
+fn test_hkt_kind_errors() {
+    let program =
+        parlang::parse_program("data Bad f = MkBad (f Int) (f) ;\n0").expect("Parse failed");
+    assert_eq!(
+        parlang::typecheck_program(&program),
+        Err(parlang::TypeError::KindMismatch(
+            "f".to_string(),
+            "*".to_string(),
+            "* -> *".to_string()
+        ))
+    );
+    let source = "data Wrap f a = MkWrap (f a) ;\nfun (w : Wrap Int Int) -> w";
+    let program = parlang::parse_program(source).expect("Parse failed");
+    assert_eq!(
+        parlang::typecheck_program(&program),
+        Err(parlang::TypeError::KindMismatch(
+            "Int".to_string(),
+            "* -> *".to_string(),
+            "*".to_string()
+        ))
+    );
+}

@@ -395,6 +395,8 @@ fn every_example_typechecks_and_runs() {
 /// the elaboration error must contain. Every other example must elaborate,
 /// run on Core, and agree with the surface evaluator.
 const EXPECTED_CORE_REJECTIONS: &[(&str, &str)] = &[
+    // Removed by M2.1b-2 (elaborate higher-kinded types).
+    ("examples/hkt.par", "higher-kinded"),
     ("examples/stdlib/map.par", "equality"),
     ("examples/string.par", "equality"),
     ("examples/use_recursion.par", "load"),
