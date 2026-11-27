@@ -175,6 +175,11 @@ pub struct TypedProgram {
     /// deduplicated in first-use order. A non-empty list means the program
     /// needs dictionary passing (M2.3) to run.
     pub method_uses: Vec<String>,
+    /// Residual class constraints of the trailing body, accepted because
+    /// every type variable they mention is free in the body type (implicit
+    /// generalisation). Dictionary insertion abstracts the body over one
+    /// dictionary per entry, in this order. Empty without a body.
+    pub body_constraints: Vec<Constraint>,
 }
 
 /// Render a [`TypedProgram`] as an indented text tree (2 spaces per level).

@@ -489,19 +489,22 @@ fn apply_subst_constraint(subst: &Substitution, constraint: &Constraint) -> Cons
 /// whose type variables all occur free in the resolved `body_ty` is
 /// accepted. Any other residual constraint is ambiguous (Haskell 98: no
 /// defaulting); with no body, every residual constraint is ambiguous.
+/// Returns the accepted residual constraints in reduction order.
 fn check_no_residual(
     env: &TypeEnv,
     subst: &Substitution,
     body_ty: Option<&Type>,
-) -> Result<(), TypeError> {
+) -> Result<Vec<Constraint>, TypeError> {
     let generalizable = body_ty.map(free_type_vars).unwrap_or_default();
     let pending = env.take_wanted_since(0);
-    for constraint in env.reduce_constraints(pending, subst)? {
-        if !constraint_vars(&constraint).is_subset(&generalizable) {
-            return Err(TypeError::AmbiguousConstraint(constraint.to_string()));
-        }
+    let residual = env.reduce_constraints(pending, subst)?;
+    if let Some(constraint) = residual
+        .iter()
+        .find(|constraint| !constraint_vars(constraint).is_subset(&generalizable))
+    {
+        return Err(TypeError::AmbiguousConstraint(constraint.to_string()));
     }
-    Ok(())
+    Ok(residual)
 }
 
 /// Apply type substitution to a type
@@ -2339,19 +2342,20 @@ pub fn typecheck_typed(expr: &Expr) -> Result<TypedExpr, TypeError> {
 
 /// Infer the optional trailing program body, then check every constraint
 /// still wanted in `program_env`. A program without a body has type `Int`.
+/// Also returns the body's accepted residual constraints.
 fn infer_program_body(
     body: Option<&Expr>,
     program_env: &mut TypeEnv,
-) -> Result<(Option<TypedExpr>, Type), TypeError> {
+) -> Result<(Option<TypedExpr>, Type, Vec<Constraint>), TypeError> {
     let Some(body) = body else {
         check_no_residual(program_env, &HashMap::new(), None)?;
-        return Ok((None, Type::Int));
+        return Ok((None, Type::Int, Vec::new()));
     };
     let (typed, subst) = infer_typed(body, program_env)?;
     let resolved = resolve_typed(&subst, &typed);
-    check_no_residual(program_env, &subst, Some(&resolved.ty))?;
+    let body_constraints = check_no_residual(program_env, &subst, Some(&resolved.ty))?;
     let ty = resolved.ty.clone();
-    Ok((Some(resolved), ty))
+    Ok((Some(resolved), ty, body_constraints))
 }
 
 /// Public API for type checking
@@ -2989,7 +2993,8 @@ pub fn typecheck_program_typed_with_env(
 
     let decls = collect_typed_decls(program, &mut program_env, &data_kinds)?;
 
-    let (typed_body, ty) = infer_program_body(program.body.as_ref(), &mut program_env)?;
+    let (typed_body, ty, body_constraints) =
+        infer_program_body(program.body.as_ref(), &mut program_env)?;
 
     let method_uses = RefCell::take(&program_env.method_uses);
     *env = program_env;
@@ -2998,6 +3003,7 @@ pub fn typecheck_program_typed_with_env(
         body: typed_body,
         ty,
         method_uses,
+        body_constraints,
     })
 }
 
@@ -3799,10 +3805,8 @@ mod tests {
         let env = TypeEnv::new();
         let body_ty = Type::Fun(Box::new(Type::Var(TypeVar(0))), Box::new(Type::Bool));
         env.want(eq_constraint(Type::Var(TypeVar(0))));
-        assert_eq!(
-            check_no_residual(&env, &HashMap::new(), Some(&body_ty)),
-            Ok(())
-        );
+        let accepted = check_no_residual(&env, &HashMap::new(), Some(&body_ty));
+        assert!(matches!(accepted.as_deref(), Ok([only]) if only.class == "Eq"));
         env.want(eq_constraint(Type::Var(TypeVar(1))));
         assert_eq!(
             check_no_residual(&env, &HashMap::new(), Some(&body_ty)),
@@ -3813,6 +3817,17 @@ mod tests {
             check_no_residual(&env, &HashMap::new(), None),
             Err(TypeError::AmbiguousConstraint("Eq t0".to_string()))
         );
+    }
+
+    #[test]
+    fn program_body_residual_constraints_are_recorded() {
+        let open = check_program("let same = fun x -> fun y -> x == y; same");
+        assert_eq!(open.body_constraints.len(), 1);
+        assert_eq!(open.body_constraints[0].class, "Eq");
+        let closed = check_program("let same = fun x -> fun y -> x == y; same 1 2");
+        assert!(closed.body_constraints.is_empty());
+        let no_body = check_program("let one = 1;");
+        assert!(no_body.body_constraints.is_empty());
     }
 
     #[test]
