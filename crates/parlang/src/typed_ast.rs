@@ -8,7 +8,7 @@
 //! rejected with `UnknownConstructor`, so they never reach this tree.
 
 use crate::ast::{Expr, Literal, Pattern, TypeAnnotation, TypeExpr};
-use crate::types::{Type, TypeScheme};
+use crate::types::{Constraint, Type, TypeScheme, TypeVar};
 use std::fmt::Write;
 
 /// An expression annotated with its inferred type.
@@ -151,6 +151,17 @@ pub enum TypedDecl {
         methods: Vec<(String, TypeScheme)>,
         doc: Option<String>,
     },
+    /// A checked `instance` declaration: the resolved `head`, its distinct
+    /// type variables `vars`, its `context` over them, and each method's
+    /// typed body in source order.
+    Instance {
+        class: String,
+        head: Type,
+        vars: Vec<TypeVar>,
+        context: Vec<Constraint>,
+        methods: Vec<(String, TypedExpr)>,
+        doc: Option<String>,
+    },
 }
 
 /// Typed mirror of [`crate::ast::Program`]: typed declarations, an optional
@@ -184,7 +195,7 @@ pub fn typed_program_to_text(program: &TypedProgram) -> String {
 }
 
 /// Why `program` cannot run before dictionary passing (M2.3), or `None` when
-/// it uses no type class: its first `class` declaration, else its first
+/// it uses no type class: its first `class` or `instance` declaration, else its first
 /// class-method use.
 ///
 /// Both evaluators and both REPLs report exactly this text, so a
@@ -192,6 +203,7 @@ pub fn typed_program_to_text(program: &TypedProgram) -> String {
 pub fn requires_dictionary_passing(program: &TypedProgram) -> Option<String> {
     let class = program.decls.iter().find_map(|decl| match decl {
         TypedDecl::Class { name, .. } => Some(format!("class {name}")),
+        TypedDecl::Instance { class, .. } => Some(format!("instance {class}")),
         _ => None,
     });
     let what = class.or_else(|| {
@@ -281,6 +293,26 @@ fn write_decl(out: &mut String, index: usize, decl: &TypedDecl, depth: usize) {
             for (method, scheme) in methods {
                 indent(out, depth + 1);
                 let _ = writeln!(out, "method: {method} : {scheme}");
+            }
+        }
+        TypedDecl::Instance {
+            class,
+            head,
+            context,
+            methods,
+            ..
+        } => {
+            let instance = Constraint {
+                class: class.clone(),
+                args: vec![head.clone()],
+            };
+            let _ = writeln!(out, "decl {index}: Instance {instance}");
+            for constraint in context {
+                indent(out, depth + 1);
+                let _ = writeln!(out, "context: {constraint}");
+            }
+            for (method, body) in methods {
+                write_expr(out, &format!("method {method}"), body, depth + 1);
             }
         }
     }

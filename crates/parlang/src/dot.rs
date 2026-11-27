@@ -968,7 +968,47 @@ fn typed_decl_to_dot(
             let head = format!("{name} {param}");
             typed_class_to_dot(program_id, index, &head, methods, output, gen);
         }
+        TypedDecl::Instance {
+            class,
+            head,
+            methods,
+            ..
+        } => {
+            let title = crate::types::Constraint {
+                class: class.clone(),
+                args: vec![head.clone()],
+            }
+            .to_string();
+            typed_instance_to_dot(program_id, index, &title, methods, output, gen);
+        }
     }
+}
+
+/// Emit a typed `instance` declaration node labelled `Instance` plus
+/// `title`, with one typed expression child per method body, linked from
+/// `program_id` as `decl <index>`.
+fn typed_instance_to_dot(
+    program_id: &str,
+    index: usize,
+    title: &str,
+    methods: &[(String, TypedExpr)],
+    output: &mut String,
+    gen: &mut NodeIdGenerator,
+) {
+    let decl_id = gen.next();
+    let label = escape_label(&format!("Instance\n{title}"));
+    let _ = writeln!(output, "  {decl_id} [label=\"{label}\"];");
+    for (method, body) in methods {
+        let body_id = typed_expr_to_dot(body, output, gen);
+        let _ = writeln!(
+            output,
+            "  {decl_id} -> {body_id} [label=\"method {method}\"];"
+        );
+    }
+    let _ = writeln!(
+        output,
+        "  {program_id} -> {decl_id} [label=\"decl {index}\"];"
+    );
 }
 
 /// Emit a typed `class` declaration node labelled `Class` plus `head`, with
