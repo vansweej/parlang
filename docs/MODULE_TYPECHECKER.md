@@ -43,6 +43,7 @@ pub enum TypeError {
     RecordFieldMismatch,
     ConstructorArityMismatch(String, usize, usize),
     TypeConstructorArityMismatch(String, usize, usize),
+    TypeAliasInDataPayload(String),
     TypeAliasCycle(Vec<String>),
     DuplicateTypeName(String),
     DuplicateConstructor(String),
@@ -63,6 +64,7 @@ pub enum TypeError {
 - `RecordFieldMismatch`: Record type field mismatch during unification
 - `ConstructorArityMismatch(name, expected, actual)`: Constructor applied with the wrong number of arguments
 - `TypeConstructorArityMismatch(name, expected, actual)`: Type constructor applied to the wrong number of type arguments in a data payload or annotation (expected is 0 for base types)
+- `TypeAliasInDataPayload(name)`: A type alias was used in a data constructor payload; payload names must be base types, declared data types, or type variables (unknown names fail with `UnboundVariable("Unknown type constructor in data declaration: <name>")`)
 - `TypeAliasCycle(names)`: A cycle was found while resolving top-level type aliases
 - `DuplicateTypeName(name)`: A top-level data type or type alias was declared more than once
 - `DuplicateConstructor(name)`: A top-level constructor name was declared more than once

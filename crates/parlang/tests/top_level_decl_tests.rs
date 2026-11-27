@@ -66,9 +66,9 @@ fn type_alias_can_reference_a_later_alias() {
 }
 
 #[test]
-fn payload_forward_reference_guard_is_vacuous_by_design() {
-    // This does not prove payload forward-reference support: payload types are
-    // resolved lazily rather than while data declarations are registered.
+fn payload_forward_reference_to_later_data_type_is_accepted() {
+    // Payload names are checked at declaration time after every top-level
+    // data arity is registered, so `B` may be declared after its use in `A`.
     assert_eq!(
         run("data A = MkA B ; data B = MkB ; MkB"),
         Ok(Value::Variant("MkB".to_string(), vec![]))

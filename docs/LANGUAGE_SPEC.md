@@ -727,7 +727,11 @@ Algebraic data types (sum types) are declared using the `data` keyword,
 distinct from `type` aliases. A `data` declaration introduces a new type
 name, optionally parameterised by type variables, together with one or more
 constructors separated by `|`. Each constructor may take zero or more
-payload types. The `type` keyword remains reserved for non-parameterised,
+payload types. Every type name in a payload must be a base type (`Int`,
+`Bool`, `Char`, `Float`; `Unit` is not a payload type name) or a declared
+`data` type (top-level declarations may refer to later ones; the
+`data ... in` form may not); unknown names and type aliases are rejected
+when the declaration is checked. The `type` keyword remains reserved for non-parameterised,
 non-alternative aliases (i.e. `type Name = TypeExpr`), while `data` is used
 whenever a declaration introduces multiple alternative constructors and/or
 type parameters. At runtime and in `Display` output, ADT definitions are
