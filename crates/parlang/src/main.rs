@@ -92,7 +92,10 @@ impl ReplState {
 ///
 /// There is no incremental Core API, so the committed declarations plus the
 /// new input are elaborated, linted and run as one whole program; the input's
-/// declarations are appended to `decls` only when that succeeds.
+/// declarations are appended to `decls` only when that succeeds. A
+/// declaration-only input is evaluated too (with the default body), so a
+/// declaration whose evaluation fails, such as `let x = 1 / 0;`, is rejected
+/// and not committed.
 fn evaluate_core_repl_input(input: &str, decls: &mut Vec<parlang::Decl>) -> ReplResponse {
     let program = match parse_program(input) {
         Ok(program) => program,
@@ -108,11 +111,13 @@ fn evaluate_core_repl_input(input: &str, decls: &mut Vec<parlang::Decl>) -> Repl
         decls: decls.iter().cloned().chain(program.decls).collect(),
         body: program.body,
     };
-    let outcome = if has_body {
-        parlang::pipeline::run_core(&candidate).map(|text| text.trim_end().to_string())
-    } else {
-        parlang::pipeline::core_of_program(&candidate).map(|_| "Declarations added.".to_string())
-    };
+    let outcome = parlang::pipeline::run_core(&candidate).map(|text| {
+        if has_body {
+            text.trim_end().to_string()
+        } else {
+            "Declarations added.".to_string()
+        }
+    });
     if outcome.is_ok() {
         *decls = candidate.decls;
     }
@@ -617,6 +622,36 @@ mod tests {
         let first = state.eval_input("let x = 41;");
         assert_eq!(first.outcome, Ok("Declarations added.".to_string()));
         let second = state.eval_input("x + 1");
+        assert_eq!(second.outcome, Ok("42".to_string()));
+    }
+
+    #[test]
+    fn core_repl_failing_declaration_does_not_commit() {
+        let mut state = ReplState::new_core();
+        let failed = state.eval_input("let x = 1 / 0;");
+        assert_eq!(failed.type_line, None);
+        assert_eq!(
+            failed.outcome,
+            Err("eval error: integer division by zero".to_string())
+        );
+        let unbound = state.eval_input("x");
+        assert_eq!(
+            unbound.outcome,
+            Err("type error: Unbound variable: x".to_string())
+        );
+        let next = state.eval_input("let y = 2;");
+        assert_eq!(next.outcome, Ok("Declarations added.".to_string()));
+        let used = state.eval_input("y + 1");
+        assert_eq!(used.outcome, Ok("3".to_string()));
+    }
+
+    #[test]
+    fn core_repl_declaration_only_input_is_evaluated() {
+        let mut state = ReplState::new_core();
+        let first = state.eval_input("let z = 6 * 7;");
+        assert_eq!(first.type_line, None);
+        assert_eq!(first.outcome, Ok("Declarations added.".to_string()));
+        let second = state.eval_input("z");
         assert_eq!(second.outcome, Ok("42".to_string()));
     }
 
