@@ -11,6 +11,7 @@
 
 use crate::base_type::BaseType;
 use crate::error::{BuildError, BuildResult};
+use crate::kind::Kind;
 use crate::term::{Alt, Lit, Term};
 use crate::ty::Type;
 
@@ -105,7 +106,19 @@ pub fn tylam(binder: &str, body: Term) -> BuildResult<Term> {
     if binder.is_empty() {
         return Err(BuildError::EmptyName);
     }
-    Ok(Term::TyLam(binder.to_string(), Box::new(body)))
+    tylam_k(binder, Kind::Star, body)
+}
+
+/// A type abstraction whose binder has an explicit [`Kind`], for example
+/// `* -> *` for a higher-kinded type variable. Erased at runtime.
+///
+/// # Errors
+/// Returns [`BuildError::EmptyName`] if `binder` is empty.
+pub fn tylam_k(binder: &str, kind: Kind, body: Term) -> BuildResult<Term> {
+    if binder.is_empty() {
+        return Err(BuildError::EmptyName);
+    }
+    Ok(Term::TyLam(binder.to_string(), kind, Box::new(body)))
 }
 
 /// A type application (erased at runtime): a term applied to a type.
@@ -219,7 +232,19 @@ pub fn forall(binder: &str, body: Type) -> BuildResult<Type> {
     if binder.is_empty() {
         return Err(BuildError::EmptyName);
     }
-    Ok(Type::Forall(binder.to_string(), Box::new(body)))
+    forall_k(binder, Kind::Star, body)
+}
+
+/// A single-binder universal `forall (binder : kind). body` whose binder has
+/// an explicit [`Kind`], for example `* -> *` for a higher-kinded variable.
+///
+/// # Errors
+/// Returns [`BuildError::EmptyName`] if `binder` is empty.
+pub fn forall_k(binder: &str, kind: Kind, body: Type) -> BuildResult<Type> {
+    if binder.is_empty() {
+        return Err(BuildError::EmptyName);
+    }
+    Ok(Type::Forall(binder.to_string(), kind, Box::new(body)))
 }
 
 #[cfg(test)]
@@ -253,6 +278,25 @@ mod tests {
         // forall a. a -> List a
         let ty = forall("a", fun_ty(tvar("a")?, tapp(tcon("List")?, tvar("a")?)))?;
         assert_eq!(ty.to_string(), "forall a. a -> List a");
+        Ok(())
+    }
+
+    #[test]
+    fn forall_k_records_the_binder_kind() -> Result<(), BuildError> {
+        let body = tapp(tvar("f")?, tvar("a")?);
+        let ty = forall_k("f", Kind::arrow(Kind::Star, Kind::Star), body)?;
+        assert_eq!(ty.to_string(), "forall (f : * -> *). f a");
+        let empty = forall_k("", Kind::Star, tvar("a")?);
+        assert_eq!(empty, Err(BuildError::EmptyName));
+        Ok(())
+    }
+
+    #[test]
+    fn tylam_k_records_the_binder_kind() -> Result<(), BuildError> {
+        let star = tylam("a", var("x")?)?;
+        assert_eq!(star.to_string(), "(/\\a. x)");
+        let higher = tylam_k("f", Kind::arrow(Kind::Star, Kind::Star), var("x")?)?;
+        assert_eq!(higher.to_string(), "(/\\(f : * -> *). x)");
         Ok(())
     }
 

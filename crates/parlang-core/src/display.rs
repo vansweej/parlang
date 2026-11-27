@@ -52,7 +52,13 @@ impl Display for Term {
                 }
                 Ok(())
             }
-            Term::TyLam(binder, body) => write!(f, "(/\\{binder}. {body})"),
+            Term::TyLam(binder, kind, body) => {
+                if kind.is_star() {
+                    write!(f, "(/\\{binder}. {body})")
+                } else {
+                    write!(f, "(/\\({binder} : {kind}). {body})")
+                }
+            }
             Term::TyApp(term, ty) => write!(f, "({term} @{ty})"),
             Term::Case(scrutinee, alts) => {
                 write!(f, "(case {scrutinee} of ")?;
@@ -165,8 +171,18 @@ mod tests {
 
     #[test]
     fn tylam_tyapp_render_ascii() {
-        let tl = Term::TyLam("a".to_string(), Box::new(Term::Var("x".to_string())));
+        let tl = Term::TyLam(
+            "a".to_string(),
+            crate::kind::Kind::Star,
+            Box::new(Term::Var("x".to_string())),
+        );
         assert_eq!(tl.to_text(), "(/\\a. x)");
+        let hk = Term::TyLam(
+            "f".to_string(),
+            crate::kind::Kind::arrow(crate::kind::Kind::Star, crate::kind::Kind::Star),
+            Box::new(Term::Var("x".to_string())),
+        );
+        assert_eq!(hk.to_text(), "(/\\(f : * -> *). x)");
         let ta = Term::TyApp(
             Box::new(Term::Var("f".to_string())),
             crate::ty::Type::Base(BaseType::Int),

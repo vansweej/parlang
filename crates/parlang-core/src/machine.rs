@@ -249,7 +249,7 @@ impl Machine {
             Term::Let(name, value, body) => Ok(self.eval_let(name, *value, *body)),
             Term::LetRec(name, ann, value, body) => self.eval_letrec(name, ann, *value, *body),
             Term::Con(name, _ty_args, args) => self.eval_con(name, &args),
-            Term::TyLam(_, inner) | Term::TyApp(inner, _) => Ok(self.eval_erased(*inner)),
+            Term::TyLam(_, _, inner) | Term::TyApp(inner, _) => Ok(self.eval_erased(*inner)),
             Term::Case(scrutinee, alts) => Ok(self.eval_case(*scrutinee, alts)),
         }
     }

@@ -8,7 +8,7 @@ use crate::ty::Type;
 /// Strips all leading `Forall` binders from `ty`, returning the first non-`Forall` type.
 fn strip_foralls(ty: &Type) -> &Type {
     let mut current = ty;
-    while let Type::Forall(_, body) = current {
+    while let Type::Forall(_, _, body) = current {
         current = body;
     }
     current
@@ -200,6 +200,7 @@ mod tests {
         let list = DataType {
             name: "List".to_string(),
             params: vec!["a".to_string()],
+            param_kinds: vec![crate::kind::Kind::Star],
             ctors: vec![
                 DataCon {
                     name: "Nil".to_string(),
@@ -220,6 +221,7 @@ mod tests {
         let pair = DataType {
             name: "(,)".to_string(),
             params: vec!["a".to_string(), "b".to_string()],
+            param_kinds: vec![crate::kind::Kind::Star, crate::kind::Kind::Star],
             ctors: vec![DataCon {
                 name: "(,)".to_string(),
                 fields: vec![Type::Var("a".to_string()), Type::Var("b".to_string())],
@@ -228,6 +230,7 @@ mod tests {
         let record = DataType {
             name: "{x,y}".to_string(),
             params: vec![],
+            param_kinds: vec![],
             ctors: vec![DataCon {
                 name: "{x,y}".to_string(),
                 fields: vec![Type::Base(BaseType::Int), Type::Base(BaseType::Bool)],
@@ -357,6 +360,7 @@ mod tests {
         let env = list_env();
         let ty = Type::Forall(
             "a".to_string(),
+            crate::kind::Kind::Star,
             Box::new(list_ty(Type::Var("a".to_string()))),
         );
         assert_eq!(render_value(&nil(), &ty, &env), "[]");
@@ -368,8 +372,10 @@ mod tests {
         let v = Value::Con("(,)".to_string(), vec![nil(), nil()]);
         let ty = Type::Forall(
             "a".to_string(),
+            crate::kind::Kind::Star,
             Box::new(Type::Forall(
                 "b".to_string(),
+                crate::kind::Kind::Star,
                 Box::new(pair_ty(
                     list_ty(Type::Var("a".to_string())),
                     list_ty(Type::Var("b".to_string())),

@@ -10,6 +10,7 @@
 use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 
+use crate::kind::Kind;
 use crate::term::{Alt, Term};
 use crate::ty::Type;
 
@@ -32,6 +33,10 @@ pub struct DataType {
     pub name: String,
     /// The type's parameters, e.g. `["a"]` for `List a`.
     pub params: Vec<String>,
+    /// The kind of each parameter, parallel to `params` and of the same
+    /// length, e.g. `[*]` for `List a` or `[* -> *, *]` for `Wrap f a`.
+    /// [`LintEnv::try_with_data`] rejects a length mismatch.
+    pub param_kinds: Vec<Kind>,
     /// The type's constructors.
     pub ctors: Vec<DataCon>,
 }
@@ -47,8 +52,9 @@ pub struct LintEnv {
     ctor_owner: BTreeMap<String, String>,
     /// Term-variable context stack: `(name, type)` pairs, most recent last.
     terms: Vec<(String, Type)>,
-    /// In-scope type-variable stack, most recent last.
-    tyvars: Vec<String>,
+    /// In-scope type-variable stack with each variable's kind, most recent
+    /// last.
+    tyvars: Vec<(String, Kind)>,
 }
 
 impl LintEnv {
@@ -76,8 +82,16 @@ impl LintEnv {
     /// [`LintError::DuplicateTypeParam`], or [`LintError::DuplicateDataCon`]
     /// for the corresponding name clash, or the first well-formedness error
     /// (`UnboundTypeVar`, `UnknownType`, `ArityMismatch`, `ShadowedTypeVar`)
-    /// found in a field type.
+    /// found in a field type. Returns [`LintError::ParamKindCountMismatch`]
+    /// first when `param_kinds` and `params` differ in length.
     pub fn try_with_data(self, data: DataType) -> Result<Self, LintError> {
+        if data.param_kinds.len() != data.params.len() {
+            return Err(LintError::ParamKindCountMismatch {
+                ty: data.name,
+                expected: data.params.len(),
+                found: data.param_kinds.len(),
+            });
+        }
         if self.types.contains_key(&data.name) {
             return Err(LintError::DuplicateDataType { name: data.name });
         }
@@ -101,7 +115,12 @@ impl LintEnv {
         }
         let mut scratch = Self {
             types: self.types.clone(),
-            tyvars: data.params.clone(),
+            tyvars: data
+                .params
+                .iter()
+                .cloned()
+                .zip(data.param_kinds.iter().cloned())
+                .collect(),
             ..Self::default()
         };
         scratch.types.insert(data.name.clone(), data.clone());
@@ -161,9 +180,26 @@ impl LintEnv {
         self.terms.pop();
     }
 
-    /// Pushes a type variable onto the in-scope stack.
-    fn push_tyvar(&mut self, name: &str) {
-        self.tyvars.push(name.to_string());
+    /// Pushes a type variable of kind `kind` onto the in-scope stack.
+    fn push_tyvar(&mut self, name: &str, kind: &Kind) {
+        self.tyvars.push((name.to_string(), kind.clone()));
+    }
+
+    /// Returns the kind of the innermost in-scope type variable `name`.
+    fn tyvar_kind(&self, name: &str) -> Option<&Kind> {
+        self.tyvars
+            .iter()
+            .rev()
+            .find(|(bound, _)| bound == name)
+            .map(|(_, kind)| kind)
+    }
+
+    /// Returns the kind of the registered type constructor `name`, built
+    /// from its declared `param_kinds`.
+    fn con_kind(&self, name: &str) -> Option<Kind> {
+        self.types
+            .get(name)
+            .map(|dt| Kind::of_constructor(&dt.param_kinds))
     }
 
     /// Pops the most recently pushed type variable.
@@ -314,6 +350,94 @@ pub enum LintError {
         /// The constructor name.
         ctor: String,
     },
+    /// `LintEnv::try_with_data` was given a data type whose `param_kinds`
+    /// and `params` differ in length.
+    ParamKindCountMismatch {
+        /// The data type name.
+        ty: String,
+        /// The number of declared parameters.
+        expected: usize,
+        /// The number of parameter kinds supplied.
+        found: usize,
+    },
+    /// A type had a different kind than its position requires, for example
+    /// `Int` given for a type variable of kind `* -> *`.
+    KindMismatch {
+        /// The offending type.
+        ty: Type,
+        /// The kind the position requires.
+        expected: Kind,
+        /// The kind the type actually has.
+        found: Kind,
+    },
+}
+
+/// Formats the `Case`-related [`LintError`] variants (`NonExhaustiveCase`,
+/// `DuplicateAlt`, `ForeignAlt`, `BinderCountMismatch`, `EmptyCase`,
+/// `BranchTypeMismatch`), split out of `Display for LintError` to keep that
+/// function under clippy's `too_many_lines` limit.
+fn fmt_case_error(err: &LintError, f: &mut Formatter<'_>) -> fmt::Result {
+    match err {
+        LintError::NonExhaustiveCase { missing } => {
+            write!(f, "non-exhaustive case, missing: {}", missing.join(", "))
+        }
+        LintError::DuplicateAlt(c) => write!(f, "duplicate alternative for constructor: {c}"),
+        LintError::ForeignAlt { ctor, data_type } => {
+            write!(f, "constructor {ctor} does not belong to type {data_type}")
+        }
+        LintError::BinderCountMismatch {
+            ctor,
+            expected,
+            found,
+        } => write!(
+            f,
+            "alternative for {ctor}: expected {expected} binders, found {found}"
+        ),
+        LintError::EmptyCase => write!(f, "case expression has no alternatives"),
+        LintError::BranchTypeMismatch { expected, found } => {
+            write!(
+                f,
+                "branch type mismatch: expected {expected}, found {found}"
+            )
+        }
+        // `Display for LintError` only routes the variants above here; any
+        // other variant falls back to its `Debug` form instead of panicking.
+        other => write!(f, "{other:?}"),
+    }
+}
+
+/// Formats the declaration and kind [`LintError`] variants
+/// (`DuplicateDataType`, `DuplicateTypeParam`, `DuplicateDataCon`,
+/// `ParamKindCountMismatch`, `KindMismatch`), split out of
+/// `Display for LintError` to keep that function under clippy's
+/// `too_many_lines` limit.
+fn fmt_decl_error(err: &LintError, f: &mut Formatter<'_>) -> fmt::Result {
+    match err {
+        LintError::DuplicateDataType { name } => write!(f, "duplicate data type: {name}"),
+        LintError::DuplicateTypeParam { ty, param } => {
+            write!(f, "data type {ty}: duplicate type parameter {param}")
+        }
+        LintError::DuplicateDataCon { ctor } => write!(f, "duplicate data constructor: {ctor}"),
+        LintError::ParamKindCountMismatch {
+            ty,
+            expected,
+            found,
+        } => write!(
+            f,
+            "data type {ty}: expected {expected} parameter kinds, found {found}"
+        ),
+        LintError::KindMismatch {
+            ty,
+            expected,
+            found,
+        } => write!(
+            f,
+            "kind mismatch for {ty}: expected {expected}, found {found}"
+        ),
+        // `Display for LintError` only routes the variants above here; any
+        // other variant falls back to its `Debug` form instead of panicking.
+        other => write!(f, "{other:?}"),
+    }
 }
 
 impl Display for LintError {
@@ -378,28 +502,12 @@ impl Display for LintError {
             }
             Self::NotAForall(t) => write!(f, "not a forall: {t}"),
             Self::NotADataType(t) => write!(f, "not a data type: {t}"),
-            Self::NonExhaustiveCase { missing } => {
-                write!(f, "non-exhaustive case, missing: {}", missing.join(", "))
-            }
-            Self::DuplicateAlt(c) => write!(f, "duplicate alternative for constructor: {c}"),
-            Self::ForeignAlt { ctor, data_type } => {
-                write!(f, "constructor {ctor} does not belong to type {data_type}")
-            }
-            Self::BinderCountMismatch {
-                ctor,
-                expected,
-                found,
-            } => write!(
-                f,
-                "alternative for {ctor}: expected {expected} binders, found {found}"
-            ),
-            Self::EmptyCase => write!(f, "case expression has no alternatives"),
-            Self::BranchTypeMismatch { expected, found } => {
-                write!(
-                    f,
-                    "branch type mismatch: expected {expected}, found {found}"
-                )
-            }
+            Self::NonExhaustiveCase { .. }
+            | Self::DuplicateAlt(_)
+            | Self::ForeignAlt { .. }
+            | Self::BinderCountMismatch { .. }
+            | Self::EmptyCase
+            | Self::BranchTypeMismatch { .. } => fmt_case_error(self, f),
             Self::LetRecValueNotLam => write!(f, "letrec value must be a lambda"),
             Self::LetRecAnnotationMismatch { expected, found } => write!(
                 f,
@@ -409,11 +517,11 @@ impl Display for LintError {
             Self::EqTypeMismatch { left, right } => {
                 write!(f, "eq type mismatch: {left} vs {right}")
             }
-            Self::DuplicateDataType { name } => write!(f, "duplicate data type: {name}"),
-            Self::DuplicateTypeParam { ty, param } => {
-                write!(f, "data type {ty}: duplicate type parameter {param}")
-            }
-            Self::DuplicateDataCon { ctor } => write!(f, "duplicate data constructor: {ctor}"),
+            Self::DuplicateDataType { .. }
+            | Self::DuplicateTypeParam { .. }
+            | Self::DuplicateDataCon { .. }
+            | Self::ParamKindCountMismatch { .. }
+            | Self::KindMismatch { .. } => fmt_decl_error(self, f),
         }
     }
 }
@@ -432,51 +540,32 @@ fn spine(ty: &Type) -> (&Type, Vec<&Type>) {
     (head, args)
 }
 
-/// Checks that `ty` is well-formed under `env`: every free type variable is
-/// in scope, and every type-constructor application has the correct arity.
+/// Checks that `ty` is a well-formed type of kind `*` under `env`: every
+/// free type variable is in scope, every constructor-headed application at
+/// a `*` position is saturated, and every application is well-kinded.
 ///
 /// # Errors
 ///
 /// Returns a [`LintError`] describing the first well-formedness violation.
 fn well_formed(env: &mut LintEnv, ty: &Type) -> Result<(), LintError> {
-    match ty {
-        Type::Base(_) => Ok(()),
-        Type::Var(n) => {
-            if env.tyvars.contains(n) {
-                Ok(())
-            } else {
-                Err(LintError::UnboundTypeVar(n.clone()))
-            }
-        }
-        Type::Fun(a, b) => {
-            well_formed(env, a)?;
-            well_formed(env, b)
-        }
-        Type::Forall(a, body) => {
-            if env.tyvars.contains(a) {
-                return Err(LintError::ShadowedTypeVar(a.clone()));
-            }
-            env.push_tyvar(a);
-            let result = well_formed(env, body);
-            env.pop_tyvar();
-            result
-        }
-        Type::Con(_) | Type::App(_, _) => {
-            let (head, args) = spine(ty);
-            let Type::Con(name) = head else {
-                // Core currently has only kind `*`, so application heads must
-                // be registered type constructors rather than type variables
-                // or other kinds of type.
-                return Err(LintError::ArityMismatch {
-                    tycon: head.to_string(),
-                    expected: 0,
-                    found: args.len(),
-                });
-            };
+    check_kind(env, ty, &Kind::Star)
+}
+
+/// Checks that `ty` has kind `expected` under `env`. At a `*` position a
+/// constructor-headed application must supply exactly the declared number
+/// of arguments (`ArityMismatch`); at an arrow-kinded position a partially
+/// applied constructor is accepted when its kind matches.
+///
+/// # Errors
+///
+/// Returns a [`LintError`] describing the first violation.
+fn check_kind(env: &mut LintEnv, ty: &Type, expected: &Kind) -> Result<(), LintError> {
+    if expected.is_star() {
+        let (head, args) = spine(ty);
+        if let Type::Con(name) = head {
             let dt = env
                 .types
                 .get(name)
-                .cloned()
                 .ok_or_else(|| LintError::UnknownType(name.clone()))?;
             if args.len() != dt.params.len() {
                 return Err(LintError::ArityMismatch {
@@ -485,11 +574,62 @@ fn well_formed(env: &mut LintEnv, ty: &Type) -> Result<(), LintError> {
                     found: args.len(),
                 });
             }
-            for arg in args {
-                well_formed(env, arg)?;
-            }
-            Ok(())
         }
+    }
+    let found = kind_of(env, ty)?;
+    if found == *expected {
+        Ok(())
+    } else {
+        Err(LintError::KindMismatch {
+            ty: ty.clone(),
+            expected: expected.clone(),
+            found,
+        })
+    }
+}
+
+/// Synthesizes the kind of `ty` under `env`.
+///
+/// # Errors
+///
+/// Returns a [`LintError`] describing the first violation.
+fn kind_of(env: &mut LintEnv, ty: &Type) -> Result<Kind, LintError> {
+    match ty {
+        Type::Base(_) => Ok(Kind::Star),
+        Type::Var(n) => env
+            .tyvar_kind(n)
+            .cloned()
+            .ok_or_else(|| LintError::UnboundTypeVar(n.clone())),
+        Type::Con(name) => env
+            .con_kind(name)
+            .ok_or_else(|| LintError::UnknownType(name.clone())),
+        Type::Fun(a, b) => {
+            well_formed(env, a)?;
+            well_formed(env, b)?;
+            Ok(Kind::Star)
+        }
+        Type::Forall(a, k, body) => {
+            if env.tyvar_kind(a).is_some() {
+                return Err(LintError::ShadowedTypeVar(a.clone()));
+            }
+            env.push_tyvar(a, k);
+            let result = well_formed(env, body);
+            env.pop_tyvar();
+            result.map(|()| Kind::Star)
+        }
+        Type::App(head, arg) => match kind_of(env, head)? {
+            Kind::Arrow(dom, cod) => {
+                check_kind(env, arg, &dom)?;
+                Ok(*cod)
+            }
+            // The expected kind names the minimal arrow kind an applied
+            // head needs; the argument is not inspected on this path.
+            Kind::Star => Err(LintError::KindMismatch {
+                ty: head.as_ref().clone(),
+                expected: Kind::arrow(Kind::Star, Kind::Star),
+                found: Kind::Star,
+            }),
+        },
     }
 }
 
@@ -519,7 +659,7 @@ fn synth(env: &mut LintEnv, term: &Term) -> Result<Type, LintError> {
         Term::App(f, a) => synth_app(env, f, a),
         Term::Let(x, v, b) => synth_let(env, x, v, b),
         Term::LetRec(x, ann, v, b) => synth_letrec(env, x, ann, v, b),
-        Term::TyLam(a, t) => synth_tylam(env, a, t),
+        Term::TyLam(a, k, t) => synth_tylam(env, a, k, t),
         Term::TyApp(t, ty) => synth_tyapp(env, t, ty),
         Term::Con(name, ty_args, args) => synth_con(env, name, ty_args, args),
         Term::Case(scrutinee, alts) => synth_case(env, scrutinee, alts),
@@ -575,23 +715,23 @@ fn synth_letrec(
     result
 }
 
-fn synth_tylam(env: &mut LintEnv, a: &str, t: &Term) -> Result<Type, LintError> {
-    if env.tyvars.contains(&a.to_string()) {
+fn synth_tylam(env: &mut LintEnv, a: &str, k: &Kind, t: &Term) -> Result<Type, LintError> {
+    if env.tyvar_kind(a).is_some() {
         return Err(LintError::ShadowedTypeVar(a.to_string()));
     }
-    env.push_tyvar(a);
+    env.push_tyvar(a, k);
     let result = synth(env, t);
     env.pop_tyvar();
     let tt = result?;
-    Ok(Type::Forall(a.to_string(), Box::new(tt)))
+    Ok(Type::Forall(a.to_string(), k.clone(), Box::new(tt)))
 }
 
 fn synth_tyapp(env: &mut LintEnv, t: &Term, ty: &Type) -> Result<Type, LintError> {
     let tt = synth(env, t)?;
-    let Type::Forall(a, body) = tt else {
+    let Type::Forall(a, kind, body) = tt else {
         return Err(LintError::NotAForall(tt));
     };
-    well_formed(env, ty)?;
+    check_kind(env, ty, &kind)?;
     Ok(body.subst(&a, ty))
 }
 
@@ -759,8 +899,8 @@ fn synth_data_con(
             found: ty_args.len(),
         });
     }
-    for ty_arg in ty_args {
-        well_formed(env, ty_arg)?;
+    for (ty_arg, kind) in ty_args.iter().zip(&dt.param_kinds) {
+        check_kind(env, ty_arg, kind)?;
     }
 
     let dc = dt
@@ -899,6 +1039,7 @@ pub fn prelude_env() -> LintEnv {
     let list = DataType {
         name: "List".to_string(),
         params: vec!["a".to_string()],
+        param_kinds: vec![Kind::Star],
         ctors: vec![
             DataCon {
                 name: "Nil".to_string(),
@@ -925,7 +1066,7 @@ mod tests {
     use crate::base_type::BaseType;
     use crate::builder::{
         alt, app, bool_, case_, char_, con, con_at, fun_ty, int, lam, let_, letrec, tvar, tyapp,
-        tylam, var,
+        tylam, tylam_k, var,
     };
 
     #[test]
@@ -1215,7 +1356,7 @@ mod tests {
         let env = LintEnv::new();
         let term = tylam("a", lam("x", tvar("a")?, var("x")?)?)?;
         let ty = lint(&term, &env)?;
-        assert!(matches!(ty, Type::Forall(_, _)));
+        assert!(matches!(ty, Type::Forall(..)));
         Ok(())
     }
 
@@ -1253,23 +1394,135 @@ mod tests {
     }
 
     #[test]
-    fn type_var_headed_application_rejected() -> Result<(), Box<dyn std::error::Error>> {
-        let ill_kinded_binder = Type::App(
-            Box::new(Type::Var("a".to_string())),
-            Box::new(Type::Base(BaseType::Int)),
-        );
-        let term = tylam("a", lam("x", ill_kinded_binder, int(1))?)?;
-        assert!(matches!(
+    fn var_headed_application_rejected_at_star() -> Result<(), Box<dyn std::error::Error>> {
+        let term = tylam("f", lam("x", f_of(Type::Base(BaseType::Int)), int(1))?)?;
+        assert_eq!(
             lint(&term, &LintEnv::new()),
-            Err(LintError::ArityMismatch { .. })
+            Err(LintError::KindMismatch {
+                ty: Type::Var("f".to_string()),
+                expected: star_to_star(),
+                found: Kind::Star,
+            })
+        );
+        Ok(())
+    }
+
+    fn star_to_star() -> Kind {
+        Kind::arrow(Kind::Star, Kind::Star)
+    }
+
+    fn f_of(arg: Type) -> Type {
+        Type::App(Box::new(Type::Var("f".to_string())), Box::new(arg))
+    }
+
+    fn poly_over_f() -> Result<Term, Box<dyn std::error::Error>> {
+        let body = lam("x", f_of(Type::Base(BaseType::Int)), int(1))?;
+        Ok(tylam_k("f", star_to_star(), body)?)
+    }
+
+    fn star_wrap_decl() -> DataType {
+        single_ctor_decl("Wrap", &["f", "a"], vec![f_of(Type::Var("a".to_string()))])
+    }
+
+    fn wrap_decl() -> DataType {
+        let mut decl = star_wrap_decl();
+        decl.param_kinds = vec![star_to_star(), Kind::Star];
+        decl
+    }
+
+    #[test]
+    fn var_headed_application_accepted_at_arrow() -> Result<(), Box<dyn std::error::Error>> {
+        let ty = lint(&poly_over_f()?, &LintEnv::new())?;
+        assert_eq!(ty.to_string(), "forall (f : * -> *). f Int -> Int");
+        Ok(())
+    }
+
+    #[test]
+    fn tyapp_rejects_argument_of_wrong_kind() -> Result<(), Box<dyn std::error::Error>> {
+        let term = tyapp(poly_over_f()?, Type::Base(BaseType::Int));
+        assert_eq!(
+            lint(&term, &LintEnv::new()),
+            Err(LintError::KindMismatch {
+                ty: Type::Base(BaseType::Int),
+                expected: star_to_star(),
+                found: Kind::Star,
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn tyapp_accepts_constructor_and_partial_app() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new()
+            .try_with_data(list_decl())?
+            .try_with_data(pair_decl())?;
+        let at_list = tyapp(poly_over_f()?, Type::Con("List".to_string()));
+        assert_eq!(lint(&at_list, &env)?.to_string(), "List Int -> Int");
+        let pair_bool = Type::App(
+            Box::new(Type::Con("Pair".to_string())),
+            Box::new(Type::Base(BaseType::Bool)),
+        );
+        let at_pair = tyapp(poly_over_f()?, pair_bool);
+        assert_eq!(lint(&at_pair, &env)?.to_string(), "Pair Bool Int -> Int");
+        let bare_pair = tyapp(poly_over_f()?, Type::Con("Pair".to_string()));
+        assert!(matches!(
+            lint(&bare_pair, &env),
+            Err(LintError::KindMismatch { .. })
         ));
         Ok(())
+    }
+
+    #[test]
+    fn kinded_data_accepts_higher_kinded_param() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new()
+            .try_with_data(list_decl())?
+            .try_with_data(wrap_decl())?;
+        // MkWrap @List @Int (Nil @Int)  :  Wrap List Int
+        let nil = con_at("Nil", vec![Type::Base(BaseType::Int)], vec![])?;
+        let ty_args = vec![Type::Con("List".to_string()), Type::Base(BaseType::Int)];
+        let term = con_at("MkWrap", ty_args, vec![nil])?;
+        assert_eq!(lint(&term, &env)?.to_string(), "Wrap List Int");
+        Ok(())
+    }
+
+    #[test]
+    fn kinded_data_con_rejects_wrong_kind_arg() -> Result<(), Box<dyn std::error::Error>> {
+        let env = LintEnv::new().try_with_data(wrap_decl())?;
+        let ty_args = vec![Type::Base(BaseType::Int), Type::Base(BaseType::Int)];
+        let term = con_at("MkWrap", ty_args, vec![int(1)])?;
+        assert!(matches!(
+            lint(&term, &env),
+            Err(LintError::KindMismatch { .. })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn star_data_rejects_higher_kinded_field() {
+        assert!(matches!(
+            LintEnv::new().try_with_data(star_wrap_decl()),
+            Err(LintError::KindMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn kind_mismatch_displays_kinds() {
+        let err = LintError::KindMismatch {
+            ty: Type::Base(BaseType::Int),
+            expected: star_to_star(),
+            found: Kind::Star,
+        };
+        assert_eq!(
+            err.to_string(),
+            "kind mismatch for Int: expected * -> *, found *"
+        );
     }
 
     fn list_env() -> LintEnv {
         let list = DataType {
             name: "List".to_string(),
             params: vec!["a".to_string()],
+            param_kinds: vec![Kind::Star],
             ctors: vec![
                 DataCon {
                     name: "Nil".to_string(),
@@ -1347,6 +1600,7 @@ mod tests {
         let env = list_env().with_data(DataType {
             name: "List".to_string(),
             params: vec!["a".to_string()],
+            param_kinds: vec![Kind::Star],
             ctors: vec![DataCon {
                 name: "Empty".to_string(),
                 fields: vec![],
@@ -1466,6 +1720,7 @@ mod tests {
         DataType {
             name: "List".to_string(),
             params: vec!["a".to_string()],
+            param_kinds: vec![Kind::Star],
             ctors: vec![
                 DataCon {
                     name: "Nil".to_string(),
@@ -1489,6 +1744,7 @@ mod tests {
         DataType {
             name: name.to_string(),
             params: params.iter().map(|p| (*p).to_string()).collect(),
+            param_kinds: vec![Kind::Star; params.len()],
             ctors: vec![DataCon {
                 name: format!("Mk{name}"),
                 fields,
@@ -1509,6 +1765,7 @@ mod tests {
         let result_decl = DataType {
             name: "Result".to_string(),
             params: vec!["a".to_string(), "b".to_string()],
+            param_kinds: vec![Kind::Star, Kind::Star],
             ctors: vec![
                 DataCon {
                     name: "Ok".to_string(),
@@ -1581,6 +1838,7 @@ mod tests {
         let decl = DataType {
             name: "T".to_string(),
             params: vec![],
+            param_kinds: vec![],
             ctors: vec![
                 DataCon {
                     name: "A".to_string(),
@@ -1606,6 +1864,7 @@ mod tests {
         let decl = DataType {
             name: "Other".to_string(),
             params: vec![],
+            param_kinds: vec![],
             ctors: vec![DataCon {
                 name: "Nil".to_string(),
                 fields: vec![],
@@ -1648,6 +1907,25 @@ mod tests {
                 expected: 1,
                 found: 0
             })
+        );
+    }
+
+    #[test]
+    fn try_with_data_rejects_param_kind_count_mismatch() {
+        let mut decl = single_ctor_decl("Box", &["a"], vec![Type::Var("a".to_string())]);
+        decl.param_kinds = vec![];
+        let expected = LintError::ParamKindCountMismatch {
+            ty: "Box".to_string(),
+            expected: 1,
+            found: 0,
+        };
+        assert_eq!(
+            expected.to_string(),
+            "data type Box: expected 1 parameter kinds, found 0"
+        );
+        assert_eq!(
+            LintEnv::new().try_with_data(decl).map(|_| ()),
+            Err(expected)
         );
     }
 
@@ -1702,6 +1980,7 @@ mod tests {
         let ty = lint(&term, &env)?;
         let expected = Type::Forall(
             "b".to_string(),
+            Kind::Star,
             Box::new(Type::Fun(
                 Box::new(Type::Var("b".to_string())),
                 Box::new(pair_app(
@@ -1742,6 +2021,7 @@ mod tests {
         let ty = lint(&term, &env)?;
         let expected = Type::Forall(
             "b".to_string(),
+            Kind::Star,
             Box::new(Type::Fun(
                 Box::new(scrutinee_ty),
                 Box::new(Type::Var("b".to_string())),
