@@ -10,14 +10,19 @@ This module implements Algorithm W, the classic type inference algorithm for fun
 
 ### `TypeEnv` - Type Environment
 
-The type environment maintains variable bindings and generates fresh type variables:
+The type environment maintains variable bindings, generates fresh type variables, and records the declared type aliases, constructors and data types:
 
-```rust
+````rust
 pub struct TypeEnv {
     bindings: HashMap<String, TypeScheme>,
     next_var: usize,
+    type_aliases: HashMap<String, Type>,
+    constructors: HashMap<String, ConstructorInfo>,
+    data_kinds: HashMap<String, Vec<parlang_core::Kind>>,
 }
-```
+````
+
+`type_aliases` maps alias names to their types, `constructors` maps each constructor name to its type information, and `data_kinds` maps each declared data type to the kinds of its type parameters.
 
 **Key Methods:**
 
@@ -59,7 +64,7 @@ pub enum TypeError {
 - `UnboundVariable(name)`: Variable used before definition
 - `UnificationError(t1, t2)`: Cannot make types t1 and t2 equal
 - `OccursCheckFailed(var, ty)`: Type variable occurs in the type it's being unified with (would create infinite type)
-- `RecursionRequiresAnnotation`: Reserved for future use (recursive functions are now supported)
+- `RecursionRequiresAnnotation`: Never produced by the type checker; the variant and its message remain, but recursive functions type-check without annotations
 - `FieldNotFound(field, available)`: Field not found in record type; carries the field name and the available fields
 - `RecordExpected(found)`: Expected a record type but got something else
 - `RecordFieldMismatch`: Record type field mismatch during unification
@@ -152,7 +157,7 @@ Alongside `typecheck`, three entrypoints produce a typed tree:
 
 **`next_var` sync invariant.** Every inference run on a cloned-env child must `max`-sync `next_var` back into the parent, so variables allocated inside the subtree are never reissued. This is why the syncs in `infer_binop` and `infer_type_alias` were added, and why `infer_app` syncs again after allocating its result variable.
 
-**Unregistered constructors.** Unregistered constructors now infer their arguments, so an ill-typed argument surfaces as an error, while the node type itself stays a fresh type variable.
+**Unregistered constructors.** A constructor with no `data` declaration is rejected with `UnknownConstructor` before its arguments are inferred, so the constructor name is the reported error even when an argument is itself ill-typed (for example, `Foo undefinedVar` reports `UnknownConstructor("Foo")`, not an unbound variable).
 
 ## Algorithm Details
 
@@ -194,7 +199,7 @@ env.generalize(&ty) -> TypeScheme
 
 This quantifies over type variables that are free in the type but not free in the environment, implementing let-polymorphism.
 
-**Instantiation** converts type schemes back to types:
+**Instantiation** converts type schemes back to types. It is a private helper of `TypeEnv`, used by the public `lookup`; `lookup_instantiated` uses the sibling `instantiate_with_args`, which creates the same fresh variables and also returns them:
 
 ```rust
 env.instantiate(&scheme) -> Type

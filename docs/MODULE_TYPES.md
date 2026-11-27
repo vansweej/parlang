@@ -73,6 +73,7 @@ Represents a polymorphic type scheme (∀α.τ):
 pub struct TypeScheme {
     pub vars: Vec<TypeVar>,  // Quantified type variables
     pub ty: Type,            // The type
+    pub constraints: Vec<Constraint>, // Always empty for now
 }
 ```
 
@@ -81,19 +82,16 @@ Type schemes allow us to express polymorphic types by quantifying over type vari
 **Examples:**
 ```rust
 // Monomorphic: Int
-TypeScheme {
-    vars: vec![],
-    ty: Type::Int,
-}
+TypeScheme::mono(Type::Int)
 
 // Polymorphic: forall t0. t0 -> t0 (identity function)
-TypeScheme {
-    vars: vec![TypeVar(0)],
-    ty: Type::Fun(
+TypeScheme::poly(
+    vec![TypeVar(0)],
+    Type::Fun(
         Box::new(Type::Var(TypeVar(0))),
         Box::new(Type::Var(TypeVar(0))),
     ),
-}
+)
 ```
 
 ### `Constraint` and `TypeScheme.constraints`
@@ -164,7 +162,7 @@ Beyond that the derivations differ:
 - `Eq`: derived for `Type` and `TypeVar`, but not `TypeScheme`
 - `Hash`: derived for `TypeVar` only
 - `PartialOrd`, `Ord`: derived for `TypeVar` only (used in generalization)
-- `Display`: implemented for `Type` and `TypeScheme`, but not `TypeVar`
+- `Display`: implemented for `Type`, `TypeScheme` and `Constraint`, but not `TypeVar`
 
 ## Usage Examples
 
@@ -189,13 +187,13 @@ let func_type = Type::Fun(
 let var_type = Type::Var(TypeVar(0));
 
 // Polymorphic type scheme
-let id_scheme = TypeScheme {
-    vars: vec![TypeVar(0)],
-    ty: Type::Fun(
+let id_scheme = TypeScheme::poly(
+    vec![TypeVar(0)],
+    Type::Fun(
         Box::new(Type::Var(TypeVar(0))),
         Box::new(Type::Var(TypeVar(0))),
     ),
-};
+);
 ```
 
 ### Displaying Types
@@ -207,13 +205,13 @@ println!("{}", Type::Fun(
     Box::new(Type::Bool),
 ));                                                     // "Int -> Bool"
 
-let scheme = TypeScheme {
-    vars: vec![TypeVar(0)],
-    ty: Type::Fun(
+let scheme = TypeScheme::poly(
+    vec![TypeVar(0)],
+    Type::Fun(
         Box::new(Type::Var(TypeVar(0))),
         Box::new(Type::Var(TypeVar(0))),
     ),
-};
+);
 println!("{}", scheme);                                 // "forall t0. t0 -> t0"
 ```
 
