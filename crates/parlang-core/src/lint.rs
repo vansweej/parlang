@@ -10,6 +10,7 @@
 use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 
+use crate::kind::Kind;
 use crate::term::{Alt, Term};
 use crate::ty::Type;
 
@@ -32,6 +33,10 @@ pub struct DataType {
     pub name: String,
     /// The type's parameters, e.g. `["a"]` for `List a`.
     pub params: Vec<String>,
+    /// The kind of each parameter, parallel to `params` and of the same
+    /// length, e.g. `[*]` for `List a` or `[* -> *, *]` for `Wrap f a`.
+    /// [`LintEnv::try_with_data`] rejects a length mismatch.
+    pub param_kinds: Vec<Kind>,
     /// The type's constructors.
     pub ctors: Vec<DataCon>,
 }
@@ -76,8 +81,16 @@ impl LintEnv {
     /// [`LintError::DuplicateTypeParam`], or [`LintError::DuplicateDataCon`]
     /// for the corresponding name clash, or the first well-formedness error
     /// (`UnboundTypeVar`, `UnknownType`, `ArityMismatch`, `ShadowedTypeVar`)
-    /// found in a field type.
+    /// found in a field type. Returns [`LintError::ParamKindCountMismatch`]
+    /// first when `param_kinds` and `params` differ in length.
     pub fn try_with_data(self, data: DataType) -> Result<Self, LintError> {
+        if data.param_kinds.len() != data.params.len() {
+            return Err(LintError::ParamKindCountMismatch {
+                ty: data.name,
+                expected: data.params.len(),
+                found: data.param_kinds.len(),
+            });
+        }
         if self.types.contains_key(&data.name) {
             return Err(LintError::DuplicateDataType { name: data.name });
         }
@@ -314,6 +327,38 @@ pub enum LintError {
         /// The constructor name.
         ctor: String,
     },
+    /// `LintEnv::try_with_data` was given a data type whose `param_kinds`
+    /// and `params` differ in length.
+    ParamKindCountMismatch {
+        /// The data type name.
+        ty: String,
+        /// The number of declared parameters.
+        expected: usize,
+        /// The number of parameter kinds supplied.
+        found: usize,
+    },
+}
+
+/// Formats the later `LintError` variants (data-declaration errors), split
+/// out of `Display for LintError` to keep that function under clippy's
+/// line-count limit.
+fn fmt_data_error(err: &LintError, f: &mut Formatter<'_>) -> fmt::Result {
+    match err {
+        LintError::DuplicateDataType { name } => write!(f, "duplicate data type: {name}"),
+        LintError::DuplicateTypeParam { ty, param } => {
+            write!(f, "data type {ty}: duplicate type parameter {param}")
+        }
+        LintError::DuplicateDataCon { ctor } => write!(f, "duplicate data constructor: {ctor}"),
+        LintError::ParamKindCountMismatch {
+            ty,
+            expected,
+            found,
+        } => write!(
+            f,
+            "data type {ty}: expected {expected} parameter kinds, found {found}"
+        ),
+        _ => unreachable!("fmt_data_error called with a non-data-declaration variant"),
+    }
 }
 
 impl Display for LintError {
@@ -409,11 +454,10 @@ impl Display for LintError {
             Self::EqTypeMismatch { left, right } => {
                 write!(f, "eq type mismatch: {left} vs {right}")
             }
-            Self::DuplicateDataType { name } => write!(f, "duplicate data type: {name}"),
-            Self::DuplicateTypeParam { ty, param } => {
-                write!(f, "data type {ty}: duplicate type parameter {param}")
-            }
-            Self::DuplicateDataCon { ctor } => write!(f, "duplicate data constructor: {ctor}"),
+            Self::DuplicateDataType { .. }
+            | Self::DuplicateTypeParam { .. }
+            | Self::DuplicateDataCon { .. }
+            | Self::ParamKindCountMismatch { .. } => fmt_data_error(self, f),
         }
     }
 }
@@ -899,6 +943,7 @@ pub fn prelude_env() -> LintEnv {
     let list = DataType {
         name: "List".to_string(),
         params: vec!["a".to_string()],
+        param_kinds: vec![Kind::Star],
         ctors: vec![
             DataCon {
                 name: "Nil".to_string(),
@@ -1270,6 +1315,7 @@ mod tests {
         let list = DataType {
             name: "List".to_string(),
             params: vec!["a".to_string()],
+            param_kinds: vec![Kind::Star],
             ctors: vec![
                 DataCon {
                     name: "Nil".to_string(),
@@ -1347,6 +1393,7 @@ mod tests {
         let env = list_env().with_data(DataType {
             name: "List".to_string(),
             params: vec!["a".to_string()],
+            param_kinds: vec![Kind::Star],
             ctors: vec![DataCon {
                 name: "Empty".to_string(),
                 fields: vec![],
@@ -1466,6 +1513,7 @@ mod tests {
         DataType {
             name: "List".to_string(),
             params: vec!["a".to_string()],
+            param_kinds: vec![Kind::Star],
             ctors: vec![
                 DataCon {
                     name: "Nil".to_string(),
@@ -1489,6 +1537,7 @@ mod tests {
         DataType {
             name: name.to_string(),
             params: params.iter().map(|p| (*p).to_string()).collect(),
+            param_kinds: vec![Kind::Star; params.len()],
             ctors: vec![DataCon {
                 name: format!("Mk{name}"),
                 fields,
@@ -1509,6 +1558,7 @@ mod tests {
         let result_decl = DataType {
             name: "Result".to_string(),
             params: vec!["a".to_string(), "b".to_string()],
+            param_kinds: vec![Kind::Star, Kind::Star],
             ctors: vec![
                 DataCon {
                     name: "Ok".to_string(),
@@ -1581,6 +1631,7 @@ mod tests {
         let decl = DataType {
             name: "T".to_string(),
             params: vec![],
+            param_kinds: vec![],
             ctors: vec![
                 DataCon {
                     name: "A".to_string(),
@@ -1606,6 +1657,7 @@ mod tests {
         let decl = DataType {
             name: "Other".to_string(),
             params: vec![],
+            param_kinds: vec![],
             ctors: vec![DataCon {
                 name: "Nil".to_string(),
                 fields: vec![],
@@ -1648,6 +1700,25 @@ mod tests {
                 expected: 1,
                 found: 0
             })
+        );
+    }
+
+    #[test]
+    fn try_with_data_rejects_param_kind_count_mismatch() {
+        let mut decl = single_ctor_decl("Box", &["a"], vec![Type::Var("a".to_string())]);
+        decl.param_kinds = vec![];
+        let expected = LintError::ParamKindCountMismatch {
+            ty: "Box".to_string(),
+            expected: 1,
+            found: 0,
+        };
+        assert_eq!(
+            expected.to_string(),
+            "data type Box: expected 1 parameter kinds, found 0"
+        );
+        assert_eq!(
+            LintEnv::new().try_with_data(decl).map(|_| ()),
+            Err(expected)
         );
     }
 

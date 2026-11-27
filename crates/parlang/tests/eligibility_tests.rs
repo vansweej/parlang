@@ -44,6 +44,7 @@ fn owner_of_reports_declaring_type() {
     let env = LintEnv::new().with_data(DataType {
         name: "Pair".to_string(),
         params: vec![],
+        param_kinds: vec![],
         ctors: vec![DataCon {
             name: "MkPair".to_string(),
             fields: vec![],
@@ -82,6 +83,7 @@ fn data(name: &str, params: &[&str], ctors: Vec<(&str, Vec<Type>)>) -> DataType 
     DataType {
         name: name.to_string(),
         params: params.iter().map(ToString::to_string).collect(),
+        param_kinds: vec![parlang_core::Kind::Star; params.len()],
         ctors: ctors
             .into_iter()
             .map(|(ctor, fields)| DataCon {

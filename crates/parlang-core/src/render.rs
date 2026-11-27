@@ -200,6 +200,7 @@ mod tests {
         let list = DataType {
             name: "List".to_string(),
             params: vec!["a".to_string()],
+            param_kinds: vec![crate::kind::Kind::Star],
             ctors: vec![
                 DataCon {
                     name: "Nil".to_string(),
@@ -220,6 +221,7 @@ mod tests {
         let pair = DataType {
             name: "(,)".to_string(),
             params: vec!["a".to_string(), "b".to_string()],
+            param_kinds: vec![crate::kind::Kind::Star, crate::kind::Kind::Star],
             ctors: vec![DataCon {
                 name: "(,)".to_string(),
                 fields: vec![Type::Var("a".to_string()), Type::Var("b".to_string())],
@@ -228,6 +230,7 @@ mod tests {
         let record = DataType {
             name: "{x,y}".to_string(),
             params: vec![],
+            param_kinds: vec![],
             ctors: vec![DataCon {
                 name: "{x,y}".to_string(),
                 fields: vec![Type::Base(BaseType::Int), Type::Base(BaseType::Bool)],

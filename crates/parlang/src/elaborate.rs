@@ -227,6 +227,7 @@ impl Elab {
         let dt = DataType {
             name: name.to_string(),
             params,
+            param_kinds: vec![parlang_core::Kind::Star; arity],
             ctors: vec![DataCon {
                 name: name.to_string(),
                 fields,
@@ -417,6 +418,7 @@ impl Elab {
         let dt = DataType {
             name: name.to_string(),
             params: params.to_vec(),
+            param_kinds: vec![parlang_core::Kind::Star; params.len()],
             ctors: ctors
                 .iter()
                 .map(|(ctor_name, anns)| DataCon {
