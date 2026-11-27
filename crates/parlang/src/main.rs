@@ -9,8 +9,7 @@ use clap::{Parser, Subcommand};
 use parlang::typed_ast::requires_dictionary_passing;
 use parlang::{
     eval_program, eval_program_with_env, parse_program, program_to_dot, run_on_evaluator_stack,
-    typecheck_program_typed, typecheck_program_typed_with_env, Environment, TypeEnv,
-    EVALUATOR_STACK_SIZE,
+    typecheck_program_typed_with_env, Environment, TypeEnv, EVALUATOR_STACK_SIZE,
 };
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -237,11 +236,15 @@ fn run_file(cli: &Cli, filename: &str) -> Result<String, String> {
         return parlang::pipeline::run_core(&program);
     }
 
-    // Type check, then reject class-using programs until dictionary passing (M2.3).
-    let typed = typecheck_program_typed(&program).map_err(|e| format!("type error: {e}"))?;
+    // Type check, then reject class-using programs until M2.3c; programs
+    // with inserted dictionaries run their erased translation.
+    let mut type_env = TypeEnv::new();
+    let typed = typecheck_program_typed_with_env(&program, &mut type_env)
+        .map_err(|e| format!("type error: {e}"))?;
     if let Some(reason) = requires_dictionary_passing(&typed) {
         return Err(reason);
     }
+    let program = parlang::pipeline::surface_program(&program, &typed, &type_env)?;
 
     let value = run_on_evaluator_stack(move || {
         let env = Environment::new();
@@ -468,9 +471,36 @@ fn evaluate_repl_input(input: &str, env: &mut Environment, type_env: &mut TypeEn
             outcome: Err(reason),
         };
     }
+    // An untyped `load` body never receives dictionaries, so it cannot
+    // safely call a dictionary-taking binding of this or an earlier line.
+    if next_type_env.has_constrained_bindings()
+        && matches!(
+            parlang::dictionary::erase_program(&typed),
+            Err(parlang::dictionary::EraseError::Load(_))
+        )
+    {
+        return ReplResponse {
+            type_line: None,
+            outcome: Err(
+                "load cannot be combined with dictionary-passing bindings in the REPL yet"
+                    .to_string(),
+            ),
+        };
+    }
+    // Each translated line re-prepends the builtin `$dict_Eq_*` lets it
+    // uses; re-binding them shadows identical values, which is harmless.
+    let runnable = match parlang::pipeline::surface_program(&program, &typed, &next_type_env) {
+        Ok(runnable) => runnable,
+        Err(error) => {
+            return ReplResponse {
+                type_line: None,
+                outcome: Err(error),
+            };
+        }
+    };
     let ty = typed.ty;
     let type_line = program.body.is_some().then(|| format!("Type: {ty}"));
-    let (value, new_env) = match eval_program_with_env(&program, env) {
+    let (value, new_env) = match eval_program_with_env(&runnable, env) {
         Ok(result) => result,
         Err(error) => {
             return ReplResponse {
@@ -831,6 +861,67 @@ mod tests {
             matches!(unbound, Err(e) if e.starts_with("type error")),
             "{unbound:?}"
         );
+    }
+
+    #[test]
+    fn file_mode_runs_polymorphic_equality_through_dictionaries() {
+        let src = "let same = fun x -> fun y -> x == y;\nsame 3 3";
+        assert_eq!(run_src("dict_eq", src, &[]), Ok("true\n".to_string()));
+    }
+
+    #[test]
+    fn file_mode_keeps_direct_path_across_load() {
+        let lib = temp_program("dict_lib", "let k = 1;\n0");
+        let lib_text = lib.to_string_lossy().into_owned();
+        let src = format!("let same = fun x -> fun y -> x == y;\nload \"{lib_text}\" in same k 1");
+        let out = run_src("dict_load", &src, &[]);
+        let _ = std::fs::remove_file(&lib);
+        assert_eq!(out, Ok("true\n".to_string()));
+    }
+
+    #[test]
+    fn surface_repl_runs_polymorphic_equality_through_dictionaries() {
+        let mut state = ReplState::new();
+        let declared = state.eval_input("let same = fun x -> fun y -> x == y;");
+        assert_eq!(declared.outcome, Ok("Declarations added.".to_string()));
+        let ints = state.eval_input("same 1 2");
+        assert_eq!(ints.type_line.as_deref(), Some("Type: Bool"));
+        assert_eq!(ints.outcome, Ok("false".to_string()));
+        let chars = state.eval_input("same 'a' 'a'");
+        assert_eq!(chars.outcome, Ok("true".to_string()));
+        let differ = state.eval_input("let differ = fun x -> fun y -> x != y;");
+        assert_eq!(differ.outcome, Ok("Declarations added.".to_string()));
+        let bools = state.eval_input("differ true false");
+        assert_eq!(bools.outcome, Ok("true".to_string()));
+        let residual = state.eval_input("same");
+        let line = residual.type_line.clone().unwrap_or_default();
+        assert!(line.contains("Bool") && !line.contains("$Dict"), "{line}");
+        let shown = &residual.outcome;
+        assert!(
+            matches!(shown, Ok(text) if text.starts_with("<function $d")),
+            "{shown:?}"
+        );
+    }
+
+    #[test]
+    fn surface_repl_rejects_load_with_constrained_bindings() {
+        let lib = temp_program("repl_dict_lib", "let k = 1;\n0");
+        let lib_text = lib.to_string_lossy().into_owned();
+        let mut state = ReplState::new();
+        let declared = state.eval_input("let same = fun x -> fun y -> x == y;");
+        assert_eq!(declared.outcome, Ok("Declarations added.".to_string()));
+        let loaded = state.eval_input(&format!("load \"{lib_text}\" in same 1 1"));
+        let rejected = &loaded.outcome;
+        assert!(
+            matches!(rejected, Err(e) if e.contains("load cannot be combined with dictionary-passing bindings")),
+            "{rejected:?}"
+        );
+        let after = state.eval_input("same 1 2");
+        assert_eq!(after.outcome, Ok("false".to_string()));
+        let mut fresh = ReplState::new();
+        let plain = fresh.eval_input(&format!("load \"{lib_text}\" in k + 1"));
+        let _ = std::fs::remove_file(&lib);
+        assert_eq!(plain.outcome, Ok("2".to_string()));
     }
 
     #[test]
