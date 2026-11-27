@@ -451,7 +451,7 @@ fn repl_api_persists_class_declarations() {
 }
 
 #[test]
-fn typechecker_checks_class_and_rejects_instance_decls() {
+fn typechecker_checks_class_and_instance_decls() {
     assert_eq!(
         typecheck_program(&single_decl_program(sample_class_decl())),
         Err(TypeError::DuplicateClass("Eq".to_string()))
@@ -469,11 +469,7 @@ fn typechecker_checks_class_and_rejects_instance_decls() {
     );
     assert_eq!(
         typecheck_program(&single_decl_program(sample_instance_decl())),
-        Err(TypeError::ClassesNotSupportedYet("instance Eq".to_string()))
-    );
-    assert_eq!(
-        TypeError::ClassesNotSupportedYet("class Eq".to_string()).to_string(),
-        "type classes are not supported yet: class Eq"
+        Err(TypeError::UnboundVariable("Option".to_string()))
     );
 }
 
