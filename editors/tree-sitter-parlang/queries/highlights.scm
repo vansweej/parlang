@@ -1,4 +1,4 @@
-["let" "in" "data" "type"] @keyword
+["let" "in" "data" "type" "class" "instance" "where"] @keyword
 ["if" "then" "else" "match" "with"] @keyword.conditional
 ["fun" "rec"] @keyword.function
 "load" @keyword.import
@@ -16,7 +16,7 @@
 (wildcard) @variable.builtin
 (operator) @operator
 ["(" ")" "{" "}"] @punctuation.bracket
-["," ";" ":" "|" "->" "=" "."] @punctuation.delimiter
+["," ";" ":" "|" "->" "=>" "=" "."] @punctuation.delimiter
 
 (let_binding name: (identifier) @variable)
 (fun_binding parameter: (identifier) @variable.parameter)

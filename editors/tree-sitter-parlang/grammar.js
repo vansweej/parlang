@@ -44,6 +44,10 @@ module.exports = grammar({
       ':',
       '=',
       '->',
+      '=>',
+      'class',
+      'instance',
+      'where',
     ),
 
     let_binding: $ => seq('let', field('name', $.identifier)),

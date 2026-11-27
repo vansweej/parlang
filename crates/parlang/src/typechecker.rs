@@ -443,6 +443,10 @@ pub enum TypeError {
     NonExhaustiveMatch {
         missing: Vec<String>,
     },
+    /// TEMPORARY (M2.2a): `class`/`instance` declarations parse but are not
+    /// typechecked yet; the payload names the declaration, e.g. `class Eq`.
+    /// M2.2b replaces this with real class and instance typing.
+    ClassesNotSupportedYet(String),
 }
 
 impl fmt::Display for TypeError {
@@ -516,6 +520,9 @@ impl fmt::Display for TypeError {
                     f,
                     "Kind mismatch for {ty}: expected kind {expected}, found {found}"
                 )
+            }
+            TypeError::ClassesNotSupportedYet(what) => {
+                write!(f, "type classes are not supported yet: {what}")
             }
         }
     }
@@ -1988,6 +1995,14 @@ fn collect_typed_decls(
                 ty_expr: ty_expr.clone(),
                 doc: doc.clone(),
             }),
+            Decl::Class { name, .. } => {
+                return Err(TypeError::ClassesNotSupportedYet(format!("class {name}")));
+            }
+            Decl::Instance { class, .. } => {
+                return Err(TypeError::ClassesNotSupportedYet(format!(
+                    "instance {class}"
+                )));
+            }
         }
     }
     Ok(decls)
@@ -2093,6 +2108,14 @@ pub fn typecheck_program_typed_with_env(
                 aliases.insert(name.clone(), ty_expr.clone());
             }
             Decl::Let { .. } => {}
+            Decl::Class { name, .. } => {
+                return Err(TypeError::ClassesNotSupportedYet(format!("class {name}")));
+            }
+            Decl::Instance { class, .. } => {
+                return Err(TypeError::ClassesNotSupportedYet(format!(
+                    "instance {class}"
+                )));
+            }
         }
     }
 

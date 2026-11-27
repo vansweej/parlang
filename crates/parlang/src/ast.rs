@@ -121,9 +121,9 @@ pub enum TypeAnnotation {
     VarApp(String, Vec<TypeAnnotation>),
 }
 
-/// A top-level declaration. The enum carries `Let`, `Data`, and `TypeAlias`
-/// variants; `doc` is a reserved landing pad for Haddock-style attachment and
-/// is always `None` this slice.
+/// A top-level declaration. The enum carries `Let`, `Data`, `TypeAlias`,
+/// `Class`, and `Instance` variants; `doc` is a reserved landing pad for
+/// Haddock-style attachment and is always `None` this slice.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Decl {
     /// A top-level `let name [: ty] = value;` binding.
@@ -150,6 +150,36 @@ pub enum Decl {
     TypeAlias {
         name: String,
         ty_expr: TypeExpr,
+        /// Reserved landing pad for attached doc text. Always `None` this
+        /// slice; populated when Haddock-style attachment lands.
+        doc: Option<String>,
+    },
+
+    /// A top-level single-parameter `class Name param where { method : ty; };`
+    /// declaration. Parsed only; the typechecker rejects it until M2.2b.
+    Class {
+        name: String,
+        param: String,
+        /// (class, type variable) superclass constraints; always empty until M2.5.
+        superclasses: Vec<(String, String)>,
+        methods: Vec<(String, TypeAnnotation)>,
+        /// Reserved landing pad for attached doc text. Always `None` this
+        /// slice; populated when Haddock-style attachment lands.
+        doc: Option<String>,
+    },
+
+    /// A top-level `instance [ctx =>] Class head where { method = expr; };`
+    /// declaration. `context` holds `(class, type variable)` constraints.
+    /// The parser accepts any single atomic head and any `(Class, tyvar)`
+    /// context; Haskell-98 head-shape validation (`T a1..an` with distinct
+    /// variables, or a bare constructor for constructor classes) and context
+    /// validation are the M2.2b typechecker's job. Parsed only; the
+    /// typechecker rejects it until M2.2b.
+    Instance {
+        class: String,
+        context: Vec<(String, String)>,
+        head: TypeAnnotation,
+        methods: Vec<(String, Expr)>,
         /// Reserved landing pad for attached doc text. Always `None` this
         /// slice; populated when Haddock-style attachment lands.
         doc: Option<String>,
@@ -315,6 +345,64 @@ fn fmt_payload_field(f: &mut fmt::Formatter, ty: &TypeAnnotation) -> fmt::Result
     }
 }
 
+/// Write a non-empty constraint context as `(C a, D b) => `; an empty
+/// context writes nothing. Shared by `class` and `instance` Display.
+fn fmt_constraint_context(f: &mut fmt::Formatter, context: &[(String, String)]) -> fmt::Result {
+    if context.is_empty() {
+        return Ok(());
+    }
+    let constraints: Vec<String> = context
+        .iter()
+        .map(|(name, var)| format!("{name} {var}"))
+        .collect();
+    write!(f, "({}) => ", constraints.join(", "))
+}
+
+/// Format a `class` declaration (extracted from the `Program` Display impl to
+/// keep its line count down). Methods are separated by `;` inside braces.
+fn fmt_class_decl(
+    f: &mut fmt::Formatter,
+    name: &str,
+    param: &str,
+    superclasses: &[(String, String)],
+    methods: &[(String, TypeAnnotation)],
+) -> fmt::Result {
+    write!(f, "class ")?;
+    fmt_constraint_context(f, superclasses)?;
+    write!(f, "{name} {param} where {{")?;
+    for (i, (method, ty)) in methods.iter().enumerate() {
+        if i > 0 {
+            write!(f, ";")?;
+        }
+        write!(f, " {method} : {ty}")?;
+    }
+    write!(f, " }}")
+}
+
+/// Format an `instance` declaration (extracted from the `Program` Display
+/// impl). A non-empty context is always parenthesised and an applied head is
+/// parenthesised via `fmt_payload_field`.
+fn fmt_instance_decl(
+    f: &mut fmt::Formatter,
+    class: &str,
+    context: &[(String, String)],
+    head: &TypeAnnotation,
+    methods: &[(String, Expr)],
+) -> fmt::Result {
+    write!(f, "instance ")?;
+    fmt_constraint_context(f, context)?;
+    write!(f, "{class}")?;
+    fmt_payload_field(f, head)?;
+    write!(f, " where {{")?;
+    for (i, (method, value)) in methods.iter().enumerate() {
+        if i > 0 {
+            write!(f, ";")?;
+        }
+        write!(f, " {method} = {value}")?;
+    }
+    write!(f, " }}")
+}
+
 /// Format a record literal (extracted from the `Expr` Display impl to keep
 /// its line count down).
 fn fmt_record(f: &mut fmt::Formatter, fields: &[(String, Expr)]) -> fmt::Result {
@@ -450,6 +538,20 @@ impl fmt::Display for Program {
                 Decl::TypeAlias { name, ty_expr, .. } => {
                     write!(f, "type {name} = {ty_expr}")?;
                 }
+                Decl::Class {
+                    name,
+                    param,
+                    superclasses,
+                    methods,
+                    ..
+                } => fmt_class_decl(f, name, param, superclasses, methods)?,
+                Decl::Instance {
+                    class,
+                    context,
+                    head,
+                    methods,
+                    ..
+                } => fmt_instance_decl(f, class, context, head, methods)?,
             }
         }
         if let Some(body) = &self.body {
