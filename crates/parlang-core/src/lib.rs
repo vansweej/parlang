@@ -45,6 +45,8 @@ pub use prelude::{prelude, PreludeError};
 
 pub mod lint;
 pub use lint::{lint, prelude_env, DataCon, DataType, LintEnv, LintError};
+pub mod eligibility;
+pub use eligibility::{check_function, EligibilityError, Report, Rule, Violation};
 pub mod render;
 pub use render::render_value;
 // core-modules: phase5
