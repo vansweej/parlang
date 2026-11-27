@@ -40,10 +40,10 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TypeVar(pub usize);
 
-/// A typeclass constraint attached to a quantified type variable.
+/// A type class constraint such as `Eq t0`.
 ///
-/// Reserved for forward compatibility; no constraints are produced by the
-/// current type checker.
+/// The type checker emits `Eq` constraints for `==` and `!=`; constraints on
+/// quantified type variables are recorded in `TypeScheme::constraints`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Constraint {
     /// Typeclass name, e.g. `Eq`.
@@ -59,7 +59,7 @@ pub struct TypeScheme {
     pub vars: Vec<TypeVar>,
     /// The type
     pub ty: Type,
-    /// Typeclass constraints. Always empty this slice (forward-compat).
+    /// Class constraints over the quantified variables, sorted by rendering.
     pub constraints: Vec<Constraint>,
 }
 
@@ -210,10 +210,7 @@ impl fmt::Display for TypeScheme {
 impl fmt::Display for Constraint {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.class)?;
-        for arg in &self.args {
-            write!(f, " {arg}")?;
-        }
-        Ok(())
+        fmt_type_args(f, &self.args)
     }
 }
 
@@ -588,5 +585,14 @@ mod tests {
             args: vec![Type::Var(TypeVar(0))],
         });
         assert_eq!(format!("{scheme}"), "forall t0. Eq t0 => t0");
+    }
+
+    #[test]
+    fn test_display_constraint_parenthesises_applied_args() {
+        let constraint = Constraint {
+            class: "Eq".to_string(),
+            args: vec![Type::SumType("List".to_string(), vec![Type::Int])],
+        };
+        assert_eq!(format!("{constraint}"), "Eq (List Int)");
     }
 }

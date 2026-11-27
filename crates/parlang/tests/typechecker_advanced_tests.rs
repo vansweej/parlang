@@ -292,3 +292,168 @@ fn test_polymorphic_function_multiple_instantiations() {
         _ => panic!("Expected Option Int, got {ty:?}"),
     }
 }
+
+/// Parse and typecheck a whole program in a fresh environment.
+fn check_program(source: &str) -> Result<Type, parlang::TypeError> {
+    let program = parlang::parse_program(source).unwrap();
+    parlang::typecheck_program(&program)
+}
+
+/// The scheme of the first top-level `let` of `source`.
+fn first_let_scheme(source: &str) -> parlang::TypeScheme {
+    let program = parlang::parse_program(source).unwrap();
+    let typed = parlang::typecheck_program_typed(&program).unwrap();
+    match typed.decls.first() {
+        Some(parlang::TypedDecl::Let { scheme, .. }) => scheme.clone(),
+        other => panic!("expected a let declaration, got {other:?}"),
+    }
+}
+
+/// Whether `ty` has the shape `t -> t -> Bool` for one type variable `t`.
+fn is_binary_predicate_on_one_var(ty: &Type) -> bool {
+    match ty {
+        Type::Fun(first, rest) => match rest.as_ref() {
+            Type::Fun(second, result) => {
+                matches!(first.as_ref(), Type::Var(_)) && first == second && **result == Type::Bool
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+#[test]
+fn test_eq_on_base_types_typechecks() {
+    for source in ["1 == 2", "true != false", "'a' == 'b'", "1.5 == 2.5"] {
+        assert_eq!(check_program(source), Ok(Type::Bool), "{source}");
+    }
+}
+
+#[test]
+fn test_eq_without_instance_is_rejected() {
+    let sources = [
+        "(1, 2) == (1, 2)",
+        "(1, 2) != (1, 2)",
+        "data List a = Nil | Cons a (List a);\n\"ab\" == \"ab\"",
+        "{ x: 1 } == { x: 1 }",
+        "data Color = Red | Green;\nRed == Green",
+        "(fun x -> x) == (fun y -> y)",
+        "() == ()",
+    ];
+    for source in sources {
+        assert!(
+            matches!(
+                check_program(source),
+                Err(parlang::TypeError::NoInstance(_))
+            ),
+            "{source}"
+        );
+    }
+    assert_eq!(
+        check_program("(1, 2) == (1, 2)").map_err(|error| error.to_string()),
+        Err("no instance for Eq (Int, Int)".to_string())
+    );
+}
+
+#[test]
+fn test_top_level_eq_let_gets_constrained_scheme() {
+    let scheme = first_let_scheme("let f = fun x -> fun y -> x == y;");
+    assert_eq!(scheme.vars.len(), 1);
+    let var = Type::Var(scheme.vars[0].clone());
+    let expected = parlang::Constraint {
+        class: "Eq".to_string(),
+        args: vec![var.clone()],
+    };
+    assert_eq!(scheme.constraints, vec![expected]);
+    assert_eq!(
+        scheme.to_string(),
+        format!("forall {var}. Eq {var} => {var} -> {var} -> Bool")
+    );
+}
+
+#[test]
+fn test_constrained_let_instantiates_per_use() {
+    let decl = "let f = fun x -> fun y -> x == y;\nlet g = fun x -> fun y -> x != y;\n";
+    assert_eq!(check_program(&format!("{decl}f 1 2")), Ok(Type::Bool));
+    assert_eq!(check_program(&format!("{decl}g 1 2")), Ok(Type::Bool));
+    assert_eq!(
+        check_program(&format!("{decl}(f 'a' 'b', g true false)")),
+        Ok(Type::Tuple(vec![Type::Bool, Type::Bool]))
+    );
+    assert!(matches!(
+        check_program(&format!("{decl}f (1, 2) (1, 2)")),
+        Err(parlang::TypeError::NoInstance(_))
+    ));
+}
+
+#[test]
+fn test_local_let_generalizes_eq() {
+    let expr = parse("let g = fun y -> y == y in (g 1, g 'c')").unwrap();
+    assert_eq!(
+        typecheck(&expr),
+        Ok(Type::Tuple(vec![Type::Bool, Type::Bool]))
+    );
+}
+
+#[test]
+fn test_lambda_bound_eq_propagates_to_outer_let() {
+    let source = "let h = fun x -> let b = x == x in b;\n";
+    let scheme = first_let_scheme(source);
+    assert_eq!(scheme.vars.len(), 1);
+    let var = Type::Var(scheme.vars[0].clone());
+    assert_eq!(
+        scheme.to_string(),
+        format!("forall {var}. Eq {var} => {var} -> Bool")
+    );
+    assert!(matches!(
+        check_program(&format!("{source}h ()")),
+        Err(parlang::TypeError::NoInstance(_))
+    ));
+}
+
+#[test]
+fn test_program_body_eq_is_implicitly_generalized() {
+    let ty = check_program("fun x -> fun y -> x == y").unwrap();
+    assert!(is_binary_predicate_on_one_var(&ty), "{ty:?}");
+}
+
+#[test]
+fn test_ambiguous_eq_constraint_is_rejected() {
+    assert!(matches!(
+        check_program("let z = (fun f -> 1) (fun y -> y == y);\nz"),
+        Err(parlang::TypeError::AmbiguousConstraint(_))
+    ));
+    let err = check_program("(fun f -> 1) (fun y -> y == y)").unwrap_err();
+    assert!(matches!(err, parlang::TypeError::AmbiguousConstraint(_)));
+    assert!(err
+        .to_string()
+        .starts_with("ambiguous type variable in constraint Eq t"));
+}
+
+#[test]
+fn test_constrained_binding_persists_across_programs() {
+    let mut env = parlang::TypeEnv::new();
+    let define = parlang::parse_program("let f = fun x -> fun y -> x == y;").unwrap();
+    assert_eq!(
+        parlang::typecheck_program_with_env(&define, &mut env),
+        Ok(Type::Int)
+    );
+    let bare = parlang::parse_program("f").unwrap();
+    let bare_ty = parlang::typecheck_program_with_env(&bare, &mut env).unwrap();
+    assert!(is_binary_predicate_on_one_var(&bare_ty), "{bare_ty:?}");
+    let use_int = parlang::parse_program("f 1 2").unwrap();
+    assert_eq!(
+        parlang::typecheck_program_with_env(&use_int, &mut env),
+        Ok(Type::Bool)
+    );
+    let use_tuple = parlang::parse_program("f (1, 2) (1, 2)").unwrap();
+    assert!(matches!(
+        parlang::typecheck_program_with_env(&use_tuple, &mut env),
+        Err(parlang::TypeError::NoInstance(_))
+    ));
+    let use_char = parlang::parse_program("f 'a' 'b'").unwrap();
+    assert_eq!(
+        parlang::typecheck_program_with_env(&use_char, &mut env),
+        Ok(Type::Bool)
+    );
+}

@@ -4,9 +4,11 @@ use crate::typed_ast::{
     TypedDecl, TypedExpr, TypedExprKind, TypedMatchArm, TypedPattern, TypedPatternKind,
     TypedProgram,
 };
-use crate::types::{Type, TypeScheme, TypeVar};
+use crate::types::{Constraint, Type, TypeScheme, TypeVar};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::rc::Rc;
 
 /// Sum type constructor information
 #[derive(Debug, Clone)]
@@ -29,7 +31,20 @@ pub struct TypeEnv {
     constructors: HashMap<String, ConstructorInfo>,
     /// Declared data types: maps type name to its parameter kinds
     data_kinds: HashMap<String, Vec<parlang_core::Kind>>,
+    /// Instance heads per class name (only the built-in `Eq` instances for now).
+    instances: HashMap<String, Vec<Type>>,
+    /// Wanted class constraints not yet discharged or generalized, shared by
+    /// every clone of this environment (see `WantedConstraints`).
+    wanted: WantedConstraints,
 }
+
+/// Shared accumulator of wanted class constraints.
+///
+/// Inference clones `TypeEnv` at many sites; sharing one buffer through `Rc`
+/// keeps constraints emitted inside a clone visible to the enclosing scope.
+/// Invariant: every access is one short `borrow` or `borrow_mut` that never
+/// calls back into inference, so two borrows can never overlap.
+type WantedConstraints = Rc<RefCell<Vec<Constraint>>>;
 
 impl TypeEnv {
     pub fn new() -> Self {
@@ -39,6 +54,8 @@ impl TypeEnv {
             type_aliases: HashMap::new(),
             constructors: HashMap::new(),
             data_kinds: HashMap::new(),
+            instances: builtin_instances(),
+            wanted: Rc::default(),
         }
     }
 
@@ -81,23 +98,15 @@ impl TypeEnv {
         new_env
     }
 
-    /// Instantiate a type scheme by replacing quantified variables with fresh ones
+    /// Instantiate a type scheme by replacing quantified variables with fresh
+    /// ones; its constraints are instantiated alike and become wanted.
     fn instantiate(&mut self, scheme: &TypeScheme) -> Type {
-        if scheme.vars.is_empty() {
-            return scheme.ty.clone();
-        }
-
-        let mut subst = HashMap::new();
-        for var in &scheme.vars {
-            subst.insert(var.clone(), self.fresh_var());
-        }
-
-        apply_subst(&subst, &scheme.ty)
+        self.instantiate_with_args(scheme).0
     }
 
     /// Like `instantiate`, but also returns the fresh type variables used,
-    /// in `TypeScheme::vars` order. Issues the same fresh variables in the
-    /// same order as `instantiate`.
+    /// in `TypeScheme::vars` order. Each constraint of the scheme is
+    /// instantiated with the same variables and pushed as wanted.
     fn instantiate_with_args(&mut self, scheme: &TypeScheme) -> (Type, Vec<Type>) {
         let args: Vec<Type> = scheme.vars.iter().map(|_| self.fresh_var()).collect();
         let subst: Substitution = scheme
@@ -106,6 +115,9 @@ impl TypeEnv {
             .cloned()
             .zip(args.iter().cloned())
             .collect();
+        for constraint in &scheme.constraints {
+            self.want(apply_subst_constraint(&subst, constraint));
+        }
         (apply_subst(&subst, &scheme.ty), args)
     }
 
@@ -120,12 +132,99 @@ impl TypeEnv {
         TypeScheme::poly(quantified, ty.clone())
     }
 
-    /// Get free type variables in the environment
+    /// Generalize `ty` at a `let`, together with the constraints `wanted`
+    /// collected while inferring the bound value, whose substitution is `subst`.
+    ///
+    /// After context reduction, a constraint mentioning a type variable free
+    /// in the environment stays wanted for the enclosing scope, one whose
+    /// variables are all quantified joins the scheme, and any other one is
+    /// ambiguous (Haskell 98: no defaulting).
+    fn generalize_constrained(
+        &self,
+        ty: &Type,
+        wanted: Vec<Constraint>,
+        subst: &Substitution,
+    ) -> Result<TypeScheme, TypeError> {
+        let mut scheme = self.generalize(ty);
+        let free_in_env = self.free_vars();
+        for constraint in self.reduce_constraints(wanted, subst)? {
+            let vars = constraint_vars(&constraint);
+            if vars.iter().any(|var| free_in_env.contains(var)) {
+                self.want(constraint);
+            } else if vars.iter().all(|var| scheme.vars.contains(var)) {
+                scheme.constraints.push(constraint);
+            } else {
+                return Err(TypeError::AmbiguousConstraint(constraint.to_string()));
+            }
+        }
+        scheme.constraints.sort_by_cached_key(ToString::to_string);
+        Ok(scheme)
+    }
+
+    /// Context reduction (Haskell 98): apply `subst` to each wanted
+    /// constraint, discharge it when an instance matches, and keep it
+    /// (deduplicated) when every argument has a type-variable head.
+    ///
+    /// Returns `NoInstance` for an argument with a type-constructor head and
+    /// no matching instance.
+    fn reduce_constraints(
+        &self,
+        wanted: Vec<Constraint>,
+        subst: &Substitution,
+    ) -> Result<Vec<Constraint>, TypeError> {
+        let mut residual: Vec<Constraint> = Vec::new();
+        for constraint in wanted {
+            let constraint = apply_subst_constraint(subst, &constraint);
+            if constraint.args.iter().all(has_var_head) {
+                if !residual.contains(&constraint) {
+                    residual.push(constraint);
+                }
+            } else if !self.has_instance(&constraint) {
+                return Err(TypeError::NoInstance(constraint.to_string()));
+            }
+        }
+        Ok(residual)
+    }
+
+    /// Whether an instance matches `constraint` exactly. Built-in instances
+    /// have no context, so a match discharges the constraint.
+    fn has_instance(&self, constraint: &Constraint) -> bool {
+        match (
+            self.instances.get(&constraint.class),
+            constraint.args.as_slice(),
+        ) {
+            (Some(heads), [arg]) => heads.contains(arg),
+            _ => false,
+        }
+    }
+
+    /// Record `constraint` as wanted in the shared accumulator.
+    fn want(&self, constraint: Constraint) {
+        self.wanted.borrow_mut().push(constraint);
+    }
+
+    /// Current length of the shared accumulator, for `take_wanted_since`.
+    fn wanted_mark(&self) -> usize {
+        self.wanted.borrow().len()
+    }
+
+    /// Remove and return the wanted constraints recorded after `mark`.
+    fn take_wanted_since(&self, mark: usize) -> Vec<Constraint> {
+        let mut wanted = self.wanted.borrow_mut();
+        let start = mark.min(wanted.len());
+        wanted.split_off(start)
+    }
+
+    /// Get free type variables in the environment, including those of scheme
+    /// constraints, minus each scheme's quantified variables.
     fn free_vars(&self) -> HashSet<TypeVar> {
         self.bindings
             .values()
             .flat_map(|scheme| {
                 let mut free = free_type_vars(&scheme.ty);
+                for constraint in &scheme.constraints {
+                    free.extend(constraint_vars(constraint));
+                }
                 for var in &scheme.vars {
                     free.remove(var);
                 }
@@ -190,6 +289,61 @@ impl Default for TypeEnv {
 
 /// Substitution map from type variables to types
 type Substitution = HashMap<TypeVar, Type>;
+
+/// Built-in class instances: `Eq` for `Int`, `Bool`, `Char` and `Float`,
+/// exactly the types the surface evaluator compares with `==` at run time.
+fn builtin_instances() -> HashMap<String, Vec<Type>> {
+    let mut instances = HashMap::new();
+    instances.insert(
+        "Eq".to_string(),
+        vec![Type::Int, Type::Bool, Type::Char, Type::Float],
+    );
+    instances
+}
+
+/// Whether `ty` is headed by a type variable (`t` or an applied `t a`).
+fn has_var_head(ty: &Type) -> bool {
+    matches!(ty, Type::Var(_) | Type::VarApp(..))
+}
+
+/// Free type variables of every argument of `constraint`.
+fn constraint_vars(constraint: &Constraint) -> HashSet<TypeVar> {
+    constraint.args.iter().flat_map(free_type_vars).collect()
+}
+
+/// Apply `subst` to every argument of `constraint`.
+fn apply_subst_constraint(subst: &Substitution, constraint: &Constraint) -> Constraint {
+    Constraint {
+        class: constraint.class.clone(),
+        args: constraint
+            .args
+            .iter()
+            .map(|arg| apply_subst(subst, arg))
+            .collect(),
+    }
+}
+
+/// Check the constraints still wanted in `env` once a whole program body or
+/// expression has been inferred with substitution `subst`.
+///
+/// The body is implicitly generalized (as in GHCi): a residual constraint
+/// whose type variables all occur free in the resolved `body_ty` is
+/// accepted. Any other residual constraint is ambiguous (Haskell 98: no
+/// defaulting); with no body, every residual constraint is ambiguous.
+fn check_no_residual(
+    env: &TypeEnv,
+    subst: &Substitution,
+    body_ty: Option<&Type>,
+) -> Result<(), TypeError> {
+    let generalizable = body_ty.map(free_type_vars).unwrap_or_default();
+    let pending = env.take_wanted_since(0);
+    for constraint in env.reduce_constraints(pending, subst)? {
+        if !constraint_vars(&constraint).is_subset(&generalizable) {
+            return Err(TypeError::AmbiguousConstraint(constraint.to_string()));
+        }
+    }
+    Ok(())
+}
 
 /// Apply type substitution to a type
 ///
@@ -447,6 +601,12 @@ pub enum TypeError {
     /// typechecked yet; the payload names the declaration, e.g. `class Eq`.
     /// M2.2b replaces this with real class and instance typing.
     ClassesNotSupportedYet(String),
+    /// No instance matches a class constraint whose type has a type
+    /// constructor head; the payload renders it, e.g. `Eq (List Int)`.
+    NoInstance(String),
+    /// A constraint mentions a type variable that is neither generalized nor
+    /// fixed by the environment (Haskell 98: no defaulting).
+    AmbiguousConstraint(String),
 }
 
 impl fmt::Display for TypeError {
@@ -523,6 +683,12 @@ impl fmt::Display for TypeError {
             }
             TypeError::ClassesNotSupportedYet(what) => {
                 write!(f, "type classes are not supported yet: {what}")
+            }
+            TypeError::NoInstance(constraint) => {
+                write!(f, "no instance for {constraint}")
+            }
+            TypeError::AmbiguousConstraint(constraint) => {
+                write!(f, "ambiguous type variable in constraint {constraint}")
             }
         }
     }
@@ -695,6 +861,9 @@ fn compose_subst(s1: &Substitution, s2: &Substitution) -> Substitution {
 fn apply_subst_env(subst: &Substitution, env: &mut TypeEnv) {
     for scheme in env.bindings.values_mut() {
         scheme.ty = apply_subst(subst, &scheme.ty);
+        for constraint in &mut scheme.constraints {
+            *constraint = apply_subst_constraint(subst, constraint);
+        }
     }
 }
 
@@ -962,9 +1131,13 @@ fn infer_binop(
             infer_ordering_binop(left_ty, &right_typed.ty, &s1, &s2)?
         }
         BinOp::Eq | BinOp::Neq => {
-            // Equality works on any type, but both sides must match
+            // Equality needs an Eq instance for the shared operand type
             let s3 = unify(&left_ty, &right_typed.ty)?;
             let subst = compose_subst(&s3, &compose_subst(&s2, &s1));
+            env.want(Constraint {
+                class: "Eq".to_string(),
+                args: vec![apply_subst(&subst, &left_ty)],
+            });
             (Type::Bool, subst)
         }
     };
@@ -987,6 +1160,7 @@ fn infer_let(
     body: &Expr,
     env: &mut TypeEnv,
 ) -> Result<(TypedExpr, Substitution), TypeError> {
+    let mark = env.wanted_mark();
     let (value_typed, s1) = infer_typed(value, env)?;
     advance_next_var_from_inference(env, &value_typed.ty, &s1);
 
@@ -999,7 +1173,8 @@ fn infer_let(
         apply_subst_env(&s1, &mut env1);
 
         let unified_ty = apply_subst(&s1, &value_typed.ty);
-        let scheme = env1.generalize(&unified_ty);
+        let wanted = env1.take_wanted_since(mark);
+        let scheme = env1.generalize_constrained(&unified_ty, wanted, &s1)?;
         env1.bind(name.to_string(), scheme.clone());
 
         let (body_typed, s2) = infer_typed(body, &mut env1)?;
@@ -1025,7 +1200,9 @@ fn infer_let(
         let mut env1 = env.clone();
         apply_subst_env(&s1, &mut env1);
 
-        let scheme = env1.generalize(&apply_subst(&s1, &value_typed.ty));
+        let value_ty = apply_subst(&s1, &value_typed.ty);
+        let wanted = env1.take_wanted_since(mark);
+        let scheme = env1.generalize_constrained(&value_ty, wanted, &s1)?;
         env1.bind(name.to_string(), scheme.clone());
 
         let (body_typed, s2) = infer_typed(body, &mut env1)?;
@@ -1785,6 +1962,10 @@ fn infer_typed(expr: &Expr, env: &mut TypeEnv) -> Result<(TypedExpr, Substitutio
 
 /// Type inference for expressions (type-only wrapper over `infer_typed`).
 ///
+/// The caller owns `env`'s shared wanted-constraint accumulator: class
+/// constraints pushed during inference stay in it and are not checked here.
+/// `typecheck_typed` uses a fresh environment, so it is isolated.
+///
 /// # Errors
 ///
 /// Returns a `TypeError` for any static typing violation; see `infer_typed`.
@@ -1883,7 +2064,15 @@ fn resolve_scheme(subst: &Substitution, scheme: &TypeScheme) -> TypeScheme {
     for var in &scheme.vars {
         inner.remove(var);
     }
-    TypeScheme::poly(scheme.vars.clone(), apply_subst(&inner, &scheme.ty))
+    TypeScheme {
+        vars: scheme.vars.clone(),
+        ty: apply_subst(&inner, &scheme.ty),
+        constraints: scheme
+            .constraints
+            .iter()
+            .map(|constraint| apply_subst_constraint(&inner, constraint))
+            .collect(),
+    }
 }
 
 /// Type check an expression, returning the fully resolved typed AST.
@@ -1894,7 +2083,26 @@ fn resolve_scheme(subst: &Substitution, scheme: &TypeScheme) -> TypeScheme {
 pub fn typecheck_typed(expr: &Expr) -> Result<TypedExpr, TypeError> {
     let mut env = TypeEnv::new();
     let (typed, subst) = infer_typed(expr, &mut env)?;
-    Ok(resolve_typed(&subst, &typed))
+    let resolved = resolve_typed(&subst, &typed);
+    check_no_residual(&env, &subst, Some(&resolved.ty))?;
+    Ok(resolved)
+}
+
+/// Infer the optional trailing program body, then check every constraint
+/// still wanted in `program_env`. A program without a body has type `Int`.
+fn infer_program_body(
+    body: Option<&Expr>,
+    program_env: &mut TypeEnv,
+) -> Result<(Option<TypedExpr>, Type), TypeError> {
+    let Some(body) = body else {
+        check_no_residual(program_env, &HashMap::new(), None)?;
+        return Ok((None, Type::Int));
+    };
+    let (typed, subst) = infer_typed(body, program_env)?;
+    let resolved = resolve_typed(&subst, &typed);
+    check_no_residual(program_env, &subst, Some(&resolved.ty))?;
+    let ty = resolved.ty.clone();
+    Ok((Some(resolved), ty))
 }
 
 /// Public API for type checking
@@ -1932,6 +2140,7 @@ fn infer_decl_let(
     value: &Expr,
     program_env: &mut TypeEnv,
 ) -> Result<(TypedExpr, TypeScheme), TypeError> {
+    let mark = program_env.wanted_mark();
     let (typed_value, mut subst) = infer_typed(value, program_env)?;
     let value_ty = typed_value.ty.clone();
     advance_next_var_from_inference(program_env, &value_ty, &subst);
@@ -1943,7 +2152,8 @@ fn infer_decl_let(
     apply_subst_env(&subst, program_env);
     let resolved_value = resolve_typed(&subst, &typed_value);
     let value_ty = apply_subst(&subst, &value_ty);
-    let scheme = program_env.generalize(&value_ty);
+    let wanted = program_env.take_wanted_since(mark);
+    let scheme = program_env.generalize_constrained(&value_ty, wanted, &subst)?;
     program_env.bind(name.to_string(), scheme.clone());
     Ok((resolved_value, scheme))
 }
@@ -2081,6 +2291,7 @@ pub fn typecheck_program_typed_with_env(
     env: &mut TypeEnv,
 ) -> Result<TypedProgram, TypeError> {
     let mut program_env = env.clone();
+    program_env.wanted = Rc::default();
 
     let mut type_names = HashSet::new();
     let mut constructor_names = HashSet::new();
@@ -2148,15 +2359,7 @@ pub fn typecheck_program_typed_with_env(
 
     let decls = collect_typed_decls(program, &mut program_env, &data_kinds)?;
 
-    let (typed_body, ty) = match &program.body {
-        Some(body) => {
-            let (typed, subst) = infer_typed(body, &mut program_env)?;
-            let resolved = resolve_typed(&subst, &typed);
-            let ty = resolved.ty.clone();
-            (Some(resolved), ty)
-        }
-        None => (None, Type::Int),
-    };
+    let (typed_body, ty) = infer_program_body(program.body.as_ref(), &mut program_env)?;
 
     *env = program_env;
     Ok(TypedProgram {
@@ -2791,5 +2994,127 @@ mod tests {
         // Test factorial: rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)
         let ty = check("rec f -> fun n -> if n == 0 then 1 else n * f (n - 1)").unwrap();
         assert_eq!(ty, Type::Fun(Box::new(Type::Int), Box::new(Type::Int)));
+    }
+
+    fn eq_constraint(ty: Type) -> Constraint {
+        Constraint {
+            class: "Eq".to_string(),
+            args: vec![ty],
+        }
+    }
+
+    #[test]
+    fn reduce_discharges_builtin_eq_instances() {
+        let env = TypeEnv::new();
+        let wanted = vec![
+            eq_constraint(Type::Int),
+            eq_constraint(Type::Bool),
+            eq_constraint(Type::Char),
+            eq_constraint(Type::Float),
+        ];
+        assert_eq!(env.reduce_constraints(wanted, &HashMap::new()), Ok(vec![]));
+    }
+
+    #[test]
+    fn reduce_rejects_types_without_instance() {
+        let env = TypeEnv::new();
+        let list = Type::SumType("List".to_string(), vec![Type::Int]);
+        let err = env
+            .reduce_constraints(vec![eq_constraint(list)], &HashMap::new())
+            .unwrap_err();
+        assert_eq!(err, TypeError::NoInstance("Eq (List Int)".to_string()));
+        assert_eq!(err.to_string(), "no instance for Eq (List Int)");
+        let others = [
+            Type::Unit,
+            Type::Tuple(vec![Type::Int, Type::Int]),
+            Type::Fun(Box::new(Type::Int), Box::new(Type::Int)),
+        ];
+        for ty in others {
+            let result = env.reduce_constraints(vec![eq_constraint(ty)], &HashMap::new());
+            assert!(matches!(result, Err(TypeError::NoInstance(_))));
+        }
+    }
+
+    #[test]
+    fn reduce_defers_variables_applies_subst_and_dedups() {
+        let env = TypeEnv::new();
+        let wanted = vec![
+            eq_constraint(Type::Var(TypeVar(0))),
+            eq_constraint(Type::Var(TypeVar(0))),
+            eq_constraint(Type::VarApp(TypeVar(1), vec![Type::Int])),
+        ];
+        let expected = vec![
+            eq_constraint(Type::Var(TypeVar(0))),
+            eq_constraint(Type::VarApp(TypeVar(1), vec![Type::Int])),
+        ];
+        assert_eq!(
+            env.reduce_constraints(wanted, &HashMap::new()),
+            Ok(expected)
+        );
+        let subst: Substitution = [(TypeVar(2), Type::Char)].into_iter().collect();
+        let resolved = vec![eq_constraint(Type::Var(TypeVar(2)))];
+        assert_eq!(env.reduce_constraints(resolved, &subst), Ok(vec![]));
+    }
+
+    #[test]
+    fn wanted_accumulator_is_shared_by_clones() {
+        let env = TypeEnv::new();
+        let mark = env.wanted_mark();
+        let shared = env.clone();
+        shared.want(eq_constraint(Type::Var(TypeVar(0))));
+        assert_eq!(
+            env.take_wanted_since(mark),
+            vec![eq_constraint(Type::Var(TypeVar(0)))]
+        );
+        assert!(env.take_wanted_since(0).is_empty());
+    }
+
+    #[test]
+    fn check_no_residual_accepts_body_vars_only() {
+        let env = TypeEnv::new();
+        let body_ty = Type::Fun(Box::new(Type::Var(TypeVar(0))), Box::new(Type::Bool));
+        env.want(eq_constraint(Type::Var(TypeVar(0))));
+        assert_eq!(
+            check_no_residual(&env, &HashMap::new(), Some(&body_ty)),
+            Ok(())
+        );
+        env.want(eq_constraint(Type::Var(TypeVar(1))));
+        assert_eq!(
+            check_no_residual(&env, &HashMap::new(), Some(&body_ty)),
+            Err(TypeError::AmbiguousConstraint("Eq t1".to_string()))
+        );
+        env.want(eq_constraint(Type::Var(TypeVar(0))));
+        assert_eq!(
+            check_no_residual(&env, &HashMap::new(), None),
+            Err(TypeError::AmbiguousConstraint("Eq t0".to_string()))
+        );
+    }
+
+    #[test]
+    fn generalize_constrained_quantifies_defers_and_rejects() {
+        let mut env = TypeEnv::new();
+        let param = Type::Var(TypeVar(0));
+        let fun_ty = Type::Fun(Box::new(param.clone()), Box::new(Type::Bool));
+        let scheme = env
+            .generalize_constrained(&fun_ty, vec![eq_constraint(param)], &HashMap::new())
+            .unwrap();
+        assert_eq!(scheme.to_string(), "forall t0. Eq t0 => t0 -> Bool");
+
+        env.bind("x".to_string(), TypeScheme::mono(Type::Var(TypeVar(1))));
+        let deferred = vec![eq_constraint(Type::Var(TypeVar(1)))];
+        let mono = env
+            .generalize_constrained(&Type::Bool, deferred, &HashMap::new())
+            .unwrap();
+        assert!(mono.constraints.is_empty());
+        assert_eq!(
+            env.take_wanted_since(0),
+            vec![eq_constraint(Type::Var(TypeVar(1)))]
+        );
+
+        let lost = vec![eq_constraint(Type::Var(TypeVar(2)))];
+        assert_eq!(
+            env.generalize_constrained(&Type::Bool, lost, &HashMap::new()),
+            Err(TypeError::AmbiguousConstraint("Eq t2".to_string()))
+        );
     }
 }

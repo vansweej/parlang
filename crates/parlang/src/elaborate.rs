@@ -514,12 +514,19 @@ impl Elab {
 
     /// Wraps the elaborated `value` in one `TyLam` per generalized variable of
     /// `scheme`, with the first variable ending up outermost. Each binder's
-    /// kind is inferred from how its variable is used in `scheme.ty`.
+    /// kind is inferred from how its variable is used in `scheme.ty`. A
+    /// scheme with class constraints is rejected until dictionary passing.
     fn elab_generalized(
         &mut self,
         scheme: &TypeScheme,
         value: &TypedExpr,
     ) -> Result<Term, ElabError> {
+        if !scheme.constraints.is_empty() {
+            return Err(unsupported(
+                "constrained binding",
+                &format!("{scheme} needs dictionary passing (M2.3)"),
+            ));
+        }
         let depth = self.scope.len();
         for v in &scheme.vars {
             self.scope.push(v.0);
@@ -939,12 +946,17 @@ mod tests {
         assert_eq!(run_src("data List a = Nil | Cons a (List a);\n\"ab\""), ab);
     }
 
-    /// Equality on a non-base type (a tuple) is rejected by elaboration.
+    /// A binding with an `Eq` constraint needs dictionary passing, so
+    /// elaboration rejects it instead of dropping the constraint.
     #[test]
-    fn equality_on_non_base_is_unsupported() {
+    fn constrained_binding_is_unsupported() {
         assert!(matches!(
-            elab_src("(1, 2) == (1, 2)"),
-            Err(ElabError::Unsupported { .. })
+            elab_src("let f = fun x -> fun y -> x == y;\n0"),
+            Err(ElabError::Unsupported { ref construct, .. }) if construct == "constrained binding"
+        ));
+        assert!(matches!(
+            elab_src("let g = fun x -> fun y -> x == y in 0"),
+            Err(ElabError::Unsupported { ref construct, .. }) if construct == "constrained binding"
         ));
     }
 

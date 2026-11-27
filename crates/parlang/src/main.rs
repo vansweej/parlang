@@ -765,7 +765,7 @@ mod tests {
     #[test]
     fn core_repl_elaboration_error_does_not_commit() {
         let mut state = ReplState::new_core();
-        let failed = state.eval_input("let t = (1, 2) == (1, 2);");
+        let failed = state.eval_input("let t = fun x -> fun y -> x == y;");
         let bad = &failed.outcome;
         assert!(
             matches!(bad, Err(e) if e.starts_with("elaboration error")),
