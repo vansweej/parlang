@@ -14,7 +14,7 @@ use parlang_core::{builder, BaseType, BuildError, DataCon, DataType, LintEnv, Li
 
 use crate::ast::{BinOp, TypeAnnotation};
 use crate::typed_ast::{TypedDecl, TypedExpr, TypedExprKind as K, TypedProgram};
-use crate::types::{Type, TypeVar};
+use crate::types::{Type, TypeScheme, TypeVar};
 
 mod match_compile;
 
@@ -91,23 +91,13 @@ fn unsupported(construct: &str, reason: &str) -> ElabError {
     }
 }
 
-/// Whether `ann` applies a type variable anywhere (a higher-kinded use).
-fn ann_applies_var(ann: &TypeAnnotation) -> bool {
-    match ann {
-        TypeAnnotation::VarApp(..) => true,
-        TypeAnnotation::Concrete(_) | TypeAnnotation::Var(_) => false,
-        TypeAnnotation::Fun(arg, ret) => ann_applies_var(arg) || ann_applies_var(ret),
-        TypeAnnotation::App(_, args) => args.iter().any(ann_applies_var),
-    }
-}
-
 /// Mutable elaboration state threaded through the translation.
 #[derive(Default)]
 struct Elab {
     /// The Core data environment being built.
     env: LintEnv,
-    /// Parameter count of every registered data type, keyed by type name.
-    data_params: BTreeMap<String, usize>,
+    /// Parameter kinds of every registered data type, keyed by type name.
+    data_kinds: BTreeMap<String, Vec<parlang_core::Kind>>,
     /// Constructors of each registered data type as `(name, arity)`, in declaration order.
     data_ctors: BTreeMap<String, Vec<(String, usize)>>,
     /// Owning data type name of every registered constructor.
@@ -119,9 +109,10 @@ struct Elab {
 }
 
 impl Elab {
-    /// Registers `dt` in the Core `LintEnv`, recording its parameter count.
+    /// Registers `dt` in the Core `LintEnv`, recording its parameter kinds.
     fn register_data(&mut self, dt: DataType) -> Result<(), ElabError> {
-        self.data_params.insert(dt.name.clone(), dt.params.len());
+        self.data_kinds
+            .insert(dt.name.clone(), dt.param_kinds.clone());
         let ctors: Vec<(String, usize)> = dt
             .ctors
             .iter()
@@ -155,14 +146,16 @@ impl Elab {
                     Ok(CoreType::Base(BaseType::Unit))
                 }
             }
+            // Partial application is allowed: Core Lint checks its kind.
             Type::SumType(name, args) => {
-                if let Some(k) = self.data_params.get(name) {
-                    if *k != args.len() {
+                if let Some(kinds) = self.data_kinds.get(name) {
+                    if args.len() > kinds.len() {
                         return Err(unsupported(
                             "type",
                             &format!(
-                                "data type {name} applied to {} arguments, expects {k}",
-                                args.len()
+                                "data type {name} applied to {} arguments, expects at most {}",
+                                args.len(),
+                                kinds.len()
                             ),
                         ));
                     }
@@ -173,10 +166,16 @@ impl Elab {
                 }
                 Ok(acc)
             }
-            Type::VarApp(..) => Err(unsupported(
-                "type",
-                "higher-kinded type variable applications are not elaborated yet",
-            )),
+            Type::VarApp(TypeVar(n), args) => {
+                if !self.scope.contains(n) {
+                    return Err(unsupported("type", "residual higher-kinded type variable"));
+                }
+                let mut acc = CoreType::Var(format!("t{n}"));
+                for arg in args {
+                    acc = CoreType::App(Box::new(acc), Box::new(self.conv_type(arg)?));
+                }
+                Ok(acc)
+            }
             Type::Tuple(items) => self.conv_tuple_type(items),
             Type::Record(fields) => self.conv_record_type(fields),
         }
@@ -240,7 +239,7 @@ impl Elab {
     /// parameters and a single constructor of the same name, if not already
     /// registered.
     fn ensure_synthetic(&mut self, name: &str, arity: usize) -> Result<(), ElabError> {
-        if self.data_params.contains_key(name) {
+        if self.data_kinds.contains_key(name) {
             return Ok(());
         }
         let params: Vec<String> = (1..=arity).map(|i| format!("p{i}")).collect();
@@ -439,12 +438,6 @@ impl Elab {
         param_kinds: &[parlang_core::Kind],
         ctors: &[(String, Vec<TypeAnnotation>)],
     ) -> Result<(), ElabError> {
-        if ctors.iter().flat_map(|(_, anns)| anns).any(ann_applies_var) {
-            return Err(unsupported(
-                "data",
-                "higher-kinded type parameters are not elaborated yet",
-            ));
-        }
         let dt = DataType {
             name: name.to_string(),
             params: params.to_vec(),
@@ -469,7 +462,7 @@ impl Elab {
             K::Var(name, type_args) => self.elab_var(name, type_args),
             K::Fun(param, _, body) => self.elab_fun(&expr.ty, param, body),
             K::App(func, arg) => self.elab_app(func, arg),
-            K::Let(name, _, scheme, value, body) => self.elab_let(name, &scheme.vars, value, body),
+            K::Let(name, _, scheme, value, body) => self.elab_let(name, scheme, value, body),
             K::Rec(name, body) => self.elab_rec(&expr.ty, name, body),
             K::If(cond, then_e, else_e) => self.elab_if(cond, then_e, else_e),
             K::BinOp(op, lhs, rhs) => self.elab_binop(*op, lhs, rhs),
@@ -519,18 +512,25 @@ impl Elab {
         Ok(builder::app(f2, a2))
     }
 
-    /// Wraps the elaborated `value` in one `TyLam` per generalized variable,
-    /// with the first variable ending up outermost.
-    fn elab_generalized(&mut self, vars: &[TypeVar], value: &TypedExpr) -> Result<Term, ElabError> {
+    /// Wraps the elaborated `value` in one `TyLam` per generalized variable of
+    /// `scheme`, with the first variable ending up outermost. Each binder's
+    /// kind is inferred from how its variable is used in `scheme.ty`.
+    fn elab_generalized(
+        &mut self,
+        scheme: &TypeScheme,
+        value: &TypedExpr,
+    ) -> Result<Term, ElabError> {
         let depth = self.scope.len();
-        for v in vars {
+        for v in &scheme.vars {
             self.scope.push(v.0);
         }
         let result = self.elab_expr(value);
         self.scope.truncate(depth);
         let mut term = result?;
-        for v in vars.iter().rev() {
-            term = builder::tylam(&format!("t{}", v.0), term)?;
+        let kinds = crate::kind_check::infer_type_var_kinds(&self.data_kinds, &scheme.ty);
+        for v in scheme.vars.iter().rev() {
+            let kind = kinds.get(v).cloned().unwrap_or(parlang_core::Kind::Star);
+            term = builder::tylam_k(&format!("t{}", v.0), kind, term)?;
         }
         Ok(term)
     }
@@ -538,11 +538,11 @@ impl Elab {
     fn elab_let(
         &mut self,
         name: &str,
-        vars: &[TypeVar],
+        scheme: &TypeScheme,
         value: &TypedExpr,
         body: &TypedExpr,
     ) -> Result<Term, ElabError> {
-        let value_term = self.elab_generalized(vars, value)?;
+        let value_term = self.elab_generalized(scheme, value)?;
         let body_term = self.elab_expr(body)?;
         Ok(builder::let_(name, value_term, body_term)?)
     }
@@ -671,7 +671,7 @@ impl Elab {
                     value,
                     ..
                 } => {
-                    let value_term = self.elab_generalized(&scheme.vars, value)?;
+                    let value_term = self.elab_generalized(scheme, value)?;
                     lets.push((name.clone(), value_term));
                 }
             }
@@ -946,5 +946,124 @@ mod tests {
             elab_src("(1, 2) == (1, 2)"),
             Err(ElabError::Unsupported { .. })
         ));
+    }
+
+    /// Declarations of the higher-kinded example `hkt.par`.
+    const HKT_DECLS: &str = "data Option a = None | Some a;\n\
+        data List a = Nil | Cons a (List a);\n\
+        data Wrap f a = MkWrap (f a);\n\
+        let unwrap = fun w -> match w with | MkWrap x -> x;\n";
+
+    /// `unwrap (MkWrap (Some 1))` runs on Core to `Some(1)`.
+    #[test]
+    fn hkt_unwrap_runs_on_core() {
+        use parlang_core::Value as V;
+        let src = format!("{HKT_DECLS}unwrap (MkWrap (Some 1))");
+        assert_eq!(run_src(&src), V::Con("Some".to_string(), vec![V::Int(1)]));
+    }
+
+    /// `Wrap` instantiated at the partial `List` runs on Core.
+    #[test]
+    fn hkt_wrap_list_runs_on_core() {
+        use parlang_core::Value as V;
+        let src = format!("{HKT_DECLS}MkWrap (Cons 1 Nil)");
+        let nil = V::Con("Nil".to_string(), vec![]);
+        let list = V::Con("Cons".to_string(), vec![V::Int(1), nil]);
+        assert_eq!(run_src(&src), V::Con("MkWrap".to_string(), vec![list]));
+    }
+
+    /// `Wrap` is registered with its inferred parameter kinds.
+    #[test]
+    fn hkt_data_decl_registers_param_kinds() {
+        use parlang_core::Kind;
+        let e = elab_src(&format!("{HKT_DECLS}0")).expect("elaborate");
+        let wrap = e.env.data_type("Wrap").expect("Wrap registered");
+        let expected = vec![Kind::arrow(Kind::Star, Kind::Star), Kind::Star];
+        assert_eq!(wrap.param_kinds, expected);
+    }
+
+    /// A higher-kinded parameter passed on through `Wrap f Int` (no `f a`
+    /// in the payload) gets kind `* -> *` and runs on Core.
+    #[test]
+    fn hkt_parameter_through_data_application() {
+        use parlang_core::{Kind, Value as V};
+        let decls = format!("{HKT_DECLS}data T f = MkT (Wrap f Int);\n");
+        let e = elab_src(&format!("{decls}0")).expect("elaborate");
+        let t = e.env.data_type("T").expect("T registered");
+        assert_eq!(t.param_kinds, vec![Kind::arrow(Kind::Star, Kind::Star)]);
+        let some = V::Con("Some".to_string(), vec![V::Int(1)]);
+        let wrapped = V::Con("MkWrap".to_string(), vec![some]);
+        assert_eq!(
+            run_src(&format!("{decls}MkT (MkWrap (Some 1))")),
+            V::Con("MkT".to_string(), vec![wrapped])
+        );
+    }
+
+    /// A recursive higher-kinded field `f (Fix f)` runs on Core.
+    #[test]
+    fn hkt_fix_runs_on_core() {
+        use parlang_core::Value as V;
+        let src = format!("{HKT_DECLS}data Fix f = In (f (Fix f));\nIn (Some (In None))");
+        let none = V::Con("None".to_string(), vec![]);
+        let inner = V::Con("In".to_string(), vec![none]);
+        let some = V::Con("Some".to_string(), vec![inner]);
+        assert_eq!(run_src(&src), V::Con("In".to_string(), vec![some]));
+    }
+
+    /// `unwrap` binds its head variable with a `* -> *` `TyLam`.
+    #[test]
+    fn hkt_unwrap_tylam_is_higher_kinded() {
+        let e = elab_src(&format!("{HKT_DECLS}0")).expect("elaborate");
+        let text = e.term.to_text();
+        assert!(text.contains(" : * -> *). "), "{text}");
+    }
+
+    /// A partially applied data type converts; over-application is rejected.
+    #[test]
+    fn partial_sum_type_converts_and_over_application_is_unsupported() {
+        let mut elab = Elab::default();
+        let ctors = vec![(
+            "Some".to_string(),
+            vec![TypeAnnotation::Var("a".to_string())],
+        )];
+        let params = vec!["a".to_string()];
+        let kinds = vec![parlang_core::Kind::Star];
+        elab.data_decl("Option", &params, &kinds, &ctors)
+            .expect("register Option");
+        let partial = Type::SumType("Option".to_string(), vec![]);
+        assert_eq!(
+            elab.conv_type(&partial),
+            Ok(CoreType::Con("Option".to_string()))
+        );
+        let over = Type::SumType("Option".to_string(), vec![Type::Int, Type::Int]);
+        assert!(matches!(
+            elab.conv_type(&over),
+            Err(ElabError::Unsupported { .. })
+        ));
+    }
+
+    /// An applied type variable converts in scope and is rejected out of scope.
+    #[test]
+    fn var_app_in_scope_converts_and_residual_is_unsupported() {
+        let mut elab = Elab::default();
+        let applied = Type::VarApp(TypeVar(7), vec![Type::Int]);
+        assert!(matches!(
+            elab.conv_type(&applied),
+            Err(ElabError::Unsupported { ref reason, .. }) if reason.contains("residual")
+        ));
+        elab.scope.push(7);
+        let expected = CoreType::App(
+            Box::new(CoreType::Var("t7".to_string())),
+            Box::new(CoreType::Base(BaseType::Int)),
+        );
+        assert_eq!(elab.conv_type(&applied), Ok(expected));
+    }
+
+    /// A never-instantiated higher-kinded use is an error, never silent.
+    #[test]
+    fn residual_higher_kinded_use_is_an_error() {
+        let src = format!("{HKT_DECLS}(fun w -> 0) unwrap");
+        let outcome = elab_src(&src).and_then(|e| check_elaborated(&e));
+        assert!(outcome.is_err(), "{outcome:?}");
     }
 }
