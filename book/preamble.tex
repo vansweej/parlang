@@ -47,6 +47,19 @@
 \renewcommand\section{\@startsection{section}{1}{\z@}{-3.5ex\@plus-1ex\@minus-.2ex}{2.3ex\@plus.2ex}{\normalfont\Large\bfseries\raggedright}}
 \renewcommand\subsection{\@startsection{subsection}{2}{\z@}{-3.25ex\@plus-1ex\@minus-.2ex}{1.5ex\@plus.2ex}{\normalfont\large\bfseries\raggedright}}
 \renewcommand\subsubsection{\@startsection{subsubsection}{3}{\z@}{-3.25ex\@plus-1ex\@minus-.2ex}{1.5ex\@plus.2ex}{\normalfont\normalsize\bfseries\raggedright}}
+
+% Running heads: book.cls sets the chapter title in capitals in the page
+% head, where a long title cannot break; such a head is scaled down to fit.
+\newsavebox{\BookHeadBox}
+\newcommand{\BookHead}[1]{%
+  \sbox{\BookHeadBox}{\slshape #1}%
+  \ifdim\wd\BookHeadBox>0.85\textwidth\relax
+    \resizebox{0.85\textwidth}{!}{\usebox{\BookHeadBox}}%
+  \else
+    \usebox{\BookHeadBox}%
+  \fi}
+\def\@evenhead{\thepage\hfil\BookHead{\leftmark}}
+\def\@oddhead{\BookHead{\rightmark}\hfil\thepage}
 \makeatother
 
 % Macros emitted by pandoc's LaTeX writer (normally defined by its template).

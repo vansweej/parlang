@@ -80,5 +80,6 @@ first level-one heading of the file becomes the chapter title.
 
 ## Follow-ups
 
-Rendering mermaid diagrams and a chapter on using the nix flake (build,
-develop, run) are not part of this edition.
+Rendering mermaid diagrams is not part of this edition. `docs/EXAMPLES.md`
+joins the book once a test checks its snippets, and `docs/ARCHITECTURE.md`
+and `docs/MODULE_EVAL.md` once they are brought up to date.

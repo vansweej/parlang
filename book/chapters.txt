@@ -29,8 +29,12 @@ md|book/front/reduction-walkthrough.md
 part|Environment and tooling|book/front/part-tooling.md
 doc|docs/MODULE_MAIN.md
 doc|docs/EDITOR_SUPPORT.md
+md|book/front/nix-flake.md
 part|Standard library|book/front/part-stdlib.md
 doc|docs/MAP_LIBRARY.md
+part|Inside the interpreter|book/front/part-internals.md
+doc|docs/MODULE_TYPES.md
+doc|docs/MODULE_TYPECHECKER.md
 appendix
 examples
 doc|docs/adr/0001-arc-c-eval-model.md
