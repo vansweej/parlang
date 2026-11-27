@@ -151,6 +151,10 @@ pub struct TypedProgram {
     pub decls: Vec<TypedDecl>,
     pub body: Option<TypedExpr>,
     pub ty: Type,
+    /// Class methods referenced by name (`==` and `!=` do not count),
+    /// deduplicated in first-use order. A non-empty list means the program
+    /// needs dictionary passing (M2.3) to run.
+    pub method_uses: Vec<String>,
 }
 
 /// Render a [`TypedProgram`] as an indented text tree (2 spaces per level).
