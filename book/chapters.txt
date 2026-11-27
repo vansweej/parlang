@@ -52,4 +52,5 @@ doc|docs/adr/0009-surface-to-core-elaboration.md
 doc|docs/adr/0010-kernel-eligibility-predicate.md
 doc|docs/adr/0011-core-kinds.md
 doc|docs/adr/0012-surface-higher-kinded-types.md
+doc|docs/adr/0013-type-classes.md
 #glyphs
