@@ -147,6 +147,14 @@ enum Commands {
         #[arg(long)]
         raw: bool,
     },
+    /// Check whether a top-level function is kernel-eligible (slice 8 predicate).
+    KernelCheck {
+        /// Input file (.par file)
+        file: String,
+        /// Name of the top-level function to check.
+        #[arg(long = "fn")]
+        name: String,
+    },
 }
 ```
 
@@ -199,9 +207,10 @@ A small ML-alike functional language
 Usage: parlang [OPTIONS] [FILE] [COMMAND]
 
 Commands:
-  repl   Start interactive REPL
-  trace  Trace a program's evaluation on the Core CEK machine
-  help   Print this message or the help of the given subcommand(s)
+  repl          Start interactive REPL
+  trace         Trace a program's evaluation on the Core CEK machine
+  kernel-check  Check whether a top-level function is kernel-eligible (slice 8 predicate)
+  help          Print this message or the help of the given subcommand(s)
 
 Arguments:
   [FILE]
