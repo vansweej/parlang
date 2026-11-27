@@ -163,6 +163,10 @@ impl Elab {
                 }
                 Ok(acc)
             }
+            Type::VarApp(..) => Err(unsupported(
+                "type",
+                "higher-kinded type variable applications are not elaborated yet",
+            )),
             Type::Tuple(items) => self.conv_tuple_type(items),
             Type::Record(fields) => self.conv_record_type(fields),
         }

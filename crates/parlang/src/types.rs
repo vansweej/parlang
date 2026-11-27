@@ -30,6 +30,10 @@ pub enum Type {
     /// The empty tuple is represented by `Unit`; the parser cannot produce
     /// one-element tuples.
     Tuple(Vec<Type>),
+    /// Applied type variable: a type variable applied to one or more type
+    /// arguments, e.g. `f a`. The argument list is never empty; build values
+    /// with `apply_type_args` to keep applications flat.
+    VarApp(TypeVar, Vec<Type>),
 }
 
 /// Type variable identifier
@@ -111,12 +115,11 @@ impl fmt::Display for Type {
             }
             Type::SumType(name, args) => {
                 write!(f, "{name}")?;
-                if !args.is_empty() {
-                    for arg in args {
-                        write!(f, " {arg}")?;
-                    }
-                }
-                Ok(())
+                fmt_type_args(f, args)
+            }
+            Type::VarApp(var, args) => {
+                write!(f, "t{}", var.0)?;
+                fmt_type_args(f, args)
             }
             Type::Tuple(elements) => {
                 write!(f, "(")?;
@@ -129,6 +132,49 @@ impl fmt::Display for Type {
                 write!(f, ")")
             }
         }
+    }
+}
+
+/// Write each type argument preceded by a space, parenthesising arguments
+/// that are applications or function types so the rendering is unambiguous
+/// (`List (Option Int)`, `Wrap Option Int`).
+fn fmt_type_args(f: &mut fmt::Formatter, args: &[Type]) -> fmt::Result {
+    for arg in args {
+        let needs_parens = match arg {
+            Type::SumType(_, inner) | Type::VarApp(_, inner) => !inner.is_empty(),
+            Type::Fun(..) => true,
+            _ => false,
+        };
+        if needs_parens {
+            write!(f, " ({arg})")?;
+        } else {
+            write!(f, " {arg}")?;
+        }
+    }
+    Ok(())
+}
+
+/// Apply `head` to further type arguments, keeping applications flat: a data
+/// type gains arguments (`SumType`) and a type variable becomes an applied
+/// variable (`VarApp`).
+///
+/// Returns `head` unchanged when `args` is empty, and `None` when `head`
+/// cannot take arguments (a base, function, tuple or record type).
+pub fn apply_type_args(head: Type, args: Vec<Type>) -> Option<Type> {
+    if args.is_empty() {
+        return Some(head);
+    }
+    match head {
+        Type::Var(var) => Some(Type::VarApp(var, args)),
+        Type::VarApp(var, mut prefix) => {
+            prefix.extend(args);
+            Some(Type::VarApp(var, prefix))
+        }
+        Type::SumType(name, mut prefix) => {
+            prefix.extend(args);
+            Some(Type::SumType(name, prefix))
+        }
+        _ => None,
     }
 }
 
@@ -480,7 +526,33 @@ mod tests {
     fn test_display_sum_type_nested() {
         let inner = Type::SumType("Option".to_string(), vec![Type::Int]);
         let outer = Type::SumType("List".to_string(), vec![inner]);
-        assert_eq!(format!("{outer}"), "List Option Int");
+        assert_eq!(format!("{outer}"), "List (Option Int)");
+    }
+
+    #[test]
+    fn test_display_partial_sum_type_and_var_app() {
+        let option = Type::SumType("Option".to_string(), vec![]);
+        let wrap = Type::SumType("Wrap".to_string(), vec![option, Type::Int]);
+        assert_eq!(format!("{wrap}"), "Wrap Option Int");
+        let applied = Type::VarApp(TypeVar(0), vec![Type::Var(TypeVar(1))]);
+        assert_eq!(format!("{applied}"), "t0 t1");
+        let fun = Type::Fun(Box::new(Type::Int), Box::new(Type::Int));
+        let list = Type::SumType("List".to_string(), vec![fun]);
+        assert_eq!(format!("{list}"), "List (Int -> Int)");
+    }
+
+    #[test]
+    fn test_apply_type_args_flattens() {
+        let option = Type::SumType("Option".to_string(), vec![]);
+        let option_int = Type::SumType("Option".to_string(), vec![Type::Int]);
+        assert_eq!(apply_type_args(option, vec![Type::Int]), Some(option_int));
+        let applied = Type::VarApp(TypeVar(2), vec![Type::Int]);
+        assert_eq!(
+            apply_type_args(Type::Var(TypeVar(2)), vec![Type::Int]),
+            Some(applied)
+        );
+        assert_eq!(apply_type_args(Type::Int, vec![Type::Bool]), None);
+        assert_eq!(apply_type_args(Type::Int, vec![]), Some(Type::Int));
     }
 
     #[test]
