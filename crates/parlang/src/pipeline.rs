@@ -4,7 +4,8 @@ use std::fmt::Write;
 
 use crate::{check_elaborated, elaborate_program, typecheck_program_typed, Elaborated, Program};
 use parlang_core::{
-    core_to_dot, eval, reduction_terms, render_value, trace, Environment, EvalError, Type,
+    check_function, core_to_dot, eval, reduction_terms, render_value, trace, Environment,
+    EvalError, Report, Type,
 };
 
 /// Elaborates `program` to Core without running Core Lint.
@@ -130,6 +131,39 @@ pub fn trace_core(program: &Program, fuel: usize, raw: bool) -> Result<String, S
     let _ = writeln!(out, "result: {rendered}");
 
     Ok(out)
+}
+
+/// Elaborates and lints `program`, then checks whether the top-level function
+/// `name` is kernel-eligible under the slice-8 predicate (rules `R1`-`R5`).
+///
+/// Returns `eligible: <name>` plus a newline when the function passes.
+///
+/// # Errors
+///
+/// Returns an error string if `program` fails to type-check, elaborate or
+/// lint; `kernel-check error: <e>` if the eligibility check itself fails
+/// (for example an unknown function); or a `rejected: <name>` header
+/// followed by one `  <id> <rule>: <function>: <node>` line per violation.
+pub fn kernel_check(program: &Program, name: &str) -> Result<String, String> {
+    let elab = core_of_program(program)?;
+    let report = check_function(&elab.term, &elab.env, name, &[])
+        .map_err(|e| format!("kernel-check error: {e}"))?;
+    match report {
+        Report::Eligible => Ok(format!("eligible: {name}\n")),
+        Report::Rejected(violations) => {
+            let mut lines = vec![format!("rejected: {name}")];
+            for v in &violations {
+                lines.push(format!(
+                    "  {} {}: {}: {}",
+                    v.rule.id(),
+                    v.rule.name(),
+                    v.function,
+                    v.node
+                ));
+            }
+            Err(lines.join("\n"))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -266,6 +300,32 @@ mod tests {
         assert_eq!(
             trace_core(&prog("1 + 2 * 3"), 1, false),
             Err("trace error: step limit of 1 exceeded".to_string())
+        );
+    }
+
+    #[test]
+    fn kernel_check_eligible_function() {
+        let out = kernel_check(&prog("let inc = fun x -> x + 1;\n0"), "inc");
+        assert_eq!(out, Ok("eligible: inc\n".to_string()));
+    }
+
+    #[test]
+    fn kernel_check_rejects_recursion() {
+        let src = "let factorial = rec f -> fun n ->\n  if n == 0 then 1 else n * f (n - 1);\n0";
+        let err = kernel_check(&prog(src), "factorial").expect_err("rejected");
+        assert!(err.starts_with("rejected: factorial\n"), "{err}");
+        assert!(
+            err.contains("  R3 recursion: factorial: (f -(n, 1))"),
+            "{err}"
+        );
+        assert!(!err.ends_with('\n'), "{err}");
+    }
+
+    #[test]
+    fn kernel_check_unknown_function() {
+        assert_eq!(
+            kernel_check(&prog("1"), "nope"),
+            Err("kernel-check error: unknown function: nope".to_string())
         );
     }
 }
