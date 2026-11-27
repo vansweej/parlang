@@ -1,0 +1,13 @@
+# chktex settings for the hand-written book sources. The flake check
+# book-lint runs, from book/:
+#   chktex -q -v0 -I0 -l .chktexrc preamble.tex glyph-test.tex parlang-book.tex
+# chktex also reads ./.chktexrc from the working directory on its own; -l
+# makes this file explicit. Reading it twice is harmless: the Silent entries
+# just repeat.
+# Silent lists commands that do not trigger Warning 1 (command terminated
+# with space) when followed by a space. These book-structure commands
+# typeset nothing, so a following line break is harmless.
+Silent
+{
+    \frontmatter \mainmatter \backmatter \appendix
+}

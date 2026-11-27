@@ -2016,7 +2016,7 @@ in sign (-42)
 ## Appendix D: Comparison with Similar Languages
 
 | Feature | ParLang | ML | Scheme | Haskell |
-|---------|---------|----|---------| --------|
+|---------|---------|----|---------|---------|
 | Typing | Static (Hindley-Milner) | Static | Dynamic | Static |
 | Evaluation | Eager | Eager | Eager | Lazy |
 | Recursion | Built-in (`rec`) | Built-in `let rec` | Built-in | Built-in |

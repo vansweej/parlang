@@ -14,8 +14,11 @@ from the repository.
   command, for example
   `PARLANG="cargo run --quiet --package parlang --bin parlang --"`.
 - The build script `build-book` has no `.sh` extension on purpose, because
-  the ai-coding pipeline routes `.sh` files to a shfmt/shellcheck toolchain;
-  running shellcheck on it is a follow-up.
+  the ai-coding pipeline routes `.sh` files to a shfmt/shellcheck toolchain
+  it does not provide. It is linted instead by the flake check `book-lint`
+  (`nix flake check`), which runs shellcheck, `shfmt -i 2 -ci -sr -d` and
+  chktex with `book/.chktexrc` on `preamble.tex`, `glyph-test.tex` and
+  `parlang-book.tex`.
 
 ## How it works
 
@@ -57,7 +60,6 @@ first level-one heading of the file becomes the chapter title.
 
 ## Follow-ups
 
-Rendering mermaid diagrams, syntax highlighting for ParLang listings, a
-chapter on using the nix flake (build, develop, run), running chktex on
-the hand-written .tex files, and running shellcheck and shfmt on
-`build-book` are not part of this edition.
+Rendering mermaid diagrams, syntax highlighting for ParLang listings and a
+chapter on using the nix flake (build, develop, run) are not part of this
+edition.
