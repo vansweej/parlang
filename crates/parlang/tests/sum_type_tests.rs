@@ -451,3 +451,70 @@ fn test_payload_wrong_data_arity_is_error() {
         ))
     );
 }
+
+/// Expected error for an unknown type constructor name in a data payload
+fn unknown_payload_type(name: &str) -> Result<parlang::Type, parlang::TypeError> {
+    Err(parlang::TypeError::UnboundVariable(format!(
+        "Unknown type constructor in data declaration: {name}"
+    )))
+}
+
+/// An unknown bare payload name is rejected at declaration time
+#[test]
+fn test_payload_unknown_name_is_error() {
+    let expr = parse("data T = C Foo in 0").expect("Parse failed");
+    assert_eq!(parlang::typecheck(&expr), unknown_payload_type("Foo"));
+    let program = parlang::parse_program("data T = C Foo ;\n0").expect("Parse failed");
+    assert_eq!(
+        parlang::typecheck_program(&program),
+        unknown_payload_type("Foo")
+    );
+}
+
+/// An unknown applied payload head is rejected at declaration time
+#[test]
+fn test_payload_unknown_applied_head_is_error() {
+    let expr = parse("data T = C (Foo Int) in 0").expect("Parse failed");
+    assert_eq!(parlang::typecheck(&expr), unknown_payload_type("Foo"));
+    let program = parlang::parse_program("data T = C (Foo Int) ;\n0").expect("Parse failed");
+    assert_eq!(
+        parlang::typecheck_program(&program),
+        unknown_payload_type("Foo")
+    );
+}
+
+/// Unknown names nested in applications and function fields are rejected
+#[test]
+fn test_payload_unknown_nested_name_is_error() {
+    let source = "data List a = Nil | Cons a (List a) in data T = C (List Foo) in 0";
+    let expr = parse(source).expect("Parse failed");
+    assert_eq!(parlang::typecheck(&expr), unknown_payload_type("Foo"));
+    let expr = parse("data T = C (Int -> Foo) in 0").expect("Parse failed");
+    assert_eq!(parlang::typecheck(&expr), unknown_payload_type("Foo"));
+}
+
+/// A type alias in a payload is rejected with a dedicated error
+#[test]
+fn test_payload_type_alias_is_error() {
+    let program =
+        parlang::parse_program("type Name = Int ;\ndata P = P Name ;\n0").expect("Parse failed");
+    assert_eq!(
+        parlang::typecheck_program(&program),
+        Err(parlang::TypeError::TypeAliasInDataPayload(
+            "Name".to_string()
+        ))
+    );
+}
+
+/// Self and mutual recursion are accepted; `in` forward references are not
+#[test]
+fn test_payload_recursion_and_forward_reference() {
+    let expr = parse("data List a = Nil | Cons a (List a) in 0").expect("Parse failed");
+    assert_eq!(parlang::typecheck(&expr), Ok(parlang::Type::Int));
+    let source = "data Tree a = Leaf | Node (Forest a) ;\n\
+                  data Forest a = FNil | FCons (Tree a) (Forest a) ;\n0";
+    let program = parlang::parse_program(source).expect("Parse failed");
+    assert_eq!(parlang::typecheck_program(&program), Ok(parlang::Type::Int));
+    let expr = parse("data A = MkA B in data B = MkB in 0").expect("Parse failed");
+    assert_eq!(parlang::typecheck(&expr), unknown_payload_type("B"));
+}
