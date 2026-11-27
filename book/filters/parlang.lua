@@ -9,7 +9,7 @@
 --   * latex: BookParCode listings are highlighted (keywords from KEYWORDS in
 --     crates/parlang/src/parser.rs, comments, string and char literals), and
 --     each listing is round-trip checked against its original text;
---   * `mermaid` blocks become a "diagram omitted" note;
+--   * `mermaid` blocks become committed renders (see diagram below);
 --   * links to local files or anchors become plain text, http(s)/mailto stay;
 --   * "Table of Contents" sections are dropped;
 --   * header identifiers are prefixed with the source file stem so they stay
@@ -213,12 +213,28 @@ local function highlight(text)
   return body
 end
 
-local function omitted_diagram()
-  if is_latex then
-    return pandoc.RawBlock("latex", "\\BookOmittedDiagram{" .. source .. "}")
+-- Mermaid diagrams are rendered from committed files named after the SHA-1
+-- of the block text: book/diagrams/<sha1>.pdf (PDF) and .png (EPUB). The
+-- block source is written, after a `%%` comment naming the source document,
+-- to book/build/gen/diagrams/<sha1>.mmd; build-book fails if a render is
+-- missing or unused, and book/tools/render-diagrams (run on the host)
+-- creates them.
+local diagram_dir = "book/build/gen/diagrams"
+
+local function diagram(el)
+  local name = pandoc.utils.sha1(el.text)
+  pandoc.system.make_directory(diagram_dir, true)
+  local handle = io.open(diagram_dir .. "/" .. name .. ".mmd", "wb")
+  if not handle then
+    error("parlang.lua: cannot write " .. diagram_dir .. "/" .. name .. ".mmd")
   end
-  local note = "Diagram omitted in this edition; see " .. source .. " in the repository."
-  return pandoc.Para({ pandoc.Emph({ pandoc.Str(note) }) })
+  handle:write("%% " .. source .. "\n", el.text, "\n")
+  handle:close()
+  if is_latex then
+    return pandoc.RawBlock("latex", "\\BookDiagram{" .. name .. "}")
+  end
+  local caption = "Diagram from " .. source
+  return pandoc.Para({ pandoc.Image({ pandoc.Str(caption) }, "book/diagrams/" .. name .. ".png") })
 end
 
 local function code_block(el)
@@ -229,7 +245,7 @@ local function code_block(el)
   end
   local lang = el.classes[1] or ""
   if lang == "mermaid" then
-    return omitted_diagram()
+    return diagram(el)
   end
   if not is_latex then
     return el
