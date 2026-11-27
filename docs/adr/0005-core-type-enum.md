@@ -38,9 +38,11 @@ mechanical sweep from `BaseType` to the new `Type` cheap.
   restructure. Arrow is a dedicated `Fun(Box<Type>, Box<Type>)`.
 - Type variables are NAMED (`Var(String)`), matching `Term`'s named binders for
   dump legibility. Quantification is single-binder System F
-  (`Forall(String, Box<Type>)`).
+  (`Forall(String, Box<Type>)`). Update (M2.1a): the shape is now
+  `Forall(String, Kind, Box<Type>)`.
 - No kinds in slice 6b. Binders are implicitly kind `*`; a kind slot on
   `Forall` is deferred to milestone 2.
+  Update (M2.1a): the kind slot landed; see `docs/adr/0011-core-kinds.md`.
 - Display is ASCII only (no `forall` glyph): `forall a. a -> List a`. Arrows are
   right-associative with parenthesised arrow domains; application is
   juxtaposition with nested applications and non-atoms parenthesised (NOT the

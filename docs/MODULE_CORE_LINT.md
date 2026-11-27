@@ -31,7 +31,9 @@ The environment Lint checks a term against. It carries:
   callers via `with_term(name, ty)` to seed free variables (e.g. prelude
   bindings referenced by an open term).
 - An **in-scope type-variable stack**: the names bound by enclosing `TyLam`s
-  (and by `Forall` binders while a type is checked for well-formedness).
+  (and by `Forall` binders while a type is checked for well-formedness),
+  each with its kind (ADR 0011). Each `DataType` also declares
+  `param_kinds`, one kind per parameter.
 
 `LintEnv::new()` is empty; `prelude_env()` returns a `LintEnv` with the single
 `List a = Nil | Cons a (List a)` data type registered, used by the standing
@@ -143,6 +145,12 @@ unregistered name, `ArityMismatch` for a wrong argument count). A `Forall`
 binder that shadows an already in-scope type variable is rejected
 (`ShadowedTypeVar`), mirroring the same rule for `TyLam` terms.
 
+Well-formedness is a kind check (ADR 0011): a well-formed type has kind
+`*`. A type argument of a `TyApp` or a constructor is checked against
+the binder's or parameter's kind, so `f a` with `f : * -> *` is
+accepted and a partially applied constructor may instantiate a
+higher-kinded binder. Any other kind error is `KindMismatch`.
+
 ## `LintError`
 
 The full set of ways Lint can reject a term: `UnboundTermVar`,
@@ -154,7 +162,8 @@ The full set of ways Lint can reject a term: `UnboundTermVar`,
 `EmptyCase`, `BranchTypeMismatch`, `LetRecValueNotLam`,
 `LetRecAnnotationMismatch`, `NonBaseEq`, `EqTypeMismatch`, and (raised only
 by `try_with_data`) `DuplicateDataType`, `DuplicateTypeParam`,
-`DuplicateDataCon`. Each variant's
+`DuplicateDataCon`, `ParamKindCountMismatch`, plus `KindMismatch`.
+Each variant's
 `Display` implementation renders a human-readable message including the
 relevant type(s)/name(s).
 
