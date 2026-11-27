@@ -67,9 +67,11 @@ Function types can also annotate a lambda parameter, for example `fun (f : Int -
 Type variables (lowercase identifiers) can be used in annotations for polymorphic functions:
 
 ```parlang
-# Type variable 'a' represents any type
-# (Implementation detail: type variables create fresh type variables)
+-- `a` names one type throughout this annotation: f maps a type to itself
+fun (f : a -> a) -> f
 ```
+
+Within one annotation, every occurrence of the same type variable stands for the same type, so `let f : a -> a = fun x -> if x then 1 else 2 in f` is a type error: `a` cannot be both `Bool` and `Int`. Separate annotations do not share type variables: in `fun (x : a) -> fun (y : a) -> if y then x else 0` the two `a`s are independent. Annotation type variables are flexible, not rigid: `let id : a -> a = fun x -> x + 1 in id 2` is accepted, with `a` resolved to `Int`.
 
 ## Type Checking with Annotations
 
@@ -238,11 +240,9 @@ Lambda parameters do not use that optional suffix. A dedicated `fun_param` parse
 
 Potential enhancements for type annotations:
 
-1. **Share type variables within an annotation** - each lowercase type variable currently becomes an independent fresh type variable, so `fun (f : a -> a) -> f` does not force argument and result to the same type
-2. **Support applied types** - Enable `Option Int`, `List Bool` in annotations
-3. **Add type alias support** - Use type aliases in annotations
-4. **Bi-directional type checking** - Use annotations to guide inference
-5. **Better error messages** - Show both expected (annotated) and actual (inferred) types
+1. **Bi-directional type checking** - Use annotations to guide inference
+2. **Better error messages** - Show both expected (annotated) and actual (inferred) types
+3. **Rigid type variables** - Treat annotation type variables as universally quantified, as Haskell does, so `let id : a -> a = fun x -> x + 1 in id 2` would be rejected
 
 ## Related Documentation
 
