@@ -280,7 +280,7 @@ where
 /// Reserved keywords that cannot be used as identifiers; also consumed by the editor-grammar tests.
 pub const KEYWORDS: &[&str] = &[
     "let", "in", "if", "then", "else", "fun", "true", "false", "load", "rec", "match", "with",
-    "type", "data",
+    "type", "data", "class", "instance", "where",
 ];
 
 /// Parse an identifier (variable name) - ensures it's not a keyword
@@ -591,7 +591,7 @@ parser! {
             // consumes a keyword before rejecting it.
             attempt((
                 raw_identifier().then(|name| {
-                    if matches!(name.as_str(), "in" | "data" | "type") {
+                    if matches!(name.as_str(), "in" | "data" | "type" | "class" | "instance" | "where") {
                         combine::unexpected("type constructor")
                             .map(|()| String::new())
                             .right()
@@ -628,7 +628,7 @@ parser! {
             // Simple identifier: Int, Bool, a, b
             raw_identifier().then(|name| {
                 // Reject declaration keywords that delimit a containing parser.
-                if matches!(name.as_str(), "in" | "data" | "type") {
+                if matches!(name.as_str(), "in" | "data" | "type" | "class" | "instance" | "where") {
                     combine::unexpected("keyword").map(|()| TypeAnnotation::Var(String::new())).right()
                 } else {
                     // Check if first character is uppercase to distinguish concrete types from type variables
@@ -1192,6 +1192,145 @@ parser! {
     }
 }
 
+// Parse a lowercase type variable name (class parameter or context variable).
+// Reserved keywords are rejected exactly as in `identifier()`.
+parser! {
+    fn type_var_name[Input]()(Input) -> String
+    where [Input: Stream<Token = char>]
+    {
+        (
+            combine::parser::char::lower(),
+            many::<String, _, _>(alpha_num().or(token('_'))),
+        )
+            .map(|(first, rest): (char, String)| format!("{first}{rest}"))
+            .skip(combine::not_followed_by(alpha_num().or(token('_'))))
+            .then(|name: String| {
+                if KEYWORDS.contains(&name.as_str()) {
+                    combine::unexpected("keyword")
+                        .map(move |()| name.clone())
+                        .right()
+                } else {
+                    combine::value(name).left()
+                }
+            })
+    }
+}
+
+// Parse a single-parameter type class declaration. Superclass contexts are
+// not parsed until M2.5, so `superclasses` is always empty:
+// class Name param where { method : type; ... };
+parser! {
+    fn class_decl[Input]()(Input) -> Decl
+    where [Input: Stream<Token = char>]
+    {
+        (
+            string("class")
+                .skip(combine::not_followed_by(alpha_num().or(token('_'))))
+                .skip(spaces()),
+            constructor_name().skip(spaces()),
+            type_var_name().skip(spaces()),
+            string("where").skip(spaces()),
+            between(
+                token('{').skip(spaces()),
+                token('}').skip(spaces()),
+                combine::sep_end_by::<Vec<(String, TypeAnnotation)>, _, _, _>(
+                    (
+                        identifier().skip(spaces()),
+                        token(':').skip(spaces()),
+                        type_annotation().skip(spaces()),
+                    )
+                        .map(|(name, _, ty)| (name, ty)),
+                    token(';').skip(spaces()),
+                ),
+            ),
+            token(';').skip(spaces()),
+        )
+            .map(|(_, name, param, _, methods, _)| Decl::Class {
+                name,
+                param,
+                superclasses: vec![],
+                methods,
+                doc: None,
+            })
+    }
+}
+
+// Parse one instance-context constraint: ClassName typeVar
+parser! {
+    fn class_constraint[Input]()(Input) -> (String, String)
+    where [Input: Stream<Token = char>]
+    {
+        (
+            constructor_name().skip(spaces()),
+            type_var_name().skip(spaces()),
+        )
+    }
+}
+
+// Parse an instance context followed by `=>`: `C a =>` or `(C a, D b) =>`.
+// Wrapped in `attempt` so a header without a context backtracks cleanly.
+parser! {
+    fn instance_context[Input]()(Input) -> Vec<(String, String)>
+    where [Input: Stream<Token = char>]
+    {
+        attempt(
+            choice((
+                between(
+                    token('(').skip(spaces()),
+                    token(')').skip(spaces()),
+                    combine::sep_by1::<Vec<(String, String)>, _, _, _>(
+                        class_constraint(),
+                        token(',').skip(spaces()),
+                    ),
+                ),
+                class_constraint().map(|constraint| vec![constraint]),
+            ))
+            .skip(string("=>"))
+            .skip(spaces()),
+        )
+    }
+}
+
+// Parse a type class instance declaration; the head is one atomic type and
+// its shape is validated by the typechecker (M2.2b), not here:
+// instance [context =>] ClassName head where { method = expr; ... };
+parser! {
+    fn instance_decl[Input]()(Input) -> Decl
+    where [Input: Stream<Token = char>]
+    {
+        (
+            string("instance")
+                .skip(combine::not_followed_by(alpha_num().or(token('_'))))
+                .skip(spaces()),
+            optional(instance_context()),
+            constructor_name().skip(spaces()),
+            type_field_atom().skip(spaces()),
+            string("where").skip(spaces()),
+            between(
+                token('{').skip(spaces()),
+                token('}').skip(spaces()),
+                combine::sep_end_by::<Vec<(String, Expr)>, _, _, _>(
+                    (
+                        identifier().skip(spaces()),
+                        token('=').skip(spaces()),
+                        expr().skip(spaces()),
+                    )
+                        .map(|(name, _, value)| (name, value)),
+                    token(';').skip(spaces()),
+                ),
+            ),
+            token(';').skip(spaces()),
+        )
+            .map(|(_, context, class, head, _, methods, _)| Decl::Instance {
+                class,
+                context: context.unwrap_or_default(),
+                head,
+                methods,
+                doc: None,
+            })
+    }
+}
+
 parser! {
     pub fn program[Input]()(Input) -> Program
     where [Input: Stream<Token = char>]
@@ -1229,6 +1368,8 @@ parser! {
                     ty_expr,
                     doc: None,
                 }),
+                class_decl(),
+                instance_decl(),
             )))),
             optional(expr()).skip(spaces())
         )

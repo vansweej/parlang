@@ -106,6 +106,200 @@ fn duplicate_top_level_constructor_names_are_rejected() {
     ));
 }
 
+fn single_parsed_decl(source: &str) -> Decl {
+    let program = parse_program(source).unwrap();
+    assert_eq!(program.body, None);
+    assert_eq!(program.decls.len(), 1, "expected one decl in {source}");
+    program.decls[0].clone()
+}
+
+#[test]
+fn class_declaration_parses_name_param_and_methods() {
+    let Decl::Class {
+        name,
+        param,
+        superclasses,
+        methods,
+        doc,
+    } = single_parsed_decl("class Eq a where { eq : a -> a -> Bool };")
+    else {
+        panic!("expected a class declaration");
+    };
+    assert_eq!(name, "Eq");
+    assert_eq!(param, "a");
+    assert!(superclasses.is_empty());
+    assert_eq!(doc, None);
+    assert_eq!(methods.len(), 1);
+    assert_eq!(methods[0].0, "eq");
+    assert_eq!(methods[0].1.to_string(), "(a -> (a -> Bool))");
+}
+
+#[test]
+fn class_declaration_accepts_trailing_semicolon_and_higher_kinded_param() {
+    let Decl::Class { param, methods, .. } =
+        single_parsed_decl("class Container f where { empty : f Int; size : f Int -> Int; };")
+    else {
+        panic!("expected a class declaration");
+    };
+    assert_eq!(param, "f");
+    let names: Vec<&str> = methods.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, vec!["empty", "size"]);
+    assert_eq!(
+        methods[0].1,
+        TypeAnnotation::VarApp(
+            "f".to_string(),
+            vec![TypeAnnotation::Concrete("Int".to_string())]
+        )
+    );
+}
+
+#[test]
+fn class_declaration_accepts_empty_body() {
+    let Decl::Class { name, methods, .. } = single_parsed_decl("class Marker a where {};") else {
+        panic!("expected a class declaration");
+    };
+    assert_eq!(name, "Marker");
+    assert!(methods.is_empty());
+}
+
+#[test]
+fn instance_without_context_parses() {
+    let Decl::Instance {
+        class,
+        context,
+        head,
+        methods,
+        ..
+    } = single_parsed_decl("instance Eq Int where { eq = fun x -> fun y -> x == y };")
+    else {
+        panic!("expected an instance declaration");
+    };
+    assert_eq!(class, "Eq");
+    assert!(context.is_empty());
+    assert_eq!(head, TypeAnnotation::Concrete("Int".to_string()));
+    assert_eq!(methods.len(), 1);
+    assert_eq!(methods[0].0, "eq");
+}
+
+#[test]
+fn instance_with_single_context_parses() {
+    let Decl::Instance { context, head, .. } = single_parsed_decl(
+        "instance Eq a => Eq (Option a) where { eq = fun x -> fun y -> true; };",
+    ) else {
+        panic!("expected an instance declaration");
+    };
+    assert_eq!(context, vec![("Eq".to_string(), "a".to_string())]);
+    assert_eq!(
+        head,
+        TypeAnnotation::App(
+            "Option".to_string(),
+            vec![TypeAnnotation::Var("a".to_string())]
+        )
+    );
+}
+
+#[test]
+fn instance_with_parenthesised_context_parses() {
+    let Decl::Instance { context, head, .. } = single_parsed_decl(
+        "instance (Eq a, Eq b) => Eq (Pair a b) where { eq = fun x -> fun y -> true };",
+    ) else {
+        panic!("expected an instance declaration");
+    };
+    assert_eq!(
+        context,
+        vec![
+            ("Eq".to_string(), "a".to_string()),
+            ("Eq".to_string(), "b".to_string())
+        ]
+    );
+    assert_eq!(
+        head,
+        TypeAnnotation::App(
+            "Pair".to_string(),
+            vec![
+                TypeAnnotation::Var("a".to_string()),
+                TypeAnnotation::Var("b".to_string())
+            ]
+        )
+    );
+}
+
+#[test]
+fn instance_for_type_constructor_parses() {
+    let Decl::Instance { head, methods, .. } =
+        single_parsed_decl("instance Container List where { empty = Nil; size = fun xs -> 0 };")
+    else {
+        panic!("expected an instance declaration");
+    };
+    assert_eq!(head, TypeAnnotation::Concrete("List".to_string()));
+    let names: Vec<&str> = methods.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, vec!["empty", "size"]);
+}
+
+#[test]
+fn class_and_instance_mix_with_ordinary_declarations() {
+    let source = "let one = 1; class Marker a where {}; instance Marker Int where {}; one";
+    let program = parse_program(source).unwrap();
+    assert_eq!(program.decls.len(), 3);
+    assert!(matches!(program.decls[1], Decl::Class { .. }));
+    assert!(matches!(program.decls[2], Decl::Instance { .. }));
+    assert!(program.body.is_some());
+}
+
+#[test]
+fn class_keywords_are_not_identifiers() {
+    for source in [
+        "let where = 1; 0",
+        "let class = 1; 0",
+        "let instance = 1; 0",
+    ] {
+        assert!(parse_program(source).is_err(), "{source} should not parse");
+    }
+}
+
+#[test]
+fn malformed_class_and_instance_headers_are_rejected() {
+    for source in [
+        "class Eq a => Ord a where {};",
+        "class Eq a b where {};",
+        "class Eq a where {}",
+        "class C in where {};",
+        "class C where where {};",
+        "class Eq a where { eq = 1 };",
+        "instance Eq a >= Eq Int where {};",
+        "instance Eq a = Eq Int where {};",
+        "instance Eq where {};",
+        "instance Eq Int where { eq : Int };",
+    ] {
+        assert!(parse_program(source).is_err(), "{source} should not parse");
+    }
+}
+
+#[test]
+fn parsed_class_program_is_rejected_by_the_typechecker() {
+    assert_eq!(
+        run("class Eq a where { eq : a -> a -> Bool }; 1"),
+        Err("type classes are not supported yet: class Eq".to_string())
+    );
+}
+
+#[test]
+fn parsed_instance_program_is_rejected_by_the_evaluator() {
+    let source = "instance Eq Int where { eq = fun x -> fun y -> x == y }; 1";
+    let program = parse_program(source).unwrap();
+    assert_eq!(
+        eval_program(&program, &Environment::new()),
+        Err(EvalError::ClassesNotExecutable("instance Eq".to_string()))
+    );
+}
+
+#[test]
+fn identifiers_prefixed_by_class_keywords_still_work() {
+    let source = "let classify = fun x -> x ; let whereabouts = 2 ; let instances = 3 ; \
+                  classify whereabouts + instances";
+    assert_eq!(run(source), Ok(Value::Int(5)));
+}
+
 #[test]
 fn top_level_data_requires_a_semicolon() {
     assert!(parse_program("data Foo = A B").is_err());
