@@ -2,6 +2,9 @@
 
 use std::fmt::Write;
 
+use crate::dictionary::{erase_program, insert_dictionaries, EraseError};
+use crate::typechecker::TypeEnv;
+use crate::typed_ast::TypedProgram;
 use crate::{check_elaborated, elaborate_program, typecheck_program_typed, Elaborated, Program};
 use parlang_core::{
     check_function, core_to_dot, eval, reduction_terms, render_value, trace, Environment,
@@ -31,6 +34,35 @@ fn with_newline(mut text: String) -> String {
         text.push('\n');
     }
     text
+}
+
+/// The untyped program the surface evaluator runs for the type-checked
+/// `program`: the dictionary translation of `typed`, erased back to an
+/// untyped `Program`, when dictionary insertion changed anything; else
+/// `program` itself. A translation containing `load` also keeps `program`,
+/// because the untyped loaded body never receives dictionaries.
+///
+/// `env` is the type environment `typed` was checked in, after checking.
+///
+/// # Errors
+///
+/// `dictionary insertion error: <e>` when insertion fails and
+/// `dictionary erasure error: <e>` when erasure fails.
+pub fn surface_program(
+    program: &Program,
+    typed: &TypedProgram,
+    env: &TypeEnv,
+) -> Result<Program, String> {
+    let translated =
+        insert_dictionaries(typed, env).map_err(|e| format!("dictionary insertion error: {e}"))?;
+    if translated == *typed {
+        return Ok(program.clone());
+    }
+    match erase_program(&translated) {
+        Ok(erased) => Ok(erased),
+        Err(EraseError::Load(_)) => Ok(program.clone()),
+        Err(error) => Err(format!("dictionary erasure error: {error}")),
+    }
 }
 
 /// Elaborates and Core-Lint-checks `program`, returning the elaborated Core program.
@@ -342,5 +374,41 @@ mod tests {
             kernel_check(&prog("1"), "nope"),
             Err("kernel-check error: unknown function: nope".to_string())
         );
+    }
+
+    /// `src` parsed, and the program `surface_program` selects for it.
+    fn surface(src: &str) -> (Program, Program) {
+        let program = prog(src);
+        let mut env = TypeEnv::new();
+        let typed =
+            crate::typecheck_program_typed_with_env(&program, &mut env).expect("type checks");
+        let runnable = surface_program(&program, &typed, &env).expect("surface program");
+        (program, runnable)
+    }
+
+    #[test]
+    fn surface_program_keeps_programs_without_dictionaries() {
+        for src in ["1 + 2", "1 == 2", "let id = fun x -> x; id 3"] {
+            let (program, runnable) = surface(src);
+            assert_eq!(runnable, program, "{src}");
+        }
+    }
+
+    #[test]
+    fn surface_program_erases_inserted_dictionaries() {
+        let (program, runnable) = surface("let same = fun x -> fun y -> x == y; same 1 2");
+        assert_ne!(runnable, program);
+        let first = runnable.decls.first();
+        assert!(
+            matches!(first, Some(crate::Decl::Let { name, .. }) if name == "$dict_Eq_Int"),
+            "{first:?}"
+        );
+    }
+
+    #[test]
+    fn surface_program_keeps_programs_with_load() {
+        let src = "let same = fun x -> fun y -> x == y;\nload \"nofile.par\" in same 1 1";
+        let (program, runnable) = surface(src);
+        assert_eq!(runnable, program);
     }
 }

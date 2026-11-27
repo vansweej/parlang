@@ -257,6 +257,72 @@ fn executes_map_example() {
     );
 }
 
+/// The parsed `relative_path` example and the program
+/// `parlang::pipeline::surface_program` selects for it.
+fn example_surface_programs(
+    relative_path: &str,
+) -> Result<(parlang::Program, parlang::Program), String> {
+    let source = example_source(relative_path)?;
+    let program = parse_program(&source)?;
+    let mut env = parlang::TypeEnv::new();
+    let typed = parlang::typecheck_program_typed_with_env(&program, &mut env)
+        .map_err(|error| error.to_string())?;
+    let runnable = parlang::pipeline::surface_program(&program, &typed, &env)?;
+    Ok((program, runnable))
+}
+
+/// Evaluate `relative_path` both directly and through the dictionary
+/// translation `surface_program` selects, comparing the resulting `Value`s
+/// structurally (not their `Debug` text, whose field order is
+/// `HashMap`-dependent and may legitimately differ between the two runs).
+fn example_agrees_via_dictionaries(relative_path: &str) -> Result<bool, String> {
+    let rel = relative_path.to_string();
+    run_on_evaluator_stack(move || -> Result<bool, String> {
+        let source = example_source(&rel)?;
+        let program = parse_program(&source)?;
+        typecheck_program(&program).map_err(|error| error.to_string())?;
+        let direct =
+            eval_program(&program, &Environment::new()).map_err(|error| error.to_string())?;
+
+        let mut env = parlang::TypeEnv::new();
+        let typed = parlang::typecheck_program_typed_with_env(&program, &mut env)
+            .map_err(|error| error.to_string())?;
+        let runnable = parlang::pipeline::surface_program(&program, &typed, &env)?;
+        let translated =
+            eval_program(&runnable, &Environment::new()).map_err(|error| error.to_string())?;
+
+        Ok(direct == translated)
+    })
+    .map_err(|error| error.to_string())?
+}
+
+#[test]
+fn every_example_agrees_through_dictionary_translation() {
+    let mut failures = Vec::new();
+    for rel in &example_rels() {
+        match example_agrees_via_dictionaries(rel) {
+            Ok(true) => {}
+            Ok(false) => failures.push(format!("{rel}: values disagree")),
+            Err(error) => failures.push(format!("{rel}: {error}")),
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "dictionary translation changed results:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn map_example_runs_its_erased_translation() {
+    let outcome = run_on_evaluator_stack(|| {
+        example_surface_programs("examples/stdlib/map.par")
+            .map(|(program, runnable)| runnable != program)
+    })
+    .map_err(|error| error.to_string());
+    assert_eq!(outcome, Ok(Ok(true)));
+}
+
 #[test]
 fn executes_treemap_example() {
     assert_eq!(

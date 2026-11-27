@@ -32,10 +32,12 @@
 //! generalised functions. A later Core to Core specialiser (ADR 0010,
 //! eligibility on specialised Core) may make them kernel-eligible.
 
+mod erase;
 mod evidence;
 mod insert;
 mod program;
 
+pub use erase::{erase_program, EraseError};
 pub use program::insert_dictionaries;
 
 pub use evidence::{
