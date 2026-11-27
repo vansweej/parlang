@@ -6,7 +6,7 @@
 #   md|<book .md file>         pandoc Markdown hand-written chapter
 #   appendix                   switch to appendix numbering (PDF only)
 #   examples                   generated chapter listing every examples/*.par
-#   glyphs                     glyph coverage table (PDF only; setup period)
+#   glyphs                     glyph coverage table appendix (PDF only; off: uncomment #glyphs for font debugging)
 part|Language reference|book/front/part-language.md
 doc|docs/LANGUAGE_SPEC.md
 doc|docs/TYPE_SYSTEM.md
@@ -41,4 +41,4 @@ doc|docs/adr/0006-core-system-f-term-erasure.md
 doc|docs/adr/0007-core-explicit-typing-and-lint.md
 doc|docs/adr/0008-core-cek-machine.md
 doc|docs/adr/0009-surface-to-core-elaboration.md
-glyphs
+#glyphs
