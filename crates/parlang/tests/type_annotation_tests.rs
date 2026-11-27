@@ -315,6 +315,9 @@ fn test_display_round_trips_annotated_fun() {
         "fun (f : Int -> Int) -> f 1",
         "fun (x : a) -> x",
         "fun (b : Bool) -> fun (n : Int) -> if b then n else 0",
+        "fun (x : Either (List a) b) -> x",
+        "fun (t : Pair (Option Int) (List (List a))) -> t",
+        "fun (g : List (a -> b)) -> g",
     ];
     for src in sources {
         let parsed = parse_expr(src).unwrap();
@@ -335,6 +338,36 @@ fn test_display_round_trips_annotated_fun() {
         format!("{}", parse_expr("fun (f : Int -> Int) -> f 1").unwrap()),
         "(fun (f : (Int -> Int)) -> (f 1))",
     );
+
+    // Nested applied and function arguments keep their parentheses.
+    let either_src = "fun (x : Either (List a) b) -> x";
+    let either = parse_expr(either_src).unwrap();
+    assert_eq!(format!("{either}"), "(fun (x : Either (List a) b) -> x)");
+    let lambda_src = "fun (g : List (a -> b)) -> g";
+    let lambda = parse_expr(lambda_src).unwrap();
+    assert_eq!(format!("{lambda}"), "(fun (g : List (a -> b)) -> g)");
+}
+
+#[test]
+fn test_display_parenthesises_nested_applied_annotation_args() {
+    let src = "let p : Either (List a) b = q in p";
+    let parsed = parse_expr(src).unwrap();
+    let printed = format!("{parsed}");
+    assert_eq!(printed, "(let p : Either (List a) b = q in p)");
+    let reparsed = parse_expr(&printed).unwrap();
+    assert_eq!(
+        parsed, reparsed,
+        "round-trip mismatch for {src:?}: printed as {printed:?}",
+    );
+
+    let deep_src = "fun (t : Pair (Option Int) (List (List a))) -> t";
+    let deep = parse_expr(deep_src).unwrap();
+    assert_eq!(
+        format!("{deep}"),
+        "(fun (t : Pair (Option Int) (List (List a))) -> t)",
+    );
+    let deep_reparsed = parse_expr(&format!("{deep}")).unwrap();
+    assert_eq!(deep, deep_reparsed);
 }
 
 const LIST_DECL: &str = "data List a = Nil | Cons a (List a) in ";
