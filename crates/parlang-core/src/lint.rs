@@ -595,7 +595,7 @@ fn synth_tyapp(env: &mut LintEnv, t: &Term, ty: &Type) -> Result<Type, LintError
     Ok(body.subst(&a, ty))
 }
 
-const RESERVED_PRIMS: &[&str] = &["if", "+", "-", "*", "/", "<", "eq"];
+pub(crate) const RESERVED_PRIMS: &[&str] = &["if", "+", "-", "*", "/", "<", "eq"];
 
 fn synth_con(
     env: &mut LintEnv,

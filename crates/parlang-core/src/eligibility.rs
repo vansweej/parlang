@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{self, Display, Formatter};
 
-use crate::lint::LintEnv;
-use crate::term::Term;
+use crate::lint::{LintEnv, RESERVED_PRIMS};
+use crate::term::{Alt, Term};
 use crate::ty::Type;
 
 /// The `fresh_name` prefix the match compiler uses for join points, without
@@ -128,8 +128,12 @@ pub fn find_binding<'a>(root: &'a Term, name: &str) -> Option<&'a Term> {
 struct FunctionShape<'a> {
     /// Number of leading `TyLam` binders.
     tylams: usize,
-    /// Leading parameter binder types with their `Lam` nodes, outermost first.
-    params: Vec<(&'a Type, &'a Term)>,
+    /// The self-loop `LetRec` binder, when the value is a self loop.
+    self_binder: Option<&'a str>,
+    /// Leading parameters as `(name, type, Lam node)`, outermost first.
+    params: Vec<(&'a str, &'a Type, &'a Term)>,
+    /// The term under the leading parameters.
+    body: &'a Term,
 }
 
 /// Peels leading `TyLam`s, unwraps a self-loop `LetRec(g, _, inner, Var g)`,
@@ -141,17 +145,24 @@ fn split_function(value: &Term) -> FunctionShape<'_> {
         tylams = tylams.saturating_add(1);
         cursor = body.as_ref();
     }
+    let mut self_binder = None;
     if let Term::LetRec(binder, _, inner, body) = cursor {
         if matches!(body.as_ref(), Term::Var(name) if name == binder) {
+            self_binder = Some(binder.as_str());
             cursor = inner.as_ref();
         }
     }
     let mut params = Vec::new();
-    while let Term::Lam(_, ty, body) = cursor {
-        params.push((ty, cursor));
+    while let Term::Lam(param, ty, body) = cursor {
+        params.push((param.as_str(), ty, cursor));
         cursor = body.as_ref();
     }
-    FunctionShape { tylams, params }
+    FunctionShape {
+        tylams,
+        self_binder,
+        params,
+        body: cursor,
+    }
 }
 
 /// Splits a type application spine into its head and arguments, in order.
@@ -244,6 +255,296 @@ fn is_acyclic(edges: &BTreeMap<&str, BTreeSet<&str>>) -> bool {
     removed == edges.len()
 }
 
+/// What a variable name refers to inside a checked function body.
+#[derive(Clone, Copy)]
+enum Head {
+    /// A parameter, `Case` binder or non-join `Let` binder.
+    Local,
+    /// A join point: its arity and whether its `Let` is in tail position.
+    Join(usize, bool),
+    /// The self-loop binder with its arity.
+    SelfCall(usize),
+    /// An earlier spine binding with its arity (`0` for constants).
+    Callee(usize),
+}
+
+/// Pre-order rule walker over one function body. `Let` binders, join
+/// points and `Case` binders are lexically scoped: each is visible only in
+/// its body and the previous scope is restored afterwards.
+struct Walker<'a> {
+    env: &'a LintEnv,
+    function: &'a str,
+    self_call: Option<(&'a str, usize)>,
+    joins: BTreeMap<&'a str, (usize, bool)>,
+    locals: BTreeSet<&'a str>,
+    callees: BTreeMap<&'a str, usize>,
+    violations: Vec<Violation>,
+}
+
+impl<'a> Walker<'a> {
+    /// Creates a walker for `function`; later `earlier` bindings win.
+    fn new(env: &'a LintEnv, function: &'a str, earlier: &[(&'a str, &'a Term)]) -> Self {
+        let mut callees = BTreeMap::new();
+        for &(binder, value) in earlier {
+            callees.insert(binder, split_function(value).params.len());
+        }
+        Walker {
+            env,
+            function,
+            self_call: None,
+            joins: BTreeMap::new(),
+            locals: BTreeSet::new(),
+            callees,
+            violations: Vec::new(),
+        }
+    }
+
+    fn report(&mut self, rule: Rule, node: &Term) {
+        self.violations.push(violation(rule, self.function, node));
+    }
+
+    /// Binds leading parameters as locals; one `R1` per non-kernel binder.
+    fn bind_params(&mut self, shape: &FunctionShape<'a>) {
+        for &(param, ty, node) in &shape.params {
+            if !is_kernel_type(ty, self.env) {
+                self.report(Rule::KernelTypes, node);
+            }
+            self.locals.insert(param);
+        }
+    }
+
+    fn resolve_callee(&mut self, name: &'a str) -> Option<usize> {
+        self.callees.get(name).copied()
+    }
+
+    fn classify(&mut self, name: &'a str) -> Result<Head, EligibilityError> {
+        if self.locals.contains(name) {
+            return Ok(Head::Local);
+        }
+        if let Some(&(arity, join_tail)) = self.joins.get(name) {
+            return Ok(Head::Join(arity, join_tail));
+        }
+        if let Some((_, arity)) = self.self_call.filter(|&(binder, _)| binder == name) {
+            return Ok(Head::SelfCall(arity));
+        }
+        self.resolve_callee(name)
+            .map(Head::Callee)
+            .ok_or_else(|| EligibilityError::Malformed(format!("unbound variable {name}")))
+    }
+
+    /// Walks `term`; `tail` is whether it is in tail position of the function.
+    /// A non-leading `Lam`, `LetRec` or `TyLam` is reported without descending
+    /// into it, so one offending node yields one violation, not a cascade.
+    fn walk(&mut self, term: &'a Term, tail: bool) -> Result<(), EligibilityError> {
+        match term {
+            Term::Var(name) => self.walk_var(term, name),
+            Term::App(..) => self.walk_app(term, tail),
+            Term::Let(name, value, body) => self.walk_let(name, value, body, tail),
+            Term::Con(name, ty_args, args) => self.walk_con(term, name, ty_args, args, tail),
+            Term::Case(scrutinee, alts) => self.walk_case(term, scrutinee, alts, tail),
+            Term::TyApp(inner, ty) => {
+                if !is_kernel_type(ty, self.env) {
+                    self.report(Rule::KernelTypes, term);
+                }
+                self.walk(inner, tail)
+            }
+            Term::Lam(..) => {
+                self.report(Rule::FirstOrder, term);
+                Ok(())
+            }
+            Term::LetRec(..) => {
+                self.report(Rule::Recursion, term);
+                Ok(())
+            }
+            Term::TyLam(..) => {
+                self.report(Rule::Polymorphism, term);
+                Ok(())
+            }
+            // Every base type, including Float, Char and Unit, is a kernel type.
+            Term::Lit(_) => Ok(()),
+        }
+    }
+
+    fn walk_var(&mut self, term: &Term, name: &'a str) -> Result<(), EligibilityError> {
+        match self.classify(name)? {
+            Head::Local | Head::Callee(0) => {}
+            Head::Join(..) | Head::SelfCall(_) | Head::Callee(_) => {
+                self.report(Rule::FirstOrder, term);
+            }
+        }
+        Ok(())
+    }
+
+    fn walk_app(&mut self, term: &'a Term, tail: bool) -> Result<(), EligibilityError> {
+        let mut args = Vec::new();
+        let mut head = term;
+        while let Term::App(func, arg) = head {
+            args.push(arg.as_ref());
+            head = func.as_ref();
+        }
+        args.reverse();
+        while let Term::TyApp(inner, ty) = head {
+            if !is_kernel_type(ty, self.env) {
+                self.report(Rule::KernelTypes, head);
+            }
+            head = inner.as_ref();
+        }
+        self.check_call(term, head, args.len(), tail)?;
+        for arg in args {
+            self.walk(arg, false)?;
+        }
+        Ok(())
+    }
+
+    /// A join call is a jump only when it is in tail position or its `Let`
+    /// is not; any other join call is a local function call (`R2`).
+    fn check_call(
+        &mut self,
+        term: &Term,
+        head: &'a Term,
+        count: usize,
+        tail: bool,
+    ) -> Result<(), EligibilityError> {
+        let Term::Var(name) = head else {
+            self.report(Rule::FirstOrder, term);
+            return Ok(());
+        };
+        match self.classify(name)? {
+            Head::SelfCall(arity) => {
+                if count != arity {
+                    self.report(Rule::FirstOrder, term);
+                }
+                if !tail {
+                    self.report(Rule::Recursion, term);
+                }
+            }
+            Head::Join(arity, join_tail) if count == arity && (tail || !join_tail) => {}
+            Head::Callee(arity) if arity > 0 && count == arity => {}
+            Head::Local | Head::Join(..) | Head::Callee(_) => self.report(Rule::FirstOrder, term),
+        }
+        Ok(())
+    }
+
+    /// A join body inherits this `Let`'s tail flag: the match compiler emits
+    /// join calls only at decision-tree leaves, which are in tail position
+    /// relative to the match, so a join body is in tail position iff the
+    /// match is. Locals and joins are restored after the body.
+    fn walk_let(
+        &mut self,
+        name: &'a str,
+        value: &'a Term,
+        body: &'a Term,
+        tail: bool,
+    ) -> Result<(), EligibilityError> {
+        let saved_locals = self.locals.clone();
+        let saved_joins = self.joins.clone();
+        if is_join_point(name) && matches!(value, Term::Lam(..)) {
+            let shape = split_function(value);
+            self.bind_params(&shape);
+            self.walk(shape.body, tail)?;
+            self.locals.clone_from(&saved_locals);
+            self.joins.insert(name, (shape.params.len(), tail));
+        } else {
+            self.walk(value, false)?;
+            self.locals.insert(name);
+        }
+        let result = self.walk(body, tail);
+        self.locals = saved_locals;
+        self.joins = saved_joins;
+        result
+    }
+
+    fn walk_con(
+        &mut self,
+        term: &Term,
+        name: &str,
+        ty_args: &[Type],
+        args: &'a [Term],
+        tail: bool,
+    ) -> Result<(), EligibilityError> {
+        if name == "if" {
+            for (index, arg) in args.iter().enumerate() {
+                self.walk(arg, tail && index > 0)?;
+            }
+            return Ok(());
+        }
+        if !RESERVED_PRIMS.contains(&name) {
+            let env = self.env;
+            if !ty_args.iter().all(|ty| is_kernel_type(ty, env)) {
+                self.report(Rule::KernelTypes, term);
+            }
+            if !env
+                .owner_of(name)
+                .is_some_and(|owner| is_kernel_data(owner, env))
+            {
+                self.report(Rule::Data, term);
+            }
+        }
+        for arg in args {
+            self.walk(arg, false)?;
+        }
+        Ok(())
+    }
+
+    /// Each alternative's binders are visible only in its own body.
+    fn walk_case(
+        &mut self,
+        term: &Term,
+        scrutinee: &'a Term,
+        alts: &'a [Alt],
+        tail: bool,
+    ) -> Result<(), EligibilityError> {
+        self.walk(scrutinee, false)?;
+        let env = self.env;
+        let owner = alts.first().and_then(|alt| env.owner_of(&alt.con));
+        if !owner.is_some_and(|name| is_kernel_data(name, env)) {
+            self.report(Rule::Data, term);
+        }
+        for alt in alts {
+            let saved = self.locals.clone();
+            self.locals.extend(alt.binders.iter().map(String::as_str));
+            let result = self.walk(&alt.body, tail);
+            self.locals = saved;
+            result?;
+        }
+        Ok(())
+    }
+}
+
+/// Collects the root `Let` spine bindings of `root`, outermost first.
+fn spine_bindings(root: &Term) -> Vec<(&str, &Term)> {
+    let mut bindings = Vec::new();
+    let mut cursor = root;
+    while let Term::Let(binder, value, body) = cursor {
+        bindings.push((binder.as_str(), value.as_ref()));
+        cursor = body.as_ref();
+    }
+    bindings
+}
+
+/// Checks the spine binding at `index` against the bindings before it.
+fn check_binding<'a>(
+    bindings: &[(&'a str, &'a Term)],
+    index: usize,
+    env: &'a LintEnv,
+    instantiation: &[Type],
+) -> Result<Vec<Violation>, EligibilityError> {
+    let (Some(&(name, value)), Some(earlier)) = (bindings.get(index), bindings.get(..index)) else {
+        return Err(EligibilityError::Malformed(format!(
+            "no spine binding {index}"
+        )));
+    };
+    let shape = split_function(value);
+    let mut walker = Walker::new(env, name, earlier);
+    if shape.tylams != instantiation.len() {
+        walker.report(Rule::Polymorphism, value);
+    }
+    walker.bind_params(&shape);
+    walker.self_call = shape.self_binder.map(|binder| (binder, shape.params.len()));
+    walker.walk(shape.body, true)?;
+    Ok(walker.violations)
+}
+
 /// Builds a violation of `rule` in `function` at `node`.
 fn violation(rule: Rule, function: &str, node: &Term) -> Violation {
     Violation {
@@ -255,9 +556,13 @@ fn violation(rule: Rule, function: &str, node: &Term) -> Violation {
 
 /// Checks whether top-level function `name` of `root` is kernel-eligible.
 ///
-/// `instantiation` supplies type arguments for a generalised function; a
-/// `TyLam` count that differs from its length is an `R5` violation. Each
-/// leading parameter whose type is not a kernel type is one `R1` violation.
+/// Rules: `R1` binder, type-argument and parameter types are kernel types;
+/// `R2` calls are saturated direct calls and no non-leading lambda appears;
+/// `R3` recursion is self tail recursion only; `R4` constructors and cases
+/// use non-recursive kernel data; `R5` the `TyLam` count equals the length
+/// of `instantiation` and no inner `TyLam` appears. Every earlier spine
+/// binding the function references is checked the same way, transitively,
+/// and its violations are appended after the function's own.
 ///
 /// # Errors
 ///
@@ -269,18 +574,12 @@ pub fn check_function(
     name: &str,
     instantiation: &[Type],
 ) -> Result<Report, EligibilityError> {
-    let value = find_binding(root, name)
+    let bindings = spine_bindings(root);
+    let index = bindings
+        .iter()
+        .rposition(|&(binder, _)| binder == name)
         .ok_or_else(|| EligibilityError::UnknownFunction(name.to_string()))?;
-    let shape = split_function(value);
-    let mut violations = Vec::new();
-    if shape.tylams != instantiation.len() {
-        violations.push(violation(Rule::Polymorphism, name, value));
-    }
-    for &(ty, node) in &shape.params {
-        if !is_kernel_type(ty, env) {
-            violations.push(violation(Rule::KernelTypes, name, node));
-        }
-    }
+    let violations = check_binding(&bindings, index, env, instantiation)?;
     if violations.is_empty() {
         Ok(Report::Eligible)
     } else {
