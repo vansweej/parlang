@@ -301,9 +301,10 @@ fn fmt_type_def(
     write!(f, " in {body})")
 }
 
-/// Write one constructor payload field preceded by a space. Applied types are
-/// parenthesised so the output re-parses as a single atomic field; function
-/// types already print their own parentheses.
+/// Write one constructor payload field or applied-type argument preceded by a
+/// space. Applied types are parenthesised so the output re-parses as a single
+/// atomic field; function types already print their own parentheses. Used for
+/// constructor payloads and for the arguments of `TypeAnnotation::App`.
 fn fmt_payload_field(f: &mut fmt::Formatter, ty: &TypeAnnotation) -> fmt::Result {
     match ty {
         TypeAnnotation::App(..) => write!(f, " ({ty})"),
@@ -480,7 +481,7 @@ impl fmt::Display for TypeAnnotation {
             TypeAnnotation::App(name, args) => {
                 write!(f, "{name}")?;
                 for arg in args {
-                    write!(f, " {arg}")?;
+                    fmt_payload_field(f, arg)?;
                 }
                 Ok(())
             }
