@@ -694,7 +694,7 @@ in if x < 10
 ```
 **Output:** `1`
 
-**Note:** See the [conditional.par](../examples/conditional.par) example file for more patterns.
+**Note:** See the [conditional.par](../crates/parlang/examples/conditional.par) example file for more patterns.
 
 ---
 
@@ -836,7 +836,7 @@ let category = fun n ->
 - Easier to add or modify cases
 - Less error-prone than nested if-then-else chains
 
-**Note:** See the [pattern_matching.par](../examples/pattern_matching.par) example file for more patterns.
+**Note:** See the [pattern_matching.par](../crates/parlang/examples/pattern_matching.par) example file for more patterns.
 
 ---
 
@@ -1083,7 +1083,7 @@ in add1and2 3
 ```
 **Output:** `6`
 
-**Note:** See the [currying.par](../examples/currying.par) example file for more patterns.
+**Note:** See the [currying.par](../crates/parlang/examples/currying.par) example file for more patterns.
 
 ---
 
@@ -1281,7 +1281,7 @@ in quadruple 5
 1. `double 5` = `10`
 2. `double 10` = `20`
 
-**Note:** See the [simple.par](../examples/simple.par) example file.
+**Note:** See the [simple.par](../crates/parlang/examples/simple.par) example file.
 
 ### Conditional Function Selection
 

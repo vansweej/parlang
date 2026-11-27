@@ -289,6 +289,6 @@ Potential future enhancements:
 
 ## See Also
 
-- [Pattern Matching Guide](MATCH_EXPRESSIONS.md)
-- [Type System Overview](TYPES.md)
-- [Examples](../examples/)
+- [Exhaustiveness Checking](EXHAUSTIVENESS_CHECKING.md)
+- [Type System Overview](TYPE_SYSTEM.md)
+- [Examples](../crates/parlang/examples/)
