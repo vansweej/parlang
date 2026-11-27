@@ -451,7 +451,7 @@ fn repl_api_persists_class_declarations() {
 }
 
 #[test]
-fn typechecker_checks_class_and_rejects_instance_decls() {
+fn typechecker_checks_class_and_instance_decls() {
     assert_eq!(
         typecheck_program(&single_decl_program(sample_class_decl())),
         Err(TypeError::DuplicateClass("Eq".to_string()))
@@ -469,11 +469,7 @@ fn typechecker_checks_class_and_rejects_instance_decls() {
     );
     assert_eq!(
         typecheck_program(&single_decl_program(sample_instance_decl())),
-        Err(TypeError::ClassesNotSupportedYet("instance Eq".to_string()))
-    );
-    assert_eq!(
-        TypeError::ClassesNotSupportedYet("class Eq".to_string()).to_string(),
-        "type classes are not supported yet: class Eq"
+        Err(TypeError::UnboundVariable("Option".to_string()))
     );
 }
 
@@ -496,5 +492,184 @@ fn evaluator_rejects_class_and_instance_decls() {
     assert_eq!(
         EvalError::ClassesNotExecutable("instance Eq".to_string()).to_string(),
         "type classes are not executable yet: instance Eq"
+    );
+}
+
+const OPT_SAME: &str = "data Opt a = N | S a;\nclass Same a where { same : a -> Bool };\n";
+
+const SAME_INSTANCES: &str = "instance Same Int where { same = fun x -> x == 0 };\n\
+     instance Same a => Same (Opt a) where { same = fun x -> (match x with | N -> true | S v -> same v) };\n";
+
+fn check_source(parts: &[&str]) -> Result<parlang::Type, TypeError> {
+    let program = parse_program(&parts.concat()).unwrap();
+    typecheck_program(&program)
+}
+
+#[test]
+fn instance_with_context_resolves_through_the_context() {
+    let parsed = parse_program(&[OPT_SAME, SAME_INSTANCES, "0"].concat());
+    assert!(parsed.is_ok(), "{parsed:?}");
+    let ty = check_source(&[OPT_SAME, SAME_INSTANCES, "same (S (S 1))"]);
+    assert_eq!(ty, Ok(parlang::Type::Bool));
+    let missing = check_source(&[OPT_SAME, SAME_INSTANCES, "same (S true)"]);
+    assert_eq!(missing, Err(TypeError::NoInstance("Same Bool".to_string())));
+    let eq_opt = "data Opt a = N | S a;\n\
+                  instance Eq a => Eq (Opt a) where { eq = fun x -> fun y -> true };\n\
+                  eq (S 1) (S 2)";
+    assert_eq!(check_source(&[eq_opt]), Ok(parlang::Type::Bool));
+}
+
+#[test]
+fn instance_body_needs_its_context() {
+    let source = "instance Same (Opt a) where { same = fun x -> (match x with | N -> true | S v -> same v) };\n0";
+    let result = check_source(&[OPT_SAME, source]);
+    assert!(
+        matches!(result, Err(TypeError::NoInstance(_))),
+        "{result:?}"
+    );
+    let wrong = check_source(&[
+        OPT_SAME,
+        "instance Same Int where { same = fun x -> 1 };\n0",
+    ]);
+    assert!(
+        matches!(wrong, Err(TypeError::UnificationError(..))),
+        "{wrong:?}"
+    );
+}
+
+#[test]
+fn constructor_class_instance_is_kind_checked() {
+    let container = "data Opt a = N | S a;\nclass Container f where { size : f Int -> Int };\n";
+    let opt = "instance Container Opt where { size = fun x -> (match x with | N -> 0 | S v -> v) };\nsize (S 3)";
+    assert_eq!(check_source(&[container, opt]), Ok(parlang::Type::Int));
+    let int = check_source(&[
+        container,
+        "instance Container Int where { size = fun x -> 0 };\n0",
+    ]);
+    assert!(matches!(int, Err(TypeError::KindMismatch(..))), "{int:?}");
+    let bare = check_source(&[
+        OPT_SAME,
+        "instance Same Opt where { same = fun x -> true };\n0",
+    ]);
+    assert!(
+        matches!(bare, Err(TypeError::TypeConstructorArityMismatch(..))),
+        "{bare:?}"
+    );
+}
+
+#[test]
+fn instance_declaration_errors() {
+    let method_error = |instance: &str, method: &str| (instance.to_string(), method.to_string());
+    let (inst, meth) = method_error("Same Int", "same");
+    let missing = TypeError::MissingInstanceMethod {
+        instance: inst,
+        method: meth,
+    };
+    let (inst, meth) = method_error("Same Int", "other");
+    let unknown = TypeError::UnknownInstanceMethod {
+        instance: inst,
+        method: meth,
+    };
+    let (inst, meth) = method_error("Same Int", "same");
+    let twice = TypeError::DuplicateInstanceMethod {
+        instance: inst,
+        method: meth,
+    };
+    let (inst, meth) = method_error("Ident (Opt a)", "ident");
+    let specific = TypeError::InstanceMethodTooSpecific {
+        instance: inst,
+        method: meth,
+    };
+    let cases = [
+        (
+            "instance Nope Int where { };\n0",
+            TypeError::UnknownClass("Nope".to_string()),
+        ),
+        (
+            "instance Eq Int where { eq = fun x -> fun y -> x == y };\n0",
+            TypeError::DuplicateInstance("Eq Int".to_string()),
+        ),
+        (
+            "instance Same (Opt a) where { same = fun x -> true };\n\
+             instance Same (Opt b) where { same = fun x -> false };\n0",
+            TypeError::DuplicateInstance("Same (Opt b)".to_string()),
+        ),
+        (
+            "instance Same a where { same = fun x -> true };\n0",
+            TypeError::InvalidInstanceHead("Same a".to_string()),
+        ),
+        (
+            "data Pr a b = MkPr a b;\ninstance Same (Pr a a) where { same = fun x -> true };\n0",
+            TypeError::InvalidInstanceHead("Same (Pr a a)".to_string()),
+        ),
+        (
+            "instance Same (Opt Int) where { same = fun x -> true };\n0",
+            TypeError::InvalidInstanceHead("Same (Opt Int)".to_string()),
+        ),
+        (
+            "instance Same (a -> a) where { same = fun x -> true };\n0",
+            TypeError::InvalidInstanceHead("Same (a -> a)".to_string()),
+        ),
+        (
+            "type Num = Int;\ninstance Same Num where { same = fun x -> true };\n0",
+            TypeError::TypeSynonymInstance("Same Num".to_string()),
+        ),
+        (
+            "instance Same Foo where { same = fun x -> true };\n0",
+            TypeError::UnboundVariable("Foo".to_string()),
+        ),
+        (
+            "instance Same b => Same (Opt a) where { same = fun x -> true };\n0",
+            TypeError::InvalidInstanceContext("Same b".to_string()),
+        ),
+        (
+            "instance Nope a => Same (Opt a) where { same = fun x -> true };\n0",
+            TypeError::UnknownClass("Nope".to_string()),
+        ),
+        ("instance Same Int where { };\n0", missing),
+        (
+            "instance Same Int where { same = fun x -> true; other = 1 };\n0",
+            unknown,
+        ),
+        (
+            "instance Same Int where { same = fun x -> true; same = fun x -> false };\n0",
+            twice,
+        ),
+        (
+            "class Ident a where { ident : a -> a };\n\
+             instance Ident (Opt a) where { ident = fun x -> S 1 };\n0",
+            specific,
+        ),
+    ];
+    for (source, expected) in cases {
+        assert_eq!(check_source(&[OPT_SAME, source]), Err(expected), "{source}");
+    }
+}
+
+#[test]
+fn instance_programs_render_and_are_not_executable_yet() {
+    let source = [OPT_SAME, SAME_INSTANCES, "same 1"].concat();
+    let program = parse_program(&source).unwrap();
+    let typed = parlang::typecheck_program_typed(&program).unwrap();
+    let text = parlang::typed_program_to_text(&typed);
+    assert!(text.contains("decl 2: Instance Same Int"), "{text}");
+    assert!(text.contains("context: Same t"), "{text}");
+    assert!(text.contains("method same: "), "{text}");
+    let dot = parlang::typed_program_to_dot(&typed);
+    assert!(dot.contains("Instance\\nSame Int"), "{dot}");
+    assert_eq!(
+        parlang::typed_ast::requires_dictionary_passing(&typed),
+        Some("type classes are not executable yet: class Same".to_string())
+    );
+    let eq_only = "data Opt a = N | S a;\n\
+                   instance Eq a => Eq (Opt a) where { eq = fun x -> fun y -> true };\n0";
+    let typed_eq = parlang::typecheck_program_typed(&parse_program(eq_only).unwrap()).unwrap();
+    assert_eq!(
+        parlang::typed_ast::requires_dictionary_passing(&typed_eq),
+        Some("type classes are not executable yet: instance Eq".to_string())
+    );
+    assert_eq!(
+        run(eq_only),
+        Err("type classes are not executable yet: instance Eq".to_string())
     );
 }

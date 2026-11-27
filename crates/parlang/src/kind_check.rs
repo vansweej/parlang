@@ -344,6 +344,23 @@ pub(crate) fn check_annotation_kinds(env: &TypeEnv, ann: &TypeAnnotation) -> Res
     KindChecker::new(env, Site::Annotation).check(ann, &KindTerm::Star)
 }
 
+/// Check that the instance head `ann` has the class parameter's kind
+/// `expected`. A bare data type such as `Option` stands for its unapplied
+/// type constructor.
+///
+/// # Errors
+///
+/// Returns `TypeError::KindMismatch` when the kinds differ,
+/// `TypeError::TypeConstructorArityMismatch` for an unapplied constructor
+/// where `*` is expected, and the errors of `check_annotation_kinds`.
+pub(crate) fn check_instance_head_kind(
+    env: &TypeEnv,
+    ann: &TypeAnnotation,
+    expected: &Kind,
+) -> Result<(), TypeError> {
+    KindChecker::new(env, Site::Annotation).check(ann, &KindTerm::of_kind(expected))
+}
+
 /// Infer the kind of the class parameter `param` from the method
 /// signatures in `methods`, checking that every signature has kind `*`.
 ///

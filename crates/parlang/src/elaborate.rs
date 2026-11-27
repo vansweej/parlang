@@ -678,6 +678,12 @@ impl Elab {
                         "type classes need dictionary passing (M2.3)",
                     ));
                 }
+                TypedDecl::Instance { .. } => {
+                    return Err(unsupported(
+                        "instance declaration",
+                        "type classes need dictionary passing (M2.3)",
+                    ));
+                }
                 TypedDecl::Let {
                     name,
                     scheme,

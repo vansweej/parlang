@@ -31,8 +31,9 @@ pub struct TypeEnv {
     constructors: HashMap<String, ConstructorInfo>,
     /// Declared data types: maps type name to its parameter kinds
     data_kinds: HashMap<String, Vec<parlang_core::Kind>>,
-    /// Instance heads per class name (only the built-in `Eq` instances for now).
-    instances: HashMap<String, Vec<Type>>,
+    /// Instances per class name: the built-in `Eq` instances, then user
+    /// instances in declaration order.
+    instances: HashMap<String, Vec<InstanceInfo>>,
     /// Declared classes by name, seeded with the built-in `Eq`.
     classes: HashMap<String, ClassInfo>,
     /// Class methods by name, with their owning class and constrained scheme.
@@ -76,6 +77,15 @@ pub struct MethodInfo {
     pub class: String,
     /// Scheme quantifying the class parameter first, under `Class param`.
     pub scheme: TypeScheme,
+}
+
+/// A class instance: its `head` and its `context` over the head's variables.
+#[derive(Debug, Clone, PartialEq)]
+struct InstanceInfo {
+    /// Instance head, e.g. `Option t3` for `instance Eq (Option a)`.
+    head: Type,
+    /// Constraints the head's variables must satisfy, e.g. `Eq t3`.
+    context: Vec<Constraint>,
 }
 
 impl TypeEnv {
@@ -225,40 +235,56 @@ impl TypeEnv {
     }
 
     /// Context reduction (Haskell 98): apply `subst` to each wanted
-    /// constraint, discharge it when an instance matches, and keep it
-    /// (deduplicated) when every argument has a type-variable head.
+    /// constraint and keep it (deduplicated) when every argument has a
+    /// type-variable head. Otherwise replace it by the context of the
+    /// instance whose head matches, and reduce those constraints in turn.
     ///
     /// Returns `NoInstance` for an argument with a type-constructor head and
-    /// no matching instance.
+    /// no matching instance. Reduction terminates because a Haskell 98
+    /// instance context only constrains variables of the instance head.
     fn reduce_constraints(
         &self,
         wanted: Vec<Constraint>,
         subst: &Substitution,
     ) -> Result<Vec<Constraint>, TypeError> {
+        let mut pending: Vec<Constraint> = wanted
+            .into_iter()
+            .rev()
+            .map(|constraint| apply_subst_constraint(subst, &constraint))
+            .collect();
         let mut residual: Vec<Constraint> = Vec::new();
-        for constraint in wanted {
-            let constraint = apply_subst_constraint(subst, &constraint);
+        while let Some(constraint) = pending.pop() {
             if constraint.args.iter().all(has_var_head) {
                 if !residual.contains(&constraint) {
                     residual.push(constraint);
                 }
-            } else if !self.has_instance(&constraint) {
-                return Err(TypeError::NoInstance(constraint.to_string()));
+            } else {
+                let Some(context) = self.instance_context(&constraint) else {
+                    return Err(TypeError::NoInstance(constraint.to_string()));
+                };
+                pending.extend(context.into_iter().rev());
             }
         }
         Ok(residual)
     }
 
-    /// Whether an instance matches `constraint` exactly. Built-in instances
-    /// have no context, so a match discharges the constraint.
-    fn has_instance(&self, constraint: &Constraint) -> bool {
-        match (
-            self.instances.get(&constraint.class),
-            constraint.args.as_slice(),
-        ) {
-            (Some(heads), [arg]) => heads.contains(arg),
-            _ => false,
-        }
+    /// The context of the instance whose head matches the single argument
+    /// of `constraint`, instantiated at that argument, or `None` when no
+    /// instance matches.
+    fn instance_context(&self, constraint: &Constraint) -> Option<Vec<Constraint>> {
+        let [arg] = constraint.args.as_slice() else {
+            return None;
+        };
+        let instances = self.instances.get(&constraint.class)?;
+        instances.iter().find_map(|instance| {
+            let bound = match_instance_head(&instance.head, arg)?;
+            let context = instance
+                .context
+                .iter()
+                .map(|given| apply_subst_constraint(&bound, given))
+                .collect();
+            Some(context)
+        })
     }
 
     /// Record `constraint` as wanted in the shared accumulator.
@@ -355,13 +381,16 @@ type Substitution = HashMap<TypeVar, Type>;
 
 /// Built-in class instances: `Eq` for `Int`, `Bool`, `Char` and `Float`,
 /// exactly the types the surface evaluator compares with `==` at run time.
-fn builtin_instances() -> HashMap<String, Vec<Type>> {
-    let mut instances = HashMap::new();
-    instances.insert(
-        "Eq".to_string(),
-        vec![Type::Int, Type::Bool, Type::Char, Type::Float],
-    );
-    instances
+/// Each one has a nullary head and an empty context.
+fn builtin_instances() -> HashMap<String, Vec<InstanceInfo>> {
+    let eq = [Type::Int, Type::Bool, Type::Char, Type::Float]
+        .into_iter()
+        .map(|head| InstanceInfo {
+            head,
+            context: Vec::new(),
+        })
+        .collect();
+    HashMap::from([("Eq".to_string(), eq)])
 }
 
 /// The scheme of a method of `class` whose signature resolved to `ty`:
@@ -412,6 +441,28 @@ fn builtin_classes() -> (HashMap<String, ClassInfo>, HashMap<String, MethodInfo>
 /// Whether `ty` is headed by a type variable (`t` or an applied `t a`).
 fn has_var_head(ty: &Type) -> bool {
     matches!(ty, Type::Var(_) | Type::VarApp(..))
+}
+
+/// One-way match of the Haskell 98 instance `head` against `ty`. A base
+/// type matches itself. `T a1 .. an` with distinct type variables matches
+/// `T t1 .. tn` and binds each `ai` to `ti`. Returns the bindings.
+fn match_instance_head(head: &Type, ty: &Type) -> Option<Substitution> {
+    match (head, ty) {
+        (Type::SumType(name, params), Type::SumType(other, args))
+            if name == other && params.len() == args.len() =>
+        {
+            let mut bound = Substitution::new();
+            for (param, arg) in params.iter().zip(args) {
+                let Type::Var(var) = param else {
+                    return None;
+                };
+                bound.insert(var.clone(), arg.clone());
+            }
+            Some(bound)
+        }
+        _ if head == ty => Some(Substitution::new()),
+        _ => None,
+    }
 }
 
 /// Free type variables of every argument of `constraint`.
@@ -705,10 +756,6 @@ pub enum TypeError {
     NonExhaustiveMatch {
         missing: Vec<String>,
     },
-    /// TEMPORARY (M2.2a): `class`/`instance` declarations parse but are not
-    /// typechecked yet; the payload names the declaration, e.g. `class Eq`.
-    /// M2.2b replaces this with real class and instance typing.
-    ClassesNotSupportedYet(String),
     /// No instance matches a class constraint whose type has a type
     /// constructor head; the payload renders it, e.g. `Eq (List Int)`.
     NoInstance(String),
@@ -722,6 +769,37 @@ pub enum TypeError {
     /// A method signature that does not mention its class parameter (Haskell 98).
     MethodSignatureMissingClassParam {
         class: String,
+        method: String,
+    },
+    /// An instance or instance context naming an undeclared class.
+    UnknownClass(String),
+    /// An instance head that is not a base type or a data type applied to
+    /// distinct type variables (Haskell 98); the payload renders the instance.
+    InvalidInstanceHead(String),
+    /// An instance head naming a type alias (Haskell 98).
+    TypeSynonymInstance(String),
+    /// An instance overlapping an earlier instance of the same class.
+    DuplicateInstance(String),
+    /// An instance context constraint on a variable absent from the head.
+    InvalidInstanceContext(String),
+    /// An instance method its class does not declare.
+    UnknownInstanceMethod {
+        instance: String,
+        method: String,
+    },
+    /// An instance defining one method more than once.
+    DuplicateInstanceMethod {
+        instance: String,
+        method: String,
+    },
+    /// An instance missing a method of its class (no default methods).
+    MissingInstanceMethod {
+        instance: String,
+        method: String,
+    },
+    /// An instance method less polymorphic than its class signature.
+    InstanceMethodTooSpecific {
+        instance: String,
         method: String,
     },
 }
@@ -798,12 +876,20 @@ impl fmt::Display for TypeError {
                     "Kind mismatch for {ty}: expected kind {expected}, found {found}"
                 )
             }
-            TypeError::ClassesNotSupportedYet(_)
-            | TypeError::NoInstance(_)
+            TypeError::NoInstance(_)
             | TypeError::AmbiguousConstraint(_)
             | TypeError::DuplicateClass(_)
             | TypeError::DuplicateMethod(_)
-            | TypeError::MethodSignatureMissingClassParam { .. } => self.fmt_class_error(f),
+            | TypeError::MethodSignatureMissingClassParam { .. }
+            | TypeError::UnknownClass(_)
+            | TypeError::InvalidInstanceHead(_)
+            | TypeError::TypeSynonymInstance(_)
+            | TypeError::DuplicateInstance(_)
+            | TypeError::InvalidInstanceContext(_)
+            | TypeError::UnknownInstanceMethod { .. }
+            | TypeError::DuplicateInstanceMethod { .. }
+            | TypeError::MissingInstanceMethod { .. }
+            | TypeError::InstanceMethodTooSpecific { .. } => self.fmt_class_error(f),
         }
     }
 }
@@ -813,9 +899,6 @@ impl TypeError {
     /// to keep that function short.
     fn fmt_class_error(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeError::ClassesNotSupportedYet(what) => {
-                write!(f, "type classes are not supported yet: {what}")
-            }
             TypeError::NoInstance(constraint) => write!(f, "no instance for {constraint}"),
             TypeError::AmbiguousConstraint(constraint) => {
                 write!(f, "ambiguous type variable in constraint {constraint}")
@@ -825,6 +908,34 @@ impl TypeError {
             TypeError::MethodSignatureMissingClassParam { class, method } => write!(
                 f,
                 "Method '{method}' of class {class} does not mention the class parameter"
+            ),
+            TypeError::UnknownClass(name) => write!(f, "Unknown class: {name}"),
+            TypeError::InvalidInstanceHead(instance) => write!(
+                f,
+                "Invalid instance head in {instance}: expected a type constructor applied to distinct type variables"
+            ),
+            TypeError::TypeSynonymInstance(instance) => {
+                write!(f, "Type synonym in instance head: {instance}")
+            }
+            TypeError::DuplicateInstance(instance) => write!(f, "Duplicate instance: {instance}"),
+            TypeError::InvalidInstanceContext(constraint) => write!(
+                f,
+                "Instance context {constraint} must constrain a type variable of the instance head"
+            ),
+            TypeError::UnknownInstanceMethod { instance, method } => write!(
+                f,
+                "Instance {instance} defines '{method}', which is not a method of its class"
+            ),
+            TypeError::DuplicateInstanceMethod { instance, method } => write!(
+                f,
+                "Instance {instance} defines method '{method}' more than once"
+            ),
+            TypeError::MissingInstanceMethod { instance, method } => {
+                write!(f, "Instance {instance} does not define method '{method}'")
+            }
+            TypeError::InstanceMethodTooSpecific { instance, method } => write!(
+                f,
+                "Method '{method}' of instance {instance} is less polymorphic than its class signature"
             ),
             other => write!(f, "{other:?}"),
         }
@@ -2369,6 +2480,298 @@ fn check_class_decl(
     })
 }
 
+/// A validated instance head, shared by the checks of its method bodies.
+struct InstanceHead {
+    /// Rendered instance for error messages, e.g. `Eq (Option a)`.
+    label: String,
+    /// Resolved head type, e.g. `Option t3`.
+    head: Type,
+    /// Distinct type variables of `head`, in argument order.
+    vars: Vec<TypeVar>,
+    /// Context constraints over `vars`.
+    context: Vec<Constraint>,
+}
+
+/// Render the instance `class head` for error messages, e.g. `Eq (Option a)`.
+fn instance_label(class: &str, head: &crate::ast::TypeAnnotation) -> String {
+    use crate::ast::TypeAnnotation as Ann;
+    match head {
+        Ann::App(..) | Ann::VarApp(..) => format!("{class} ({head})"),
+        Ann::Concrete(_) | Ann::Var(_) | Ann::Fun(..) => format!("{class} {head}"),
+    }
+}
+
+/// Resolved instance head: the head type, its type variables in argument
+/// order, and the type allocated for each head variable name.
+type InstanceHeadResolution = (Type, Vec<TypeVar>, HashMap<String, Type>);
+
+/// Validate the Haskell 98 instance head `head` and resolve it.
+///
+/// The head must be a base type or a data type, bare or applied to distinct
+/// type variables, and must have the class parameter's kind `param_kind`.
+/// Returns the resolved head, its type variables in argument order, and the
+/// type allocated for each head variable name.
+fn check_instance_head(
+    label: &str,
+    head: &crate::ast::TypeAnnotation,
+    param_kind: &parlang_core::Kind,
+    env: &mut TypeEnv,
+) -> Result<InstanceHeadResolution, TypeError> {
+    use crate::ast::TypeAnnotation as Ann;
+    let invalid = || TypeError::InvalidInstanceHead(label.to_string());
+    let (name, args): (&String, &[Ann]) = match head {
+        Ann::Concrete(name) => (name, &[]),
+        Ann::App(name, args) => (name, args.as_slice()),
+        Ann::Var(_) | Ann::VarApp(..) | Ann::Fun(..) => return Err(invalid()),
+    };
+    let base = matches!(name.as_str(), "Int" | "Bool" | "Char" | "Float");
+    if !base && env.data_kinds(name).is_none() {
+        if env.resolve_type_alias(name).is_some() {
+            return Err(TypeError::TypeSynonymInstance(label.to_string()));
+        }
+        return Err(TypeError::UnboundVariable(name.clone()));
+    }
+    let mut names = HashMap::new();
+    let mut vars = Vec::with_capacity(args.len());
+    for arg in args {
+        let Ann::Var(var_name) = arg else {
+            return Err(invalid());
+        };
+        if names.contains_key(var_name) {
+            return Err(invalid());
+        }
+        let var = TypeVar(env.next_var);
+        env.advance_past(&var);
+        names.insert(var_name.clone(), Type::Var(var.clone()));
+        vars.push(var);
+    }
+    crate::kind_check::check_instance_head_kind(env, head, param_kind)?;
+    let head_ty = resolve_annotation_with_vars(head, env, &mut names)?;
+    Ok((head_ty, vars, names))
+}
+
+/// Resolve the instance `context`: each constraint must name a known class
+/// and a head variable from `names`.
+fn resolve_instance_context(
+    context: &[(String, String)],
+    names: &HashMap<String, Type>,
+    env: &TypeEnv,
+) -> Result<Vec<Constraint>, TypeError> {
+    let mut resolved = Vec::with_capacity(context.len());
+    for (class, var) in context {
+        if env.class_info(class).is_none() {
+            return Err(TypeError::UnknownClass(class.clone()));
+        }
+        let Some(ty) = names.get(var) else {
+            return Err(TypeError::InvalidInstanceContext(format!("{class} {var}")));
+        };
+        resolved.push(Constraint {
+            class: class.clone(),
+            args: vec![ty.clone()],
+        });
+    }
+    Ok(resolved)
+}
+
+/// Check that `defined` names every method of `class_methods` exactly once
+/// and nothing else (no default methods yet).
+fn check_instance_method_set(
+    label: &str,
+    class_methods: &[(String, TypeScheme)],
+    defined: &[(String, Expr)],
+) -> Result<(), TypeError> {
+    for (index, (method, _)) in defined.iter().enumerate() {
+        if !class_methods.iter().any(|(name, _)| name == method) {
+            return Err(TypeError::UnknownInstanceMethod {
+                instance: label.to_string(),
+                method: method.clone(),
+            });
+        }
+        if defined.iter().take(index).any(|(name, _)| name == method) {
+            return Err(TypeError::DuplicateInstanceMethod {
+                instance: label.to_string(),
+                method: method.clone(),
+            });
+        }
+    }
+    for (method, _) in class_methods {
+        if !defined.iter().any(|(name, _)| name == method) {
+            return Err(TypeError::MissingInstanceMethod {
+                instance: label.to_string(),
+                method: method.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// The images under `solution` of the `rigid` type variables of the
+/// instance method `method`. Each image must be a distinct type variable
+/// not in `free_in_env`; otherwise the method is
+/// `InstanceMethodTooSpecific`.
+fn check_rigid_images(
+    instance: &InstanceHead,
+    method: &str,
+    rigid: &[TypeVar],
+    solution: &Substitution,
+    free_in_env: &HashSet<TypeVar>,
+) -> Result<Vec<TypeVar>, TypeError> {
+    let too_specific = || TypeError::InstanceMethodTooSpecific {
+        instance: instance.label.clone(),
+        method: method.to_string(),
+    };
+    let mut images: Vec<TypeVar> = Vec::with_capacity(rigid.len());
+    for var in rigid {
+        let Type::Var(image) = apply_subst(solution, &Type::Var(var.clone())) else {
+            return Err(too_specific());
+        };
+        if images.contains(&image) || free_in_env.contains(&image) {
+            return Err(too_specific());
+        }
+        images.push(image);
+    }
+    Ok(images)
+}
+
+/// Check that every constraint in `residual` is one of the `givens`. The
+/// first other constraint is `NoInstance` when all its type variables are
+/// rigid `images`, and `AmbiguousConstraint` otherwise.
+fn check_residual_entailed(
+    residual: &[Constraint],
+    givens: &[Constraint],
+    images: &[TypeVar],
+) -> Result<(), TypeError> {
+    let Some(constraint) = residual
+        .iter()
+        .find(|constraint| !givens.contains(constraint))
+    else {
+        return Ok(());
+    };
+    let text = constraint.to_string();
+    let rigid_only = constraint_vars(constraint)
+        .iter()
+        .all(|var| images.contains(var));
+    if rigid_only {
+        return Err(TypeError::NoInstance(text));
+    }
+    Err(TypeError::AmbiguousConstraint(text))
+}
+
+/// Infer the body of the instance method `method` and check it against the
+/// class method scheme `scheme` instantiated at the instance head. Returns
+/// the resolved typed body.
+///
+/// The head variables and the scheme's other quantified variables must stay
+/// rigid (see `check_rigid_images`). Every constraint the body wants must
+/// follow from the instance context (see `check_residual_entailed`).
+fn check_instance_method(
+    instance: &InstanceHead,
+    method: &str,
+    scheme: &TypeScheme,
+    body: &Expr,
+    env: &mut TypeEnv,
+) -> Result<TypedExpr, TypeError> {
+    let mut signature = Substitution::new();
+    let mut rigid = instance.vars.clone();
+    if let Some((param, others)) = scheme.vars.split_first() {
+        signature.insert(param.clone(), instance.head.clone());
+        for var in others {
+            let fresh = TypeVar(env.next_var);
+            env.advance_past(&fresh);
+            signature.insert(var.clone(), Type::Var(fresh.clone()));
+            rigid.push(fresh);
+        }
+    }
+    let expected = apply_subst(&signature, &scheme.ty);
+    let mark = env.wanted_mark();
+    let (typed, body_subst) = infer_typed(body, env)?;
+    advance_next_var_from_inference(env, &typed.ty, &body_subst);
+    let inferred = apply_subst(&body_subst, &typed.ty);
+    let expected_subst = unify(&inferred, &expected)?;
+    let solution = compose_subst(&expected_subst, &body_subst);
+    let free_in_env = env.free_vars();
+    let images = check_rigid_images(instance, method, &rigid, &solution, &free_in_env)?;
+    let givens: Vec<Constraint> = instance
+        .context
+        .iter()
+        .map(|given| apply_subst_constraint(&solution, given))
+        .collect();
+    let wanted = env.take_wanted_since(mark);
+    let residual = env.reduce_constraints(wanted, &solution)?;
+    check_residual_entailed(&residual, &givens, &images)?;
+    Ok(resolve_typed(&solution, &typed))
+}
+
+/// Check one `instance` declaration of `class`, register it in
+/// `program_env`, and return its typed declaration.
+///
+/// Haskell 98 rules: the class exists; the head passes
+/// `check_instance_head`; the context constrains head variables only; the
+/// instance defines exactly the class methods; no earlier instance of
+/// `class` (built-ins included) overlaps the head. The instance is
+/// registered before its method bodies are checked, so a body may use the
+/// instance itself.
+fn check_instance_decl(
+    class: &str,
+    context: &[(String, String)],
+    head: &crate::ast::TypeAnnotation,
+    methods: &[(String, Expr)],
+    doc: Option<&str>,
+    program_env: &mut TypeEnv,
+) -> Result<TypedDecl, TypeError> {
+    let Some(class_info) = program_env.class_info(class).cloned() else {
+        return Err(TypeError::UnknownClass(class.to_string()));
+    };
+    let label = instance_label(class, head);
+    let (head_ty, vars, names) =
+        check_instance_head(&label, head, &class_info.param_kind, program_env)?;
+    let constraints = resolve_instance_context(context, &names, program_env)?;
+    check_instance_method_set(&label, &class_info.methods, methods)?;
+    let overlaps = program_env.instances.get(class).is_some_and(|known| {
+        known.iter().any(|other| {
+            match_instance_head(&other.head, &head_ty).is_some()
+                || match_instance_head(&head_ty, &other.head).is_some()
+        })
+    });
+    if overlaps {
+        return Err(TypeError::DuplicateInstance(label));
+    }
+    let registered = InstanceInfo {
+        head: head_ty.clone(),
+        context: constraints.clone(),
+    };
+    program_env
+        .instances
+        .entry(class.to_string())
+        .or_default()
+        .push(registered);
+    let instance = InstanceHead {
+        label,
+        head: head_ty,
+        vars,
+        context: constraints,
+    };
+    let mut typed_methods = Vec::with_capacity(methods.len());
+    for (method, body) in methods {
+        let Some((_, scheme)) = class_info.methods.iter().find(|(name, _)| name == method) else {
+            return Err(TypeError::UnknownInstanceMethod {
+                instance: instance.label.clone(),
+                method: method.clone(),
+            });
+        };
+        let typed = check_instance_method(&instance, method, scheme, body, program_env)?;
+        typed_methods.push((method.clone(), typed));
+    }
+    Ok(TypedDecl::Instance {
+        class: class.to_string(),
+        head: instance.head,
+        vars: instance.vars,
+        context: instance.context,
+        methods: typed_methods,
+        doc: doc.map(str::to_string),
+    })
+}
+
 /// Run the final declaration pass, binding each top-level `let` and collecting
 /// the typed declarations in source order.
 ///
@@ -2431,11 +2834,20 @@ fn collect_typed_decls(
                 doc.as_deref(),
                 program_env,
             )?),
-            Decl::Instance { class, .. } => {
-                return Err(TypeError::ClassesNotSupportedYet(format!(
-                    "instance {class}"
-                )));
-            }
+            Decl::Instance {
+                class,
+                context,
+                head,
+                methods,
+                doc,
+            } => decls.push(check_instance_decl(
+                class,
+                context,
+                head,
+                methods,
+                doc.as_deref(),
+                program_env,
+            )?),
         }
     }
     Ok(decls)
@@ -2542,13 +2954,9 @@ pub fn typecheck_program_typed_with_env(
                 }
                 aliases.insert(name.clone(), ty_expr.clone());
             }
-            // Classes are checked in declaration order by `collect_typed_decls`.
-            Decl::Let { .. } | Decl::Class { .. } => {}
-            Decl::Instance { class, .. } => {
-                return Err(TypeError::ClassesNotSupportedYet(format!(
-                    "instance {class}"
-                )));
-            }
+            // Classes and instances are checked in declaration order by
+            // `collect_typed_decls`.
+            Decl::Let { .. } | Decl::Class { .. } | Decl::Instance { .. } => {}
         }
     }
 
@@ -3433,6 +3841,40 @@ mod tests {
             env.generalize_constrained(&Type::Bool, lost, &HashMap::new()),
             Err(TypeError::AmbiguousConstraint("Eq t2".to_string()))
         );
+    }
+
+    #[test]
+    fn instance_context_is_reduced_through_a_worklist() {
+        let mut env = TypeEnv::new();
+        let elem = TypeVar(50);
+        let eq_of = |ty: Type| Constraint {
+            class: "Eq".to_string(),
+            args: vec![ty],
+        };
+        let list_of = |ty: Type| Type::SumType("L".to_string(), vec![ty]);
+        let instance = InstanceInfo {
+            head: list_of(Type::Var(elem.clone())),
+            context: vec![eq_of(Type::Var(elem))],
+        };
+        env.instances
+            .entry("Eq".to_string())
+            .or_default()
+            .push(instance);
+        let nested = vec![eq_of(list_of(list_of(Type::Int)))];
+        assert_eq!(
+            env.reduce_constraints(nested, &HashMap::new()),
+            Ok(Vec::new())
+        );
+        let open = vec![eq_of(list_of(Type::Var(TypeVar(7))))];
+        assert_eq!(
+            env.reduce_constraints(open, &HashMap::new()),
+            Ok(vec![eq_of(Type::Var(TypeVar(7)))])
+        );
+        let unit = vec![eq_of(list_of(Type::Unit))];
+        assert!(matches!(
+            env.reduce_constraints(unit, &HashMap::new()),
+            Err(TypeError::NoInstance(_))
+        ));
     }
 
     fn program_result(source: &str) -> Result<crate::typed_ast::TypedProgram, TypeError> {
