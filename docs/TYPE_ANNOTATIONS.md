@@ -170,7 +170,7 @@ cargo run -- examples/type_annotations.par
 
 ### Applied Types
 
-Applied types (like `Option Int` or `List Bool`) are supported in annotations when the head is a declared data type applied to exactly its declared number of parameters. Applying a base type (`Int Int`) or using the wrong arity (`List` or `List a a` for a one-parameter `List`) is a `TypeConstructorArityMismatch` error:
+Applied types (like `Option Int` or `List Bool`) are supported in annotations. Application is left-associative, so nested arguments need parentheses: `List (Option Int)`. The head may be a declared data type or a type variable (`f a`). A data type may be partially applied where a type constructor is expected, as in `Wrap Option Int` for `data Wrap f a = MkWrap (f a)`. Applying a base type (`Int Int`), over-applying (`List a a`), or leaving a constructor unapplied where a plain type is expected (`List`) is a `TypeConstructorArityMismatch` error; other ill-kinded uses such as `Wrap Int Int` are a `KindMismatch` error:
 
 ```parlang
 # Supported when Option is a declared data type:
@@ -264,6 +264,6 @@ cargo test type_annotation_tests
 
 ## Conclusion
 
-Explicit type annotations provide a useful way to document code and catch type errors early. There are some current limitations, notably applied types such as `Option Int` (see Current Limitations), but the feature integrates with ParLang's existing type inference system.
+Explicit type annotations provide a useful way to document code and catch type errors early. There are some current limitations (see Current Limitations), but the feature integrates with ParLang's existing type inference system.
 
 Type annotations are completely optional - you can continue using ParLang without annotations and rely entirely on type inference. Add annotations where they improve code clarity or help catch bugs.

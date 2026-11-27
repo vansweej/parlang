@@ -54,6 +54,7 @@ pub enum TypeError {
     ConstructorArityMismatch(String, usize, usize),
     TypeConstructorArityMismatch(String, usize, usize),
     TypeAliasInDataPayload(String),
+    KindMismatch(String, String, String),
     TypeAliasCycle(Vec<String>),
     DuplicateTypeName(String),
     DuplicateConstructor(String),

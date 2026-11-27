@@ -829,7 +829,7 @@ This means a function expecting `{age: Int}` won't accept `{age: Int, name: Stri
 
 ### 4. Type Annotations Are Limited
 
-Value-level type annotations are optional and supported only on `let` bindings (the expression form `let x : Int = 42 in ...` and the top-level form `let x : Int = 42;`) and on parenthesised lambda parameters (`fun (x : Int) -> x + 1`). Applied types such as `Option Int` are accepted in annotations when the head is a declared data type with matching arity; `strcmp` in `examples/string.par` uses `List Char` annotations so it is typed `List Char -> List Char -> Int`. See [TYPE_ANNOTATIONS.md](TYPE_ANNOTATIONS.md).
+Value-level type annotations are optional and supported only on `let` bindings (the expression form `let x : Int = 42 in ...` and the top-level form `let x : Int = 42;`) and on parenthesised lambda parameters (`fun (x : Int) -> x + 1`). Applied types such as `Option Int` are accepted in annotations and are kind-checked: the head may be a declared data type or a type variable (`f a`), and a data type may be partially applied where a type constructor is expected (`Wrap Option Int`). `strcmp` in `examples/string.par` uses `List Char` annotations so it is typed `List Char -> List Char -> Int`. See [TYPE_ANNOTATIONS.md](TYPE_ANNOTATIONS.md).
 
 ```parlang
 # These are not supported:
@@ -844,7 +844,9 @@ let (f : Int -> Int) = ...    # parenthesised let binder
 - Early error detection
 - Can guide inference in ambiguous cases
 
-**Future Plans**: Allow annotations on arbitrary expressions and support applied types in annotations.
+Applied types are supported in annotations, including type-variable heads (`f a`) and partially applied constructors (`Wrap Option Int`). Type application is left-associative; parenthesise nested arguments (`List (Option Int)`). Ill-kinded types are a `KindMismatch` error.
+
+**Future Plans**: Allow annotations on arbitrary expressions.
 
 ### 5. Performance Considerations
 

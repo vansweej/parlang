@@ -349,11 +349,15 @@ data_decl_expr ::= "data" identifier {identifier} '=' constructor {'|' construct
 constructor ::= identifier {type_expr}
 
 (* Type expressions *)
-type_expr ::= type_atom ("->" type_expr)?
+type_expr ::= type_app ("->" type_expr)?
+
+(* Application is left-associative: F a b = (F a) b *)
+type_app  ::= identifier type_atom {type_atom}
+            | type_atom
 
 type_atom ::= "Int"
             | "Bool"
-            | identifier                (* type alias reference *)
+            | identifier                (* data type, alias, or variable *)
             | '(' type_expr ')'         (* parenthesized type *)
 
 (* Operators *)
