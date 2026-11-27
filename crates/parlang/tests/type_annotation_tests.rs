@@ -457,3 +457,47 @@ fn test_string_example_strcmp_rejects_int_lists() {
     let program = parse_program(&string_example_with_body(body)).unwrap();
     assert!(parlang::typecheck_program(&program).is_err());
 }
+
+#[test]
+fn test_annotation_type_variables_are_shared_within_one_annotation() {
+    let expr = parse_expr("fun (f : a -> a) -> f").unwrap();
+    let ty = typecheck(&expr).unwrap();
+    let Type::Fun(param, result) = &ty else {
+        panic!("expected a function type, got {ty:?}");
+    };
+    assert_eq!(param, result);
+    let Type::Fun(arg, ret) = &**param else {
+        panic!("expected a function parameter, got {param:?}");
+    };
+    assert_eq!(arg, ret);
+    assert!(matches!(**arg, Type::Var(_)), "{arg:?}");
+}
+
+#[test]
+fn test_shared_annotation_variable_rejects_mismatched_uses() {
+    let src = "let f : a -> a = fun x -> if x then 1 else 2 in f";
+    let mismatched = parse_expr(src).unwrap();
+    assert!(typecheck(&mismatched).is_err());
+    let src = "let k : a -> b -> a = fun x -> fun y -> y in k 1 true";
+    let linked = parse_expr(src).unwrap();
+    assert!(typecheck(&linked).is_err());
+    let src = "let k : a -> b -> a = fun x -> fun y -> y in k 1 2";
+    let consistent = parse_expr(src).unwrap();
+    assert_eq!(typecheck(&consistent), Ok(Type::Int));
+}
+
+#[test]
+fn test_annotation_type_variables_are_independent_across_annotations() {
+    let src = "fun (x : a) -> fun (y : a) -> if y then x else 0";
+    let expr = parse_expr(src).unwrap();
+    let bool_to_int = Type::Fun(Box::new(Type::Bool), Box::new(Type::Int));
+    let expected = Type::Fun(Box::new(Type::Int), Box::new(bool_to_int));
+    assert_eq!(typecheck(&expr), Ok(expected));
+}
+
+#[test]
+fn test_annotation_type_variables_stay_flexible() {
+    let src = "let id : a -> a = fun x -> x + 1 in id 2";
+    let expr = parse_expr(src).unwrap();
+    assert_eq!(typecheck(&expr), Ok(Type::Int));
+}
