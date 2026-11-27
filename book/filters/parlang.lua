@@ -6,6 +6,9 @@
 --     exact bytes of that file as its body (missing file = build error);
 --   * latex: code blocks become fvextra verbatim environments (BookParCode for
 --     `parlang`, BookCode otherwise); other formats keep them as code blocks;
+--   * latex: BookParCode listings are highlighted (keywords from KEYWORDS in
+--     crates/parlang/src/parser.rs, comments, string and char literals), and
+--     each listing is round-trip checked against its original text;
 --   * `mermaid` blocks become a "diagram omitted" note;
 --   * links to local files or anchors become plain text, http(s)/mailto stay;
 --   * "Table of Contents" sections are dropped;
@@ -17,9 +20,10 @@
 --   * latex: a slash in prose allows a line break after it;
 --   * latex: tables whose columns all have default widths get relative widths
 --     proportional to their longest cell text, so pandoc emits p-columns.
--- Code block text is never altered; inline code keeps its text and only gains
--- break points. The source path comes from the `book-source` metadata set by
--- book/build-book.
+-- Code block text is never altered: ParLang highlighting only adds markup, and
+-- a self-check proves that stripping it gives back the original text. Inline
+-- code keeps its text and only gains break points. The source path comes from
+-- the `book-source` metadata set by book/build-book.
 
 local source = "book"
 local stem = "doc"
@@ -33,6 +37,180 @@ local function read_file(path)
   local text = handle:read("a")
   handle:close()
   return (text:gsub("\n$", ""))
+end
+
+-- latex: ParLang listings (fence tag parlang) are highlighted by a minimal
+-- lexer. The keywords come from KEYWORDS in crates/parlang/src/parser.rs,
+-- read at build time, so there is no second keyword list. The lexer only
+-- knows comments (--, nested {- -}, and the # annotations the docs use),
+-- string and char literals, and identifiers; everything else stays plain.
+local keyword_source = "crates/parlang/src/parser.rs"
+local keywords = nil
+
+local function load_keywords()
+  local text = read_file(keyword_source)
+  local list = text:match("pub const KEYWORDS: &%[&str%] = &%[(.-)%];")
+  if not list then
+    error("parlang.lua: KEYWORDS not found in " .. keyword_source)
+  end
+  local set, count = {}, 0
+  for word in list:gmatch('"([%a_]+)"') do
+    set[word] = true
+    count = count + 1
+  end
+  if count < 10 or not set["let"] then
+    error("parlang.lua: implausible KEYWORDS list in " .. keyword_source)
+  end
+  return set
+end
+
+local function lex(text)
+  local tokens = {}
+  local function push(class, s)
+    tokens[#tokens + 1] = { class, s }
+  end
+  local i, n = 1, #text
+  while i <= n do
+    local c = text:sub(i, i)
+    local two = text:sub(i, i + 1)
+    if two == "{-" then
+      local depth, j = 1, i + 2
+      while j <= n and depth > 0 do
+        local t = text:sub(j, j + 1)
+        if t == "{-" then
+          depth, j = depth + 1, j + 2
+        elseif t == "-}" then
+          depth, j = depth - 1, j + 2
+        else
+          j = j + 1
+        end
+      end
+      push("com", text:sub(i, j - 1))
+      i = j
+    elseif two == "--" or c == "#" then
+      local j = text:find("\n", i, true) or (n + 1)
+      push("com", text:sub(i, j - 1))
+      i = j
+    elseif c == '"' then
+      local j = i + 1
+      while j <= n do
+        local d = text:sub(j, j)
+        if d == "\\" then
+          j = j + 2
+        elseif d == '"' then
+          j = j + 1
+          break
+        elseif d == "\n" then
+          break
+        else
+          j = j + 1
+        end
+      end
+      j = math.min(j, n + 1)
+      push("str", text:sub(i, j - 1))
+      i = j
+    elseif c == "'" then
+      local lit = text:match("^'\\.'", i)
+      if not lit then
+        local ch = text:match("^'(" .. utf8.charpattern .. ")'", i)
+        if ch and ch ~= "'" and ch ~= "\\" then
+          lit = "'" .. ch .. "'"
+        end
+      end
+      if lit then
+        push("str", lit)
+        i = i + #lit
+      else
+        push("txt", c)
+        i = i + 1
+      end
+    else
+      local word = text:match("^[%a_\128-\255][%w_\128-\255]*", i)
+      if word then
+        push(keywords[word] and "kw" or "txt", word)
+        i = i + #word
+      else
+        push("txt", c)
+        i = i + 1
+      end
+    end
+  end
+  return tokens
+end
+
+local function escape(s)
+  return (s:gsub("[\\{}]", { ["\\"] = "\\PLbs{}", ["{"] = "\\PLlb{}", ["}"] = "\\PLrb{}" }))
+end
+
+local macros = { kw = "\\PLkw", com = "\\PLcom", str = "\\PLstr" }
+
+-- Whitespace stays outside the macro groups: fancyvrb works line by line
+-- and fvextra breaks long lines at spaces.
+local function render(tokens)
+  local out = {}
+  for _, tok in ipairs(tokens) do
+    local macro = macros[tok[1]]
+    if macro then
+      for space, word in tok[2]:gmatch("(%s*)(%S*)") do
+        out[#out + 1] = space
+        if word ~= "" then
+          out[#out + 1] = macro .. "{" .. escape(word) .. "}"
+        end
+      end
+    else
+      out[#out + 1] = escape(tok[2])
+    end
+  end
+  return table.concat(out)
+end
+
+local wrappers = { PLkw = true, PLcom = true, PLstr = true }
+local escapes = { PLbs = "\\", PLlb = "{", PLrb = "}" }
+
+-- Strips the highlighting markup again; nil if the markup is malformed.
+local function strip(s)
+  local out, depth, i = {}, 0, 1
+  while i <= #s do
+    local c = s:sub(i, i)
+    if c == "\\" then
+      local name = s:match("^\\(%a+)", i)
+      if name and escapes[name] and s:sub(i + #name + 1, i + #name + 2) == "{}" then
+        out[#out + 1] = escapes[name]
+        i = i + #name + 3
+      elseif name and wrappers[name] and s:sub(i + #name + 1, i + #name + 1) == "{" then
+        depth = depth + 1
+        i = i + #name + 2
+      else
+        return nil
+      end
+    elseif c == "}" then
+      if depth == 0 then
+        return nil
+      end
+      depth = depth - 1
+      i = i + 1
+    elseif c == "{" then
+      return nil
+    else
+      out[#out + 1] = c
+      i = i + 1
+    end
+  end
+  if depth ~= 0 then
+    return nil
+  end
+  return table.concat(out)
+end
+
+-- Highlights one listing and checks that stripping the markup gives back
+-- exactly the original text.
+local function highlight(text)
+  keywords = keywords or load_keywords()
+  local body = render(lex(text))
+  if strip(body) ~= text then
+    error("parlang.lua: highlighting would change a ParLang listing in " .. source)
+  end
+  return body
 end
 
 local function omitted_diagram()
@@ -59,12 +237,14 @@ local function code_block(el)
   local label = lang:gsub("[^%w%-]", "")
   local env = "BookCode"
   local opts = ""
+  local body = el.text
   if label == "parlang" then
     env = "BookParCode"
+    body = highlight(el.text)
   elseif label ~= "" then
     opts = "[label={" .. label .. "}]"
   end
-  local latex = "\\begin{" .. env .. "}" .. opts .. "\n" .. el.text .. "\n\\end{" .. env .. "}"
+  local latex = "\\begin{" .. env .. "}" .. opts .. "\n" .. body .. "\n\\end{" .. env .. "}"
   return pandoc.RawBlock("latex", latex)
 end
 

@@ -62,7 +62,20 @@
 % Code blocks: every fenced block becomes one of these (see filters/parlang.lua).
 \fvset{breaklines=true,breakanywhere=true,fontsize=\small,tabsize=4}
 \DefineVerbatimEnvironment{BookCode}{Verbatim}{frame=lines,framesep=2mm}
-\DefineVerbatimEnvironment{BookParCode}{Verbatim}{frame=single,framesep=2mm,label={ParLang},rulecolor=\color{gray}}
+\DefineVerbatimEnvironment{BookParCode}{Verbatim}{frame=single,framesep=2mm,label={ParLang},rulecolor=\color{gray},commandchars=\\\{\},breaknonspaceingroup=true}
+
+% ParLang highlighting: filters/parlang.lua emits these inside BookParCode.
+% Keywords are bold (ASCII only); comments and literals only change colour,
+% so the glyph coverage of the regular mono font still applies.
+\definecolor{PLkeyword}{HTML}{1F3F8F}
+\definecolor{PLcomment}{gray}{0.40}
+\definecolor{PLstring}{HTML}{8A3B00}
+\newcommand{\PLkw}[1]{\textcolor{PLkeyword}{\textbf{#1}}}
+\newcommand{\PLcom}[1]{\textcolor{PLcomment}{#1}}
+\newcommand{\PLstr}[1]{\textcolor{PLstring}{#1}}
+\newcommand{\PLbs}{\textbackslash}
+\newcommand{\PLlb}{\{}
+\newcommand{\PLrb}{\}}
 
 % Replacement for mermaid diagrams, which are not rendered in print.
 \newcommand{\BookOmittedDiagram}[1]{\par\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{\small\textit{Diagram omitted in the print edition; see \texttt{\detokenize{#1}} in the repository.}}}\par}

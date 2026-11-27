@@ -52,6 +52,12 @@ check_latex_log() {
     echo "book/build-book: missing glyphs, see $1" >&2
     exit 1
   fi
+  # A substituted font shape (e.g. no bold DejaVu Sans Mono for highlighted
+  # keywords) is a defect, not a cosmetic warning.
+  if grep -q "LaTeX Font Warning" "$1"; then
+    echo "book/build-book: LaTeX substituted a font shape, see $1" >&2
+    exit 1
+  fi
   if grep -q -e "There were undefined references" -e "There were undefined citations" "$1"; then
     echo "book/build-book: undefined references or citations, see $1" >&2
     exit 1
@@ -174,6 +180,16 @@ while IFS='|' read -r kind arg1 arg2 || [ -n "$kind" ]; do
       ;;
   esac
 done < book/chapters.txt
+
+# 3b. ParLang highlighting sanity check: the example programs must come out
+# with highlighted keywords, comments and literals (filters/parlang.lua).
+examples_tex="$gen_dir/$(stem_of "$gen_dir/examples.md").tex"
+for macro in PLkw PLcom PLstr; do
+  if ! grep -q "\\\\$macro{" "$examples_tex"; then
+    echo "book/build-book: no \\$macro markup in $examples_tex" >&2
+    exit 1
+  fi
+done
 
 # 4. Glyph coverage: collect sources plus every generated LaTeX fragment (so
 # characters pandoc introduces, e.g. smart quotes, are covered), generate the
