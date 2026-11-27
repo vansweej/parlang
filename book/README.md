@@ -39,15 +39,20 @@ from the repository.
 
 `build-book` lists every non-ASCII character used by the sources, prints
 them in each font in `glyph-test.pdf` and compiles that test before the
-book. A character missing from every font stops the build. While the book
-is being set up the table is also an appendix; remove the `glyphs` line
-from `chapters.txt` to drop it.
+book. A character missing from every font stops the build. The table is
+not part of the book; for font debugging, uncomment the `#glyphs` line in
+`chapters.txt` to append it as an appendix. `glyph-test.pdf` is always
+built.
 
 ## Build checks
 
 A clean build is the test: the build fails on missing glyphs, undefined
 references or citations, and rerun warnings left after latexmk. Overfull
-boxes are reported as a warning with their count; review them.
+hboxes wider than 1pt fail the build and are printed; smaller ones are
+reported as a warning with their count. Fix them generically: the table
+of contents widths and ragged-right headings live in `preamble.tex`, and
+`filters/parlang.lua` adds break points to inline code and prose slashes
+and gives tables relative column widths.
 
 Fonts come only from the flake: `luaotfload.conf` stops luaotfload from
 scanning system fonts, so a local `nix develop .#book` build uses exactly
