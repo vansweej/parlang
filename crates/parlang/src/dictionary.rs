@@ -33,6 +33,10 @@
 //! eligibility on specialised Core) may make them kernel-eligible.
 
 mod evidence;
+mod insert;
+mod program;
+
+pub use program::insert_dictionaries;
 
 pub use evidence::{
     apply_all, dictionary_name, dictionary_type, dictionary_type_name, evidence_expr, solve,
