@@ -709,10 +709,24 @@ fn resolve_program_type_expr(
     }
 }
 
-/// Convert a `TypeAnnotation` to a Type, resolving names to concrete types
+/// Convert a `TypeAnnotation` to a Type, resolving names to concrete types.
+///
+/// Type variables are shared within this one annotation: every occurrence of
+/// the same name becomes the same fresh, flexible type variable.
 fn resolve_type_annotation(
     ty_ann: &crate::ast::TypeAnnotation,
     env: &mut TypeEnv,
+) -> Result<Type, TypeError> {
+    let mut vars = HashMap::new();
+    resolve_annotation_with_vars(ty_ann, env, &mut vars)
+}
+
+/// Resolve `ty_ann` like `resolve_type_annotation`, reusing the type variables
+/// already allocated for this annotation in `vars`.
+fn resolve_annotation_with_vars(
+    ty_ann: &crate::ast::TypeAnnotation,
+    env: &mut TypeEnv,
+    vars: &mut HashMap<String, Type>,
 ) -> Result<Type, TypeError> {
     match ty_ann {
         crate::ast::TypeAnnotation::Concrete(name) => {
@@ -736,14 +750,17 @@ fn resolve_type_annotation(
                 },
             }
         }
-        crate::ast::TypeAnnotation::Var(_name) => {
-            // Type variables in annotations become fresh type variables
-            // This allows polymorphic annotations like: fun (x : a) -> x
-            Ok(env.fresh_var())
+        crate::ast::TypeAnnotation::Var(name) => {
+            // One fresh variable per name within this annotation, so
+            // `fun (f : a -> a) -> f` links the argument and result types.
+            Ok(vars
+                .entry(name.clone())
+                .or_insert_with(|| env.fresh_var())
+                .clone())
         }
         crate::ast::TypeAnnotation::Fun(arg, ret) => {
-            let arg_ty = resolve_type_annotation(arg, env)?;
-            let ret_ty = resolve_type_annotation(ret, env)?;
+            let arg_ty = resolve_annotation_with_vars(arg, env, vars)?;
+            let ret_ty = resolve_annotation_with_vars(ret, env, vars)?;
             Ok(Type::Fun(Box::new(arg_ty), Box::new(ret_ty)))
         }
         crate::ast::TypeAnnotation::App(name, args) => {
@@ -755,7 +772,7 @@ fn resolve_type_annotation(
             }
             let arg_types = args
                 .iter()
-                .map(|arg| resolve_type_annotation(arg, env))
+                .map(|arg| resolve_annotation_with_vars(arg, env, vars))
                 .collect::<Result<Vec<Type>, TypeError>>()?;
             Ok(Type::SumType(name.clone(), arg_types))
         }
