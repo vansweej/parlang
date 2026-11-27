@@ -14,14 +14,15 @@
 //! - `App` is binary type-constructor application (GHC `AppTy`-style), which
 //!   admits variable-headed application `f a` so higher-kinded types need no
 //!   restructure; `Con` is a nullary type-constructor reference.
-//! - `Forall` is a single-binder System-F universal. Binders are implicitly
-//!   kind `*`; a kind slot is deferred to milestone 2.
-//!
-//! No kinds and no term-level changes are introduced in this slice.
+//! - `Forall` is a single-binder System-F universal whose binder carries a
+//!   [`Kind`] (milestone 2, slice M2.1a; see `docs/adr/0011-core-kinds.md`).
+//!   A binder of kind `*` renders exactly as before; any other kind renders
+//!   as `forall (f : * -> *). body`.
 
 use std::fmt::{self, Display, Formatter};
 
 use crate::base_type::BaseType;
+use crate::kind::Kind;
 
 /// A System-F-shaped Core type.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,8 +37,9 @@ pub enum Type {
     Fun(Box<Type>, Box<Type>),
     /// Binary type-constructor application `head arg`.
     App(Box<Type>, Box<Type>),
-    /// A single-binder universal `forall a. body`.
-    Forall(String, Box<Type>),
+    /// A single-binder universal `forall a. body`; the middle field is the
+    /// binder's kind (`Kind::Star` for an ordinary type variable).
+    Forall(String, Kind, Box<Type>),
 }
 
 impl From<BaseType> for Type {
@@ -94,7 +96,7 @@ impl Type {
                 a.collect_free_vars(acc);
                 b.collect_free_vars(acc);
             }
-            Type::Forall(binder, body) => {
+            Type::Forall(binder, _, body) => {
                 let mut inner = std::collections::BTreeSet::new();
                 body.collect_free_vars(&mut inner);
                 inner.remove(binder);
@@ -126,16 +128,24 @@ impl Type {
                 Box::new(a.subst(var, replacement)),
                 Box::new(b.subst(var, replacement)),
             ),
-            Type::Forall(binder, body) => {
+            Type::Forall(binder, kind, body) => {
                 if binder == var {
                     return self.clone();
                 }
                 if replacement.free_vars().contains(binder) {
                     let fresh = Type::fresh_for(binder, replacement, body);
                     let renamed = body.subst(binder, &Type::Var(fresh.clone()));
-                    Type::Forall(fresh, Box::new(renamed.subst(var, replacement)))
+                    Type::Forall(
+                        fresh,
+                        kind.clone(),
+                        Box::new(renamed.subst(var, replacement)),
+                    )
                 } else {
-                    Type::Forall(binder.clone(), Box::new(body.subst(var, replacement)))
+                    Type::Forall(
+                        binder.clone(),
+                        kind.clone(),
+                        Box::new(body.subst(var, replacement)),
+                    )
                 }
             }
         }
@@ -163,7 +173,7 @@ impl Type {
                 Box::new(a.subst_many(mapping)),
                 Box::new(b.subst_many(mapping)),
             ),
-            Type::Forall(binder, body) => {
+            Type::Forall(binder, kind, body) => {
                 let inner: Vec<(&str, &Type)> = mapping
                     .iter()
                     .copied()
@@ -173,7 +183,11 @@ impl Type {
                     .iter()
                     .any(|(_, replacement)| replacement.free_vars().contains(binder));
                 if !captures {
-                    return Type::Forall(binder.clone(), Box::new(body.subst_many(&inner)));
+                    return Type::Forall(
+                        binder.clone(),
+                        kind.clone(),
+                        Box::new(body.subst_many(&inner)),
+                    );
                 }
                 let mut taken = body.free_vars();
                 for (var, replacement) in &inner {
@@ -185,7 +199,7 @@ impl Type {
                     fresh.push('\'');
                 }
                 let renamed = body.subst(binder, &Type::Var(fresh.clone()));
-                Type::Forall(fresh, Box::new(renamed.subst_many(&inner)))
+                Type::Forall(fresh, kind.clone(), Box::new(renamed.subst_many(&inner)))
             }
         }
     }
@@ -223,7 +237,13 @@ impl Type {
             (Type::Fun(a1, a2), Type::Fun(b1, b2)) | (Type::App(a1, a2), Type::App(b1, b2)) => {
                 a1.alpha_eq_env(b1, pairs) && a2.alpha_eq_env(b2, pairs)
             }
-            (Type::Forall(left_binder, left_body), Type::Forall(right_binder, right_body)) => {
+            (
+                Type::Forall(left_binder, left_kind, left_body),
+                Type::Forall(right_binder, right_kind, right_body),
+            ) => {
+                if left_kind != right_kind {
+                    return false;
+                }
                 pairs.push((left_binder.clone(), right_binder.clone()));
                 let ok = left_body.alpha_eq_env(right_body, pairs);
                 pairs.pop();
@@ -248,7 +268,13 @@ impl Display for Type {
                 write!(f, " ")?;
                 arg.fmt_app_arg(f)
             }
-            Type::Forall(binder, body) => write!(f, "forall {binder}. {body}"),
+            Type::Forall(binder, kind, body) => {
+                if kind.is_star() {
+                    write!(f, "forall {binder}. {body}")
+                } else {
+                    write!(f, "forall ({binder} : {kind}). {body}")
+                }
+            }
         }
     }
 }
@@ -336,6 +362,7 @@ mod tests {
         // forall a. a -> List a
         let ty = Type::Forall(
             "a".to_string(),
+            Kind::Star,
             Box::new(Type::Fun(
                 Box::new(Type::Var("a".to_string())),
                 Box::new(Type::App(
@@ -353,6 +380,7 @@ mod tests {
         let ty = Type::Fun(
             Box::new(Type::Forall(
                 "a".to_string(),
+                Kind::Star,
                 Box::new(Type::Var("a".to_string())),
             )),
             Box::new(Type::Base(BaseType::Int)),
@@ -379,6 +407,7 @@ mod tests {
         // forall a. a -> b  =>  {b}
         let ty = Type::Forall(
             "a".to_string(),
+            Kind::Star,
             Box::new(Type::Fun(
                 Box::new(Type::Var("a".to_string())),
                 Box::new(Type::Var("b".to_string())),
@@ -408,7 +437,11 @@ mod tests {
 
     #[test]
     fn subst_skips_shadowed_var() {
-        let ty = Type::Forall("a".to_string(), Box::new(Type::Var("a".to_string())));
+        let ty = Type::Forall(
+            "a".to_string(),
+            Kind::Star,
+            Box::new(Type::Var("a".to_string())),
+        );
         assert_eq!(
             ty.subst("a", &Type::Base(BaseType::Int)).to_string(),
             "forall a. a"
@@ -418,10 +451,14 @@ mod tests {
     #[test]
     fn subst_is_capture_avoiding() {
         // (forall a. b)[b := a] must rename the binder so `a` stays free.
-        let ty = Type::Forall("a".to_string(), Box::new(Type::Var("b".to_string())));
+        let ty = Type::Forall(
+            "a".to_string(),
+            Kind::Star,
+            Box::new(Type::Var("b".to_string())),
+        );
         let out = ty.subst("b", &Type::Var("a".to_string()));
         assert!(out.free_vars().contains("a"), "a was captured: {out}");
-        let Type::Forall(binder, _) = &out else {
+        let Type::Forall(binder, _, _) = &out else {
             panic!("expected a Forall, got {out}");
         };
         assert_ne!(binder, "a", "binder was not renamed: {out}");
@@ -445,6 +482,7 @@ mod tests {
         // (forall a. b -> a)[b := a] renames the binder so `a` stays free.
         let ty = Type::Forall(
             "a".to_string(),
+            Kind::Star,
             Box::new(Type::Fun(
                 Box::new(Type::Var("b".to_string())),
                 Box::new(Type::Var("a".to_string())),
@@ -460,6 +498,7 @@ mod tests {
         // (forall a. a -> b)[a := Int, b := Bool] leaves the bound `a` alone.
         let ty = Type::Forall(
             "a".to_string(),
+            Kind::Star,
             Box::new(Type::Fun(
                 Box::new(Type::Var("a".to_string())),
                 Box::new(Type::Var("b".to_string())),
@@ -473,8 +512,16 @@ mod tests {
 
     #[test]
     fn alpha_eq_renamed_foralls_are_equal() {
-        let a = Type::Forall("a".to_string(), Box::new(Type::Var("a".to_string())));
-        let b = Type::Forall("x".to_string(), Box::new(Type::Var("x".to_string())));
+        let a = Type::Forall(
+            "a".to_string(),
+            Kind::Star,
+            Box::new(Type::Var("a".to_string())),
+        );
+        let b = Type::Forall(
+            "x".to_string(),
+            Kind::Star,
+            Box::new(Type::Var("x".to_string())),
+        );
         assert!(a.alpha_eq(&b));
     }
 
@@ -488,6 +535,7 @@ mod tests {
         let mk = |x: &str| {
             Type::Forall(
                 x.to_string(),
+                Kind::Star,
                 Box::new(Type::Fun(
                     Box::new(Type::Var(x.to_string())),
                     Box::new(Type::Var("b".to_string())),
@@ -495,5 +543,49 @@ mod tests {
             )
         };
         assert!(mk("a").alpha_eq(&mk("c")));
+    }
+
+    #[test]
+    fn higher_kinded_binder_renders_its_kind() {
+        // forall (f : * -> *). f Int
+        let ty = Type::Forall(
+            "f".to_string(),
+            Kind::arrow(Kind::Star, Kind::Star),
+            Box::new(Type::App(
+                Box::new(Type::Var("f".to_string())),
+                Box::new(Type::Base(BaseType::Int)),
+            )),
+        );
+        assert_eq!(ty.to_string(), "forall (f : * -> *). f Int");
+    }
+
+    #[test]
+    fn alpha_eq_compares_binder_kinds() {
+        let star = Type::Forall(
+            "f".to_string(),
+            Kind::Star,
+            Box::new(Type::Var("f".to_string())),
+        );
+        let arrow = Type::Forall(
+            "f".to_string(),
+            Kind::arrow(Kind::Star, Kind::Star),
+            Box::new(Type::Var("f".to_string())),
+        );
+        assert!(!star.alpha_eq(&arrow));
+        assert!(arrow.alpha_eq(&arrow));
+    }
+
+    #[test]
+    fn subst_preserves_binder_kind() {
+        let ty = Type::Forall(
+            "f".to_string(),
+            Kind::arrow(Kind::Star, Kind::Star),
+            Box::new(Type::Var("b".to_string())),
+        );
+        let out = ty.subst("b", &Type::Var("f".to_string()));
+        let Type::Forall(_, kind, _) = &out else {
+            panic!("expected a Forall, got {out}");
+        };
+        assert_eq!(kind, &Kind::arrow(Kind::Star, Kind::Star));
     }
 }

@@ -496,7 +496,7 @@ fn well_formed(env: &mut LintEnv, ty: &Type) -> Result<(), LintError> {
             well_formed(env, a)?;
             well_formed(env, b)
         }
-        Type::Forall(a, body) => {
+        Type::Forall(a, _, body) => {
             if env.tyvars.contains(a) {
                 return Err(LintError::ShadowedTypeVar(a.clone()));
             }
@@ -627,12 +627,12 @@ fn synth_tylam(env: &mut LintEnv, a: &str, t: &Term) -> Result<Type, LintError> 
     let result = synth(env, t);
     env.pop_tyvar();
     let tt = result?;
-    Ok(Type::Forall(a.to_string(), Box::new(tt)))
+    Ok(Type::Forall(a.to_string(), Kind::Star, Box::new(tt)))
 }
 
 fn synth_tyapp(env: &mut LintEnv, t: &Term, ty: &Type) -> Result<Type, LintError> {
     let tt = synth(env, t)?;
-    let Type::Forall(a, body) = tt else {
+    let Type::Forall(a, _, body) = tt else {
         return Err(LintError::NotAForall(tt));
     };
     well_formed(env, ty)?;
@@ -1260,7 +1260,7 @@ mod tests {
         let env = LintEnv::new();
         let term = tylam("a", lam("x", tvar("a")?, var("x")?)?)?;
         let ty = lint(&term, &env)?;
-        assert!(matches!(ty, Type::Forall(_, _)));
+        assert!(matches!(ty, Type::Forall(..)));
         Ok(())
     }
 
@@ -1773,6 +1773,7 @@ mod tests {
         let ty = lint(&term, &env)?;
         let expected = Type::Forall(
             "b".to_string(),
+            Kind::Star,
             Box::new(Type::Fun(
                 Box::new(Type::Var("b".to_string())),
                 Box::new(pair_app(
@@ -1813,6 +1814,7 @@ mod tests {
         let ty = lint(&term, &env)?;
         let expected = Type::Forall(
             "b".to_string(),
+            Kind::Star,
             Box::new(Type::Fun(
                 Box::new(scrutinee_ty),
                 Box::new(Type::Var("b".to_string())),

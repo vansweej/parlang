@@ -8,7 +8,7 @@ use crate::ty::Type;
 /// Strips all leading `Forall` binders from `ty`, returning the first non-`Forall` type.
 fn strip_foralls(ty: &Type) -> &Type {
     let mut current = ty;
-    while let Type::Forall(_, body) = current {
+    while let Type::Forall(_, _, body) = current {
         current = body;
     }
     current
@@ -360,6 +360,7 @@ mod tests {
         let env = list_env();
         let ty = Type::Forall(
             "a".to_string(),
+            crate::kind::Kind::Star,
             Box::new(list_ty(Type::Var("a".to_string()))),
         );
         assert_eq!(render_value(&nil(), &ty, &env), "[]");
@@ -371,8 +372,10 @@ mod tests {
         let v = Value::Con("(,)".to_string(), vec![nil(), nil()]);
         let ty = Type::Forall(
             "a".to_string(),
+            crate::kind::Kind::Star,
             Box::new(Type::Forall(
                 "b".to_string(),
+                crate::kind::Kind::Star,
                 Box::new(pair_ty(
                     list_ty(Type::Var("a".to_string())),
                     list_ty(Type::Var("b".to_string())),
