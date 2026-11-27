@@ -47,6 +47,8 @@ This supersedes ADR 0002's deferral of constructor deconstruction: a tag-switch
   kernel-eligibility predicate (finite, closed set of branches, no hidden
   control flow), so this decision does not foreclose kernel eligibility.
   Nothing about kernels is decided now; the predicate itself is future work.
+  *Update (slice 8):* the predicate is implemented; see
+  `docs/adr/0010-kernel-eligibility-predicate.md`.
 - A throwaway monomorphic elaborator probe (roadmap slice 5) was built in
   `crates/parlang/tests/elaborator_probe.rs` to answer one question: does this
   `Case` shape survive contact with real elaboration of `match`? The probe's

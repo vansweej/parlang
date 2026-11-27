@@ -184,6 +184,7 @@ parlang <FILE> --dump --stage lint       # Run Core lint; prints `lint ok: <core
 parlang <FILE> --core                    # Evaluate on Core (temporary type-directed renderer)
 parlang --core                           # Start the REPL evaluating each input on Core
 parlang trace <FILE> [--fuel N] [--raw]  # Trace Core reductions, then `result: <value>`
+parlang kernel-check <FILE> --fn <NAME>  # Kernel eligibility: `eligible: <NAME>` or rejected (exit 1)
 ```
 
 **Help and Version**:
