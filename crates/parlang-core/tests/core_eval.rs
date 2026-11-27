@@ -443,6 +443,69 @@ fn lint_and_eval_factorial() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Higher-kinded Core (M2.1a): `data Wrap f a = MkWrap (f a)` with
+/// `f : * -> *`, and a type abstraction over `f` instantiated at `Option`
+/// and at `List`. Both instantiations lint, then evaluate on the machine.
+#[test]
+fn lint_and_eval_higher_kinded_wrap() -> Result<(), Box<dyn std::error::Error>> {
+    use parlang_core::builder::{con_at, tyapp, tylam, tylam_k};
+    use parlang_core::{lint, prelude_env, DataCon, DataType, Kind};
+    let star_to_star = Kind::arrow(Kind::Star, Kind::Star);
+    let option = DataType {
+        name: "Option".to_string(),
+        params: vec!["a".to_string()],
+        param_kinds: vec![Kind::Star],
+        ctors: vec![
+            DataCon {
+                name: "None".to_string(),
+                fields: vec![],
+            },
+            DataCon {
+                name: "Some".to_string(),
+                fields: vec![tvar("a")?],
+            },
+        ],
+    };
+    let wrap = DataType {
+        name: "Wrap".to_string(),
+        params: vec!["f".to_string(), "a".to_string()],
+        param_kinds: vec![star_to_star.clone(), Kind::Star],
+        ctors: vec![DataCon {
+            name: "MkWrap".to_string(),
+            fields: vec![tapp(tvar("f")?, tvar("a")?)],
+        }],
+    };
+    let lint_env = prelude_env().try_with_data(option)?.try_with_data(wrap)?;
+    // /\(f : * -> *). /\a. \x : f a. MkWrap @f @a (x)
+    let wrap_body = con_at("MkWrap", vec![tvar("f")?, tvar("a")?], vec![var("x")?])?;
+    let wrap_lam = lam("x", tapp(tvar("f")?, tvar("a")?), wrap_body)?;
+    let wrap_fn = tylam_k("f", star_to_star, tylam("a", wrap_lam)?)?;
+    let int_ty = base_ty(BaseType::Int);
+    // case wrapFn @Option @Int (Some @Int 3) of MkWrap(o) -> case o of Some(n) -> n | None -> 0
+    let some = con_at("Some", vec![int_ty.clone()], vec![int(3)])?;
+    let at_option = tyapp(tyapp(wrap_fn.clone(), tcon("Option")?), int_ty.clone());
+    let unwrap_option = case_(
+        var("o")?,
+        vec![alt("Some", &["n"], var("n")?)?, alt("None", &[], int(0))?],
+    );
+    let t = case_(
+        app(at_option, some),
+        vec![alt("MkWrap", &["o"], unwrap_option)?],
+    );
+    assert_eq!(lint(&t, &lint_env)?, int_ty);
+    assert_eq!(eval(&t, &env())?, Value::Int(3));
+    // The same abstraction instantiated at List: wrapFn @List @Int (Nil @Int).
+    let nil = con_at("Nil", vec![int_ty.clone()], vec![])?;
+    let at_list = app(tyapp(tyapp(wrap_fn, tcon("List")?), int_ty), nil);
+    assert_eq!(lint(&at_list, &lint_env)?.to_string(), "Wrap List Int");
+    let expected = Value::Con(
+        "MkWrap".to_string(),
+        vec![Value::Con("Nil".to_string(), vec![])],
+    );
+    assert_eq!(eval(&at_list, &env())?, expected);
+    Ok(())
+}
+
 /// Polymorphic identity instantiated at two types: lint-clean, evaluates.
 #[test]
 fn lint_and_eval_poly_identity() -> Result<(), Box<dyn std::error::Error>> {
