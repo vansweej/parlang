@@ -43,6 +43,7 @@ application `f a` (binary `App`), but every binder was implicitly kind
 ## Consequences
 
 - The surface language (slice M2.1b) only needs to infer kinds for data
-  declarations and pass them on; Core already checks them.
+  declarations and pass them on; Core already checks them. This is done:
+  see `docs/adr/0012-surface-higher-kinded-types.md`.
 - Kind errors are reported by Core Lint, matching ADR 0005's split of
   responsibilities.

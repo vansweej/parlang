@@ -796,7 +796,7 @@ See the `examples/` directory for sample programs:
 - `stdlib/treemap.par` - Binary-search-tree map operations and demonstration
 - `records.par` - Closed records: construction, field access, record patterns, a string field, and a record inside a constructor
 - `mvp.par` - MVP acceptance program: a polymorphic tree ADT, recursive pattern matching, and a string (runs on surface and Core)
-- `hkt.par` - Higher-kinded data type `Wrap f a` over `Option` and `List` (surface only until M2.1b-2)
+- `hkt.par` - Higher-kinded data type `Wrap f a` over `Option` and `List` (runs on the surface evaluator and on Core)
 
 ## Documentation
 

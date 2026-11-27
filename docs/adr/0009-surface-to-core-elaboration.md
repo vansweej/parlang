@@ -24,7 +24,9 @@ surface semantics or any existing golden.
   explicitly typed by construction (ADR 0007).
 - Each let-generalised variable of a let scheme becomes one `TyLam` (`/\`);
   each instantiation argument recorded on a surface `Var` becomes one `TyApp`
-  (`@`). Residual (unconstrained) type variables default to `Unit`.
+  (`@`). Residual (unconstrained) type variables default to `Unit`; a
+  residual applied variable `f a` is rejected (ADR 0012), and each `TyLam`
+  carries its inferred kind.
 - Tuples are Core data types named by arity, `(,)`, `(,,)`, ..., each with a
   single constructor of the same name. Closed records are single-constructor
   Core data types named by their sorted field names, `{a,b}`, whose
@@ -37,8 +39,9 @@ surface semantics or any existing golden.
   base types (Core `eq` is defined only there).
 - Hard rejections are an explicit, tested invariant (roadmap decision 6):
   `load`, equality at a non-base type (including a type variable), `rec` of a
-  non-function, and a data type applied at the wrong arity all fail with
-  `ElabError::Unsupported`; elaboration never silently drops a construct.
+  non-function, an over-applied data type, and a residual applied type
+  variable all fail with `ElabError::Unsupported`; elaboration never silently
+  drops a construct. Partial data type application is kind-checked by Lint.
 - Pattern matching compiles to nested Core `Case` with join points (`$j`
   names) shared between arms, resolving ADR 0003 Finding F2. Exhaustiveness
   is checked at type-check time (slice 7c, `match_coverage.rs`), so Core never
