@@ -5,10 +5,10 @@ use std::error::Error;
 
 use parlang::parse_program;
 use parlang::pipeline::core_of_program;
-use parlang_core::builder::{int, let_, var};
+use parlang_core::builder::{base_ty, int, lam, let_, tapp, tapps, tcon, tvar, var};
 use parlang_core::eligibility::{find_binding, is_join_point, JOIN_POINT_TAG};
 use parlang_core::{check_function, DataCon, DataType, EligibilityError, LintEnv};
-use parlang_core::{Lit, Report, Rule, Term};
+use parlang_core::{BaseType, Lit, Report, Rule, Term, Type, Violation};
 
 #[test]
 fn is_join_point_accepts_match_compiler_names() {
@@ -75,5 +75,124 @@ fn real_program_function_is_found() -> Result<(), Box<dyn Error>> {
     let elab = core_of_program(&program)?;
     let report = check_function(&elab.term, &elab.env, "inc", &[])?;
     assert_eq!(report, Report::Eligible);
+    Ok(())
+}
+
+fn data(name: &str, params: &[&str], ctors: Vec<(&str, Vec<Type>)>) -> DataType {
+    DataType {
+        name: name.to_string(),
+        params: params.iter().map(ToString::to_string).collect(),
+        ctors: ctors
+            .into_iter()
+            .map(|(ctor, fields)| DataCon {
+                name: ctor.to_string(),
+                fields,
+            })
+            .collect(),
+    }
+}
+
+fn list_type() -> Result<DataType, Box<dyn Error>> {
+    let tail = tapp(tcon("List")?, tvar("a")?);
+    let cons = ("Cons", vec![tvar("a")?, tail]);
+    Ok(data("List", &["a"], vec![("Nil", vec![]), cons]))
+}
+
+fn identity_fn(name: &str, param: &str, ty: Type) -> Result<Term, Box<dyn Error>> {
+    let body = lam(param, ty, var(param)?)?;
+    Ok(let_(name, body, var(name)?)?)
+}
+
+fn r1_rejection(function: &str, node: &str) -> Report {
+    Report::Rejected(vec![Violation {
+        rule: Rule::KernelTypes,
+        function: function.to_string(),
+        node: node.to_string(),
+    }])
+}
+
+#[test]
+fn int_param_function_is_eligible() -> Result<(), Box<dyn Error>> {
+    let root = identity_fn("f", "x", base_ty(BaseType::Int))?;
+    assert_eq!(
+        check_function(&root, &LintEnv::new(), "f", &[])?,
+        Report::Eligible
+    );
+    Ok(())
+}
+
+#[test]
+fn list_param_is_rejected_r1() -> Result<(), Box<dyn Error>> {
+    let env = LintEnv::new().with_data(list_type()?);
+    let ty = tapp(tcon("List")?, base_ty(BaseType::Int));
+    let root = identity_fn("len", "xs", ty)?;
+    let expected = r1_rejection("len", "(\\xs: List Int. xs)");
+    assert_eq!(check_function(&root, &env, "len", &[])?, expected);
+    Ok(())
+}
+
+#[test]
+fn generalised_id_is_rejected_r5() -> Result<(), Box<dyn Error>> {
+    let program = parse_program("let id = fun x -> x;\nid 1")?;
+    let elab = core_of_program(&program)?;
+    let report = check_function(&elab.term, &elab.env, "id", &[])?;
+    let Report::Rejected(violations) = report else {
+        return Err("expected a rejection".into());
+    };
+    let first = violations.first().ok_or("no violations")?;
+    assert_eq!(first.rule, Rule::Polymorphism);
+    assert_eq!(first.function, "id");
+    assert!(first.node.starts_with("(/\\t"), "{}", first.node);
+    Ok(())
+}
+
+#[test]
+fn tuple_param_is_eligible() -> Result<(), Box<dyn Error>> {
+    let pair = data(
+        "(,)",
+        &["a", "b"],
+        vec![("(,)", vec![tvar("a")?, tvar("b")?])],
+    );
+    let env = LintEnv::new().with_data(pair);
+    let int_ty = base_ty(BaseType::Int);
+    let ty = tapps(tcon("(,)")?, vec![int_ty.clone(), int_ty]);
+    let root = identity_fn("swap", "p", ty)?;
+    assert_eq!(check_function(&root, &env, "swap", &[])?, Report::Eligible);
+    Ok(())
+}
+
+#[test]
+fn option_like_param_is_eligible() -> Result<(), Box<dyn Error>> {
+    let maybe = data(
+        "Maybe",
+        &["a"],
+        vec![("Nothing", vec![]), ("Just", vec![tvar("a")?])],
+    );
+    let env = LintEnv::new().with_data(maybe);
+    let ty = tapp(tcon("Maybe")?, base_ty(BaseType::Int));
+    let root = identity_fn("get", "m", ty)?;
+    assert_eq!(check_function(&root, &env, "get", &[])?, Report::Eligible);
+    Ok(())
+}
+
+#[test]
+fn recursive_data_param_is_rejected_r1() -> Result<(), Box<dyn Error>> {
+    let fields = vec![tcon("Tree")?, base_ty(BaseType::Int), tcon("Tree")?];
+    let tree = data("Tree", &[], vec![("Leaf", vec![]), ("Node", fields)]);
+    let env = LintEnv::new().with_data(tree);
+    let root = identity_fn("depth", "t", tcon("Tree")?)?;
+    let expected = r1_rejection("depth", "(\\t: Tree. t)");
+    assert_eq!(check_function(&root, &env, "depth", &[])?, expected);
+    Ok(())
+}
+
+#[test]
+fn data_reaching_list_is_rejected_r1() -> Result<(), Box<dyn Error>> {
+    let items = tapp(tcon("List")?, base_ty(BaseType::Int));
+    let bag = data("Bag", &[], vec![("MkBag", vec![items])]);
+    let env = LintEnv::new().with_data(list_type()?).with_data(bag);
+    let root = identity_fn("size", "b", tcon("Bag")?)?;
+    let expected = r1_rejection("size", "(\\b: Bag. b)");
+    assert_eq!(check_function(&root, &env, "size", &[])?, expected);
     Ok(())
 }
