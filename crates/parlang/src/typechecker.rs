@@ -31,8 +31,9 @@ pub struct TypeEnv {
     constructors: HashMap<String, ConstructorInfo>,
     /// Declared data types: maps type name to its parameter kinds
     data_kinds: HashMap<String, Vec<parlang_core::Kind>>,
-    /// Instance heads per class name (only the built-in `Eq` instances for now).
-    instances: HashMap<String, Vec<Type>>,
+    /// Instances per class name: the built-in `Eq` instances, then user
+    /// instances in declaration order.
+    instances: HashMap<String, Vec<InstanceInfo>>,
     /// Declared classes by name, seeded with the built-in `Eq`.
     classes: HashMap<String, ClassInfo>,
     /// Class methods by name, with their owning class and constrained scheme.
@@ -76,6 +77,15 @@ pub struct MethodInfo {
     pub class: String,
     /// Scheme quantifying the class parameter first, under `Class param`.
     pub scheme: TypeScheme,
+}
+
+/// A class instance: its `head` and its `context` over the head's variables.
+#[derive(Debug, Clone, PartialEq)]
+struct InstanceInfo {
+    /// Instance head, e.g. `Option t3` for `instance Eq (Option a)`.
+    head: Type,
+    /// Constraints the head's variables must satisfy, e.g. `Eq t3`.
+    context: Vec<Constraint>,
 }
 
 impl TypeEnv {
@@ -225,40 +235,56 @@ impl TypeEnv {
     }
 
     /// Context reduction (Haskell 98): apply `subst` to each wanted
-    /// constraint, discharge it when an instance matches, and keep it
-    /// (deduplicated) when every argument has a type-variable head.
+    /// constraint and keep it (deduplicated) when every argument has a
+    /// type-variable head. Otherwise replace it by the context of the
+    /// instance whose head matches, and reduce those constraints in turn.
     ///
     /// Returns `NoInstance` for an argument with a type-constructor head and
-    /// no matching instance.
+    /// no matching instance. Reduction terminates because a Haskell 98
+    /// instance context only constrains variables of the instance head.
     fn reduce_constraints(
         &self,
         wanted: Vec<Constraint>,
         subst: &Substitution,
     ) -> Result<Vec<Constraint>, TypeError> {
+        let mut pending: Vec<Constraint> = wanted
+            .into_iter()
+            .rev()
+            .map(|constraint| apply_subst_constraint(subst, &constraint))
+            .collect();
         let mut residual: Vec<Constraint> = Vec::new();
-        for constraint in wanted {
-            let constraint = apply_subst_constraint(subst, &constraint);
+        while let Some(constraint) = pending.pop() {
             if constraint.args.iter().all(has_var_head) {
                 if !residual.contains(&constraint) {
                     residual.push(constraint);
                 }
-            } else if !self.has_instance(&constraint) {
-                return Err(TypeError::NoInstance(constraint.to_string()));
+            } else {
+                let Some(context) = self.instance_context(&constraint) else {
+                    return Err(TypeError::NoInstance(constraint.to_string()));
+                };
+                pending.extend(context.into_iter().rev());
             }
         }
         Ok(residual)
     }
 
-    /// Whether an instance matches `constraint` exactly. Built-in instances
-    /// have no context, so a match discharges the constraint.
-    fn has_instance(&self, constraint: &Constraint) -> bool {
-        match (
-            self.instances.get(&constraint.class),
-            constraint.args.as_slice(),
-        ) {
-            (Some(heads), [arg]) => heads.contains(arg),
-            _ => false,
-        }
+    /// The context of the instance whose head matches the single argument
+    /// of `constraint`, instantiated at that argument, or `None` when no
+    /// instance matches.
+    fn instance_context(&self, constraint: &Constraint) -> Option<Vec<Constraint>> {
+        let [arg] = constraint.args.as_slice() else {
+            return None;
+        };
+        let instances = self.instances.get(&constraint.class)?;
+        instances.iter().find_map(|instance| {
+            let bound = match_instance_head(&instance.head, arg)?;
+            let context = instance
+                .context
+                .iter()
+                .map(|given| apply_subst_constraint(&bound, given))
+                .collect();
+            Some(context)
+        })
     }
 
     /// Record `constraint` as wanted in the shared accumulator.
@@ -355,13 +381,16 @@ type Substitution = HashMap<TypeVar, Type>;
 
 /// Built-in class instances: `Eq` for `Int`, `Bool`, `Char` and `Float`,
 /// exactly the types the surface evaluator compares with `==` at run time.
-fn builtin_instances() -> HashMap<String, Vec<Type>> {
-    let mut instances = HashMap::new();
-    instances.insert(
-        "Eq".to_string(),
-        vec![Type::Int, Type::Bool, Type::Char, Type::Float],
-    );
-    instances
+/// Each one has a nullary head and an empty context.
+fn builtin_instances() -> HashMap<String, Vec<InstanceInfo>> {
+    let eq = [Type::Int, Type::Bool, Type::Char, Type::Float]
+        .into_iter()
+        .map(|head| InstanceInfo {
+            head,
+            context: Vec::new(),
+        })
+        .collect();
+    HashMap::from([("Eq".to_string(), eq)])
 }
 
 /// The scheme of a method of `class` whose signature resolved to `ty`:
@@ -412,6 +441,28 @@ fn builtin_classes() -> (HashMap<String, ClassInfo>, HashMap<String, MethodInfo>
 /// Whether `ty` is headed by a type variable (`t` or an applied `t a`).
 fn has_var_head(ty: &Type) -> bool {
     matches!(ty, Type::Var(_) | Type::VarApp(..))
+}
+
+/// One-way match of the Haskell 98 instance `head` against `ty`. A base
+/// type matches itself. `T a1 .. an` with distinct type variables matches
+/// `T t1 .. tn` and binds each `ai` to `ti`. Returns the bindings.
+fn match_instance_head(head: &Type, ty: &Type) -> Option<Substitution> {
+    match (head, ty) {
+        (Type::SumType(name, params), Type::SumType(other, args))
+            if name == other && params.len() == args.len() =>
+        {
+            let mut bound = Substitution::new();
+            for (param, arg) in params.iter().zip(args) {
+                let Type::Var(var) = param else {
+                    return None;
+                };
+                bound.insert(var.clone(), arg.clone());
+            }
+            Some(bound)
+        }
+        _ if head == ty => Some(Substitution::new()),
+        _ => None,
+    }
 }
 
 /// Free type variables of every argument of `constraint`.
@@ -3433,6 +3484,40 @@ mod tests {
             env.generalize_constrained(&Type::Bool, lost, &HashMap::new()),
             Err(TypeError::AmbiguousConstraint("Eq t2".to_string()))
         );
+    }
+
+    #[test]
+    fn instance_context_is_reduced_through_a_worklist() {
+        let mut env = TypeEnv::new();
+        let elem = TypeVar(50);
+        let eq_of = |ty: Type| Constraint {
+            class: "Eq".to_string(),
+            args: vec![ty],
+        };
+        let list_of = |ty: Type| Type::SumType("L".to_string(), vec![ty]);
+        let instance = InstanceInfo {
+            head: list_of(Type::Var(elem.clone())),
+            context: vec![eq_of(Type::Var(elem))],
+        };
+        env.instances
+            .entry("Eq".to_string())
+            .or_default()
+            .push(instance);
+        let nested = vec![eq_of(list_of(list_of(Type::Int)))];
+        assert_eq!(
+            env.reduce_constraints(nested, &HashMap::new()),
+            Ok(Vec::new())
+        );
+        let open = vec![eq_of(list_of(Type::Var(TypeVar(7))))];
+        assert_eq!(
+            env.reduce_constraints(open, &HashMap::new()),
+            Ok(vec![eq_of(Type::Var(TypeVar(7)))])
+        );
+        let unit = vec![eq_of(list_of(Type::Unit))];
+        assert!(matches!(
+            env.reduce_constraints(unit, &HashMap::new()),
+            Err(TypeError::NoInstance(_))
+        ));
     }
 
     fn program_result(source: &str) -> Result<crate::typed_ast::TypedProgram, TypeError> {
