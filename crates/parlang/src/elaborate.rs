@@ -430,10 +430,13 @@ impl Elab {
         Ok(builder::con_at(name, type_args, values)?)
     }
 
+    /// Registers the data declaration `name` with its typechecker-inferred
+    /// `param_kinds`, parallel to `params`.
     fn data_decl(
         &mut self,
         name: &str,
         params: &[String],
+        param_kinds: &[parlang_core::Kind],
         ctors: &[(String, Vec<TypeAnnotation>)],
     ) -> Result<(), ElabError> {
         if ctors.iter().flat_map(|(_, anns)| anns).any(ann_applies_var) {
@@ -445,7 +448,7 @@ impl Elab {
         let dt = DataType {
             name: name.to_string(),
             params: params.to_vec(),
-            param_kinds: vec![parlang_core::Kind::Star; params.len()],
+            param_kinds: param_kinds.to_vec(),
             ctors: ctors
                 .iter()
                 .map(|(ctor_name, anns)| DataCon {
@@ -474,9 +477,10 @@ impl Elab {
             K::TypeDef {
                 name,
                 type_params,
+                param_kinds,
                 constructors,
                 body,
-            } => self.elab_typedef(name, type_params, constructors, body),
+            } => self.elab_typedef(name, type_params, param_kinds, constructors, body),
             K::Tuple(items) if items.is_empty() => Ok(builder::unit()),
             K::Tuple(items) => self.elab_tuple(&expr.ty, items),
             K::TupleProj(inner, index) => self.elab_tuple_proj(inner, *index),
@@ -636,10 +640,11 @@ impl Elab {
         &mut self,
         name: &str,
         params: &[String],
+        param_kinds: &[parlang_core::Kind],
         ctors: &[(String, Vec<TypeAnnotation>)],
         body: &TypedExpr,
     ) -> Result<Term, ElabError> {
-        self.data_decl(name, params, ctors)?;
+        self.data_decl(name, params, param_kinds, ctors)?;
         self.elab_expr(body)
     }
 
@@ -650,10 +655,11 @@ impl Elab {
                 TypedDecl::Data {
                     name,
                     type_params,
+                    param_kinds,
                     constructors,
                     ..
                 } => {
-                    self.data_decl(name, type_params, constructors)?;
+                    self.data_decl(name, type_params, param_kinds, constructors)?;
                 }
                 // Surface types never contain alias names: `TypeEnv` resolves
                 // aliases to their underlying `Type` before inference

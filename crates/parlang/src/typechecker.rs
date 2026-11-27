@@ -1659,8 +1659,13 @@ fn infer_type_def(
         params: type_params,
         ctors: constructors,
     };
+    // Captured now: inferring `body` may redefine `name` in `env`.
+    let mut param_kinds = Vec::new();
     for (data_name, kinds) in crate::kind_check::infer_data_kinds(env, std::slice::from_ref(&sig))?
     {
+        if data_name == name {
+            param_kinds.clone_from(&kinds);
+        }
         env.define_data_kinds(data_name, kinds);
     }
     for (ctor_name, payload_types) in constructors {
@@ -1679,6 +1684,7 @@ fn infer_type_def(
             kind: TypedExprKind::TypeDef {
                 name: name.to_string(),
                 type_params: type_params.to_vec(),
+                param_kinds,
                 constructors: constructors.to_vec(),
                 body: Box::new(body_typed),
             },
@@ -1842,11 +1848,13 @@ fn resolve_typed(subst: &Substitution, typed: &TypedExpr) -> TypedExpr {
         K::TypeDef {
             name,
             type_params,
+            param_kinds,
             constructors,
             body,
         } => K::TypeDef {
             name: name.clone(),
             type_params: type_params.clone(),
+            param_kinds: param_kinds.clone(),
             constructors: constructors.clone(),
             body: Box::new(resolve_typed(subst, body)),
         },
@@ -1935,9 +1943,15 @@ fn infer_decl_let(
 
 /// Run the final declaration pass, binding each top-level `let` and collecting
 /// the typed declarations in source order.
+///
+/// `data_kinds` holds the kinds inferred for every top-level `data`
+/// declaration before any `let` is inferred, so a nested type inside a `let`
+/// value cannot change them. `infer_data_kinds` returns an entry for every
+/// declaration, so the empty default below is not reached.
 fn collect_typed_decls(
     program: &Program,
     program_env: &mut TypeEnv,
+    data_kinds: &HashMap<String, Vec<parlang_core::Kind>>,
 ) -> Result<Vec<TypedDecl>, TypeError> {
     let mut decls = Vec::with_capacity(program.decls.len());
     for decl in &program.decls {
@@ -1965,6 +1979,7 @@ fn collect_typed_decls(
             } => decls.push(TypedDecl::Data {
                 name: name.clone(),
                 type_params: type_params.clone(),
+                param_kinds: data_kinds.get(name).cloned().unwrap_or_default(),
                 constructors: constructors.clone(),
                 doc: doc.clone(),
             }),
@@ -2008,8 +2023,12 @@ pub fn typecheck_program(program: &Program) -> Result<Type, TypeError> {
 }
 
 /// Infer the parameter kinds of every top-level `data` declaration as one
-/// mutually recursive group and record them in `env`.
-fn define_program_data_kinds(program: &Program, env: &mut TypeEnv) -> Result<(), TypeError> {
+/// mutually recursive group, record them in `env`, and return them keyed by
+/// type name.
+fn define_program_data_kinds(
+    program: &Program,
+    env: &mut TypeEnv,
+) -> Result<HashMap<String, Vec<parlang_core::Kind>>, TypeError> {
     let sigs: Vec<crate::kind_check::DataSig<'_>> = program
         .decls
         .iter()
@@ -2027,10 +2046,12 @@ fn define_program_data_kinds(program: &Program, env: &mut TypeEnv) -> Result<(),
             _ => None,
         })
         .collect();
+    let mut recorded = HashMap::new();
     for (name, kinds) in crate::kind_check::infer_data_kinds(env, &sigs)? {
-        env.define_data_kinds(name, kinds);
+        env.define_data_kinds(name.clone(), kinds.clone());
+        recorded.insert(name, kinds);
     }
-    Ok(())
+    Ok(recorded)
 }
 
 /// Type check a top-level program and persist its declarations in `env` on success,
@@ -2080,7 +2101,7 @@ pub fn typecheck_program_typed_with_env(
         program_env.define_type_alias(name.clone(), ty);
     }
 
-    define_program_data_kinds(program, &mut program_env)?;
+    let data_kinds = define_program_data_kinds(program, &mut program_env)?;
     for decl in &program.decls {
         if let Decl::Data {
             name,
@@ -2102,7 +2123,7 @@ pub fn typecheck_program_typed_with_env(
         }
     }
 
-    let decls = collect_typed_decls(program, &mut program_env)?;
+    let decls = collect_typed_decls(program, &mut program_env, &data_kinds)?;
 
     let (typed_body, ty) = match &program.body {
         Some(body) => {
@@ -2259,6 +2280,41 @@ mod tests {
             panic!("expected Var")
         };
         assert_eq!(args, &vec![Type::Char]);
+    }
+
+    /// A top-level `data` declaration carries its inferred parameter kinds.
+    #[test]
+    fn test_typed_data_decl_param_kinds() {
+        use crate::typed_ast::TypedDecl;
+        use parlang_core::Kind;
+        let program = check_program("data Wrap f a = MkWrap (f a);\n1");
+        let TypedDecl::Data { param_kinds, .. } = &program.decls[0] else {
+            panic!("expected Data decl")
+        };
+        let expected = vec![Kind::arrow(Kind::Star, Kind::Star), Kind::Star];
+        assert_eq!(param_kinds, &expected);
+    }
+
+    /// A nested same-name `data` in the body keeps the outer kinds intact.
+    #[test]
+    fn test_typed_type_def_kinds_survive_nested_redefinition() {
+        use crate::typed_ast::TypedExprKind as K;
+        use parlang_core::Kind;
+        let typed = check_typed("data W f = MkW (f Int) in data W a = MkA a in 0").unwrap();
+        let K::TypeDef {
+            param_kinds, body, ..
+        } = &typed.kind
+        else {
+            panic!("expected outer TypeDef")
+        };
+        assert_eq!(param_kinds, &vec![Kind::arrow(Kind::Star, Kind::Star)]);
+        let K::TypeDef {
+            param_kinds: inner, ..
+        } = &body.kind
+        else {
+            panic!("expected inner TypeDef")
+        };
+        assert_eq!(inner, &vec![Kind::Star]);
     }
 
     #[test]
