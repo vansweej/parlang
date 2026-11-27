@@ -1,5 +1,10 @@
 # Higher-Kinded Types and Type Classes: Design Document
 
+> Status: the higher-kinded type parts are implemented by M2.1 (ADRs 0011
+> and 0012). The type class design below (Phase 2, typeclass keyword) is
+> superseded by docs/adr/0013-type-classes.md: the language uses class
+> and instance with Haskell 98 strict rules. It is kept for history.
+
 ## Table of Contents
 1. Executive Summary
 2. Motivation and Use Cases
