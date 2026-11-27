@@ -64,12 +64,14 @@ The lexical structure consists of the following token categories:
 Keywords are reserved identifiers with special syntactic meaning:
 
 ```
-let     in      if      then    else    fun     true    false   load    rec     match   with    type    data
+let     in      if      then    else    fun     true    false   load
+rec     match   with    type    data    class   instance        where
 ```
 
 **Formal Definition:**
 ```
-keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load" | "rec" | "match" | "with" | "type" | "data"
+keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load"
+          | "rec" | "match" | "with" | "type" | "data" | "class" | "instance" | "where"
 ```
 
 #### 2.2.2 Identifiers
@@ -741,6 +743,36 @@ whenever a declaration introduces multiple alternative constructors and/or
 type parameters. At runtime and in `Display` output, ADT definitions are
 rendered using the `data` keyword (e.g. `(data Color = Red | Green in ...)`),
 not `type`.
+
+#### 5.2.7.3 Type Classes (class, instance)
+
+A top-level `class` declares a single-parameter type class and its method
+signatures. A top-level `instance` gives the methods for one type:
+
+```
+class C a where { m : ty; ... };
+instance [ctx =>] C head where { m = expr; ... };
+```
+
+Items are separated by `;`. A trailing `;` is optional and the body may be
+empty. A context is `C a =>` or `(C a, D b) =>`. An instance head is a
+base type (`Int`), a bare data type such as `Option` (for a class whose
+parameter has kind `* -> *`), or a parenthesised applied type `(T a b)`
+with distinct variables. `==` and `!=` mean the built-in class `Eq` with
+method `eq`, which has instances for `Int`, `Bool`, `Char` and `Float`.
+
+```parlang
+data Opt a = N | S a;
+class Same t where { same : t -> t -> Bool; };
+instance Same Int where { same = fun x -> fun y -> x == y };
+instance Same a => Same (Opt a) where { same = fun x -> fun y -> true };
+same 1 2
+```
+
+Status: classes and instances are type-checked, but no program that uses
+them runs until dictionary passing (M2.3). Such a program is rejected with
+`type classes are not executable yet: ...`. See
+`docs/adr/0013-type-classes.md` and `docs/MODULE_TYPECHECKER.md`.
 
 #### 5.2.8 Function Definition
 
@@ -2076,6 +2108,7 @@ digit           ::= [0-9]
 ```
 Delimiters:  ( ) =
 Keywords:    let in if then else fun true false load rec match with type data
+             class instance where
 Arrows:      ->
 Arithmetic:  + - * /
 Comparison:  == != < <= > >=
