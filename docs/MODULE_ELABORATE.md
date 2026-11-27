@@ -108,11 +108,12 @@ it.
   is a pure language: reordering or restructuring the evaluation of operand
   terms has no observable effect beyond the resulting value, so the rewrites
   preserve program meaning exactly.
-- **Equality** (`==`, `!=`) is only elaborated when the left operand's
-  translated type is a Core base type; equality on any other (non-base) type
-  is rejected as unsupported. `==` elaborates to the reserved `eq` Core
-  constructor application directly; `!=` elaborates `eq` and then negates the
-  result with `if`.
+- **Equality** (`==`, `!=`) elaborates to the reserved `eq` Core constructor
+  application directly; `!=` elaborates `eq` and then negates the result with
+  `if`. The type checker only admits `Eq` at `Int`, `Bool`, `Char` and
+  `Float`, so outside a constrained binding or an implicitly generalized
+  program body the left operand's translated type is a Core base type; any
+  other type is still rejected as unsupported.
 - **Tuples** of arity two or more elaborate to an application of the
   synthesized tuple constructor to the elaborated tuple elements, with the
   tuple's type arguments taken from its own component types; the empty tuple
@@ -173,9 +174,13 @@ Match expressions are compiled to Core decision trees by `elaborate/match_compil
   type-checked by the surface typechecker (they carry an untyped body with a
   fresh, unconstrained type variable), so there is nothing well-typed for
   elaboration to translate.
-- **Equality on non-base types** (for example, comparing two tuples, two
-  records, or two sum-type values for equality) is rejected as unsupported,
-  since Core's `eq` primitive is restricted to base types only.
+- **Constrained bindings** (a `let` whose generalized scheme carries class
+  constraints, such as `forall t0. Eq t0 => t0 -> t0 -> Bool`) are rejected
+  as unsupported: they need dictionary passing (milestone M2.3), and
+  elaboration never drops a constraint silently.
+- **Equality on non-base types** is rejected as unsupported, since Core's
+  `eq` primitive is restricted to base types only; this also covers equality
+  on a type variable in an implicitly generalized program body.
 - **`rec` of a non-function** is rejected as unsupported: the surface
   typechecker does permit a `rec` binding whose body does not elaborate to a
   function value, but Core's `LetRec` requires its bound value to already be

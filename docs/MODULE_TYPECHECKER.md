@@ -235,7 +235,9 @@ Expr::BinOp(op, left, right) =>
 
 Arithmetic operators (`+`, `-`, `*`, `/`) require `Int` arguments and return `Int`.
 Comparison operators (`<`, `<=`, `>`, `>=`) require `Int` arguments and return `Bool`.
-Equality operators (`==`, `!=`) work on any type but both sides must match.
+Equality operators (`==`, `!=`) require both sides to have the same type `t` and emit the wanted constraint `Eq t`.
+The built-in `Eq` instances are `Int`, `Bool`, `Char` and `Float`; `Eq` on any other type constructor (tuples, lists and strings, records, functions, unit, data types) is a `NoInstance` error.
+A constraint on a type variable is generalized into the binding's scheme (for example `forall t0. Eq t0 => t0 -> t0 -> Bool`). A program body or REPL expression is implicitly generalized, so a residual constraint is accepted when all of its variables occur in the body's type. Any other constraint whose variable is neither generalized nor fixed is an `AmbiguousConstraint` error (Haskell 98: no defaulting).
 
 ### If Expressions
 
