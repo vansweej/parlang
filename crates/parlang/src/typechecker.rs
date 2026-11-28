@@ -1584,9 +1584,15 @@ fn infer_constructor(
         let mut typed_args = Vec::new();
 
         for arg in args {
-            let (typed_arg, s) = infer_typed(arg, env)?;
+            // Infer each argument in an env carrying the substitution from the
+            // earlier arguments, as `infer_tuple` does.
+            let mut arg_env = env.clone();
+            apply_subst_env(&subst, &mut arg_env);
+            let (typed_arg, s) = infer_typed(arg, &mut arg_env)?;
+            advance_next_var_from_inference(&mut arg_env, &typed_arg.ty, &s);
+            env.next_var = env.next_var.max(arg_env.next_var);
             subst = compose_subst(&s, &subst);
-            arg_types.push(apply_subst(&subst, &typed_arg.ty));
+            arg_types.push(typed_arg.ty.clone());
             typed_args.push(typed_arg);
         }
 
@@ -1603,7 +1609,13 @@ fn infer_constructor(
         // Unify each argument with its expected type
         for (arg_ty, expected_annotation) in arg_types.iter().zip(&info.payload_types) {
             let expected_ty = type_annotation_to_type(expected_annotation, &type_param_map, env);
-            let s = unify(arg_ty, &expected_ty)?;
+            // Resolve both sides under the running substitution first: a bare
+            // template would let `compose_subst` overwrite an earlier binding
+            // of the same type parameter variable, which is unsound.
+            let s = unify(
+                &apply_subst(&subst, arg_ty),
+                &apply_subst(&subst, &expected_ty),
+            )?;
             subst = compose_subst(&s, &subst);
         }
 
@@ -3570,6 +3582,68 @@ mod tests {
             f_ret, g_ret,
             "f and g must not share a result type variable"
         );
+    }
+
+    fn program_type(source: &str) -> Result<Type, TypeError> {
+        let program = crate::parser::parse_program(source).unwrap();
+        typecheck_program(&program)
+    }
+
+    #[test]
+    fn test_constructor_rejects_heterogeneous_list() {
+        let res = program_type("data List a = Nil | Cons a (List a) ; Cons 1 (Cons true Nil)");
+        assert!(
+            res.is_err(),
+            "`Cons 1 (Cons true Nil)` must not typecheck: {res:?}"
+        );
+    }
+
+    #[test]
+    fn test_constructor_rejects_heterogeneous_list_via_function() {
+        let res = program_type(
+            "data List a = Nil | Cons a (List a) ; let g = fun x -> fun y -> Cons x (Cons y Nil) in g 1 true",
+        );
+        assert!(res.is_err(), "`g 1 true` must not typecheck: {res:?}");
+    }
+
+    #[test]
+    fn test_constructor_threads_env_between_args() {
+        let res = program_type(
+            "data List a = Nil | Cons a (List a) ; fun x -> Cons (x + 1) (Cons (if x then 1 else 2) Nil)",
+        );
+        assert!(res.is_err(), "`x` cannot be both `Int` and `Bool`: {res:?}");
+    }
+
+    #[test]
+    fn test_constructor_nested_payload_vars_unify() {
+        let ty = program_type(
+            "data List a = Nil | Cons a (List a) ; data Pair k v = Pair k v ; fun k -> fun v -> fun m -> Cons (Pair k v) (Cons (Pair k v) m)",
+        )
+        .unwrap();
+        let Type::Fun(k_ty, after_k) = &ty else {
+            panic!("expected Fun for k")
+        };
+        let Type::Fun(v_ty, after_v) = &**after_k else {
+            panic!("expected Fun for v")
+        };
+        let Type::Fun(m_ty, ret) = &**after_v else {
+            panic!("expected Fun for m")
+        };
+        assert_ne!(k_ty, v_ty, "`k` and `v` stay independent");
+        let pair = Type::SumType("Pair".to_string(), vec![(**k_ty).clone(), (**v_ty).clone()]);
+        let list = Type::SumType("List".to_string(), vec![pair]);
+        assert_eq!(**m_ty, list);
+        assert_eq!(**ret, list);
+    }
+
+    #[test]
+    fn test_constructor_well_typed_nested_program_accepted() {
+        let ty = program_type(
+            "data List a = Nil | Cons a (List a) ; data Pair k v = Pair k v ; Cons (Pair 1 true) (Cons (Pair 2 false) Nil)",
+        )
+        .unwrap();
+        let pair = Type::SumType("Pair".to_string(), vec![Type::Int, Type::Bool]);
+        assert_eq!(ty, Type::SumType("List".to_string(), vec![pair]));
     }
 
     fn check(source: &str) -> Result<Type, TypeError> {
