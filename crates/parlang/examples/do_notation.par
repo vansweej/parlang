@@ -1,0 +1,13 @@
+-- Do-notation over the Option and List monads.
+data Option a = None | Some a;
+data List a = Nil | Cons a (List a);
+class Monad m where { return : a -> m a; bind : m a -> (a -> m b) -> m b };
+let append = rec app -> fun xs -> fun ys -> (match xs with | Nil -> ys | Cons h t -> Cons h (app t ys));
+let sumList = rec s -> fun xs -> (match xs with | Nil -> 0 | Cons h t -> h + s t);
+let getOr = fun d -> fun o -> (match o with | None -> d | Some v -> v);
+instance Monad Option where { return = fun x -> Some x; bind = fun o -> fun k -> (match o with | None -> None | Some v -> k v) };
+instance Monad List where { return = fun x -> Cons x Nil; bind = fun xs -> fun k -> (match xs with | Nil -> Nil | Cons h t -> append (k h) (bind t k)) };
+let safeDiv = fun a -> fun b -> if b == 0 then None else Some (a / b);
+let calc = fun n -> do { q <- safeDiv 100 n; let r = q + 1; return (r * 2) };
+let pairs = do { x <- Cons 1 (Cons 2 Nil); Cons 0 Nil; y <- Cons 10 (Cons 20 Nil); return (x * y) };
+getOr 0 (calc 5) * 1000 + getOr 7 (calc 0) * 100 + sumList pairs

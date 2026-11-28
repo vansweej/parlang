@@ -291,6 +291,22 @@ fn monad_example_runs_on_core() {
 }
 
 #[test]
+fn executes_do_notation_example() {
+    assert_eq!(
+        run_example("examples/do_notation.par"),
+        Ok("Int(42790)".to_string())
+    );
+}
+
+#[test]
+fn do_notation_example_runs_on_core() {
+    assert_eq!(
+        example_core_output("examples/do_notation.par"),
+        Ok("42790\n".to_string())
+    );
+}
+
+#[test]
 fn classes_example_runs_on_core() {
     assert_eq!(
         example_core_output("examples/classes.par"),
