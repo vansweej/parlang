@@ -5,19 +5,43 @@ use std::fmt::Write;
 use crate::dictionary::{erase_program, insert_dictionaries, EraseError};
 use crate::typechecker::TypeEnv;
 use crate::typed_ast::TypedProgram;
-use crate::{check_elaborated, elaborate_program, typecheck_program_typed, Elaborated, Program};
+use crate::{
+    check_elaborated, elaborate_program, typecheck_program_typed_with_env, Elaborated, Program,
+};
 use parlang_core::{
     check_function, core_to_dot, eval, reduction_terms, render_value, trace, Environment,
     EvalError, Report, Type,
 };
 
-/// Elaborates `program` to Core without running Core Lint.
+/// Elaborates `program` to Core without running Core Lint: type checks it,
+/// rejects type-class programs (lifted in M2.3c2), then inserts
+/// dictionaries and elaborates the translation.
 fn elaborate_only(program: &Program) -> Result<Elaborated, String> {
-    let typed = typecheck_program_typed(program).map_err(|e| format!("type error: {e}"))?;
+    let mut env = TypeEnv::new();
+    let typed = typecheck_program_typed_with_env(program, &mut env)
+        .map_err(|e| format!("type error: {e}"))?;
     if let Some(reason) = crate::typed_ast::requires_dictionary_passing(&typed) {
         return Err(reason);
     }
-    elaborate_program(&typed).map_err(|e| format!("elaboration error: {e}"))
+    elaborate_translated(&typed, &env)
+}
+
+/// Inserts dictionaries into `typed`, checked in `env`, and elaborates the
+/// dictionary-explicit result to Core, without the type-class guard and
+/// without Core Lint. A program without classes elaborates exactly as
+/// before, because insertion leaves it unchanged.
+///
+/// # Errors
+///
+/// `dictionary insertion error: <e>` when insertion fails and
+/// `elaboration error: <e>` when elaboration fails.
+pub(crate) fn elaborate_translated(
+    typed: &TypedProgram,
+    env: &TypeEnv,
+) -> Result<Elaborated, String> {
+    let translated =
+        insert_dictionaries(typed, env).map_err(|e| format!("dictionary insertion error: {e}"))?;
+    elaborate_program(&translated).map_err(|e| format!("elaboration error: {e}"))
 }
 
 /// Elaborates `program` to Core and runs Core Lint, returning the elaborated
