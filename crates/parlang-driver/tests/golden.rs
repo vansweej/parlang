@@ -314,6 +314,12 @@ fn core_polymorphic_tuple() {
 }
 
 #[test]
+fn classes_run_on_surface_and_core() {
+    run_fixture("classes.par", "2");
+    run_fixture_with_flag("classes.par", "--core", "2");
+}
+
+#[test]
 fn dump_core_text_identity() {
     let output = run_driver(&["--dump", "--stage", "core"], "identity.par");
     assert!(output.status.success());

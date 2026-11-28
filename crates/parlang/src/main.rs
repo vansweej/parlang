@@ -896,6 +896,17 @@ mod tests {
     }
 
     #[test]
+    fn class_declared_in_a_loaded_file_stays_rejected() {
+        let lib = temp_program("class_lib", "class Show a where { show : a -> Int };\n0");
+        let lib_text = lib.to_string_lossy().into_owned();
+        let src = format!("load \"{lib_text}\" in 1");
+        let out = run_src("class_lib_user", &src, &[]);
+        let _ = std::fs::remove_file(&lib);
+        let expected = "Error: type classes are not executable yet: class Show";
+        assert_eq!(out, Err(expected.to_string()));
+    }
+
+    #[test]
     fn surface_repl_runs_polymorphic_equality_through_dictionaries() {
         let mut state = ReplState::new();
         let declared = state.eval_input("let same = fun x -> fun y -> x == y;");
