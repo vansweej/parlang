@@ -86,8 +86,13 @@ let len = rec go -> fun xs -> match xs with | Nil -> 0 | Cons x rest -> 1 + go r
 0
 ```
 
-## Future: type classes
+## Type classes
 
 Eligibility is defined on specialised Core. Dictionaries introduced by type
 classes must be specialised away before the check, and higher-kinded type
 variables are never kernel types until instantiated.
+
+Dictionary passing has landed (ADR 0014). A constrained function elaborates
+to `TyLam`s around dictionary lambdas and is rejected under R5. Its
+dictionaries are non-kernel data until a Core-to-Core specialiser inlines
+them.

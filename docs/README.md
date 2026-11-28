@@ -31,7 +31,8 @@ Welcome to the comprehensive documentation for ParLang, a small ML-alike functio
 - [ADR 0010: Kernel Eligibility Predicate](adr/0010-kernel-eligibility-predicate.md)
 - [ADR 0011: Core Kinds](adr/0011-core-kinds.md)
 - [ADR 0012: Surface Higher-Kinded Types on Core](adr/0012-surface-higher-kinded-types.md)
-- [ADR 0013: Type Classes](adr/0013-type-classes.md) - Haskell 98 single-parameter classes, built-in Eq, not executable until M2.3
+- [ADR 0013: Type Classes](adr/0013-type-classes.md) - Haskell 98 single-parameter classes, built-in Eq, executable via dictionary passing (ADR 0014)
+- [ADR 0014: Dictionary Passing](adr/0014-dictionary-passing.md) - Dictionary insertion shared by the surface evaluator, both REPLs and Core
 
 ## 📖 Documentation Overview
 

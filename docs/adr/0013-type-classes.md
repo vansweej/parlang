@@ -46,14 +46,12 @@ superseded by this ADR.
   givens are the instance context; a missing context constraint is
   reported as `NoInstance`.
 - Context reduction is a worklist of one-way head matching.
-- Evaluator parity: until M2.3, both evaluators, both REPLs and the
-  driver reject a class-using program with the same text,
-  `type classes are not executable yet: ...`, produced by
-  `typed_ast::requires_dictionary_passing`.
-- M2.3 adds one dictionary insertion mechanism that feeds both the
-  surface evaluator and REPL and Core elaboration. It must record the
-  evidence and residual constraints of the body, and it must honour ADR
-  0010 (eligibility is decided on specialised Core).
+- Execution: implemented by `docs/adr/0014-dictionary-passing.md`.
+  One dictionary insertion mechanism feeds the surface evaluator, both
+  REPLs and Core elaboration, so class programs run on every front
+  end. It honours ADR 0010, because eligibility is decided on
+  specialised Core. Classes combined with `load` are rejected
+  uniformly.
 
 ## Consequences
 
@@ -75,6 +73,7 @@ superseded by this ADR.
     and `Show`.
   - REPL rigidity is covered through the free variables of the
     environment.
+  - Execution limitations are listed in ADR 0014.
 
 ## References
 

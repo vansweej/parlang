@@ -56,6 +56,10 @@ parallelism and no general recursion inside kernels.
   R1 and R2 reject every constrained function. Higher-kinded type variables
   (`Type::App(Var f, a)`) are never kernel types until instantiated. The
   predicate API already takes an instantiation list for this reason.
+- Dictionary passing has landed (ADR 0014). A constrained function
+  elaborates to `TyLam`s around dictionary lambdas and is rejected
+  under R5. Its dictionaries are non-kernel data until a Core-to-Core
+  specialiser inlines them.
 - Per-instantiation checking (lifting R5) is future work.
 - Non-tail recursion such as a naive factorial is rejected and needs an
   accumulator rewrite; see `docs/KERNEL_ELIGIBILITY.md`.

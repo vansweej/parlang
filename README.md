@@ -16,6 +16,7 @@ ParLang is a simple functional programming language with:
 - **Variables**: Let bindings for creating local variables
 - **Functions**: First-class functions with closure support
 - **Polymorphism**: Let-polymorphism for generic functions
+- **Type Classes**: Haskell 98 single-parameter classes and instances (built-in `Eq` behind `==`), executed by dictionary passing on both evaluators
 - **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
 - **Pattern Matching**: Match expressions for cleaner multi-branch logic (supports records, tuples, literals, and sum types)
