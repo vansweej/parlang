@@ -1,0 +1,12 @@
+data Nat = Z | S Nat;
+data Box a = MkBox a;
+class Size a where { size : a -> Int; weight : a -> Int };
+instance Size Bool where { size = fun b -> if b then 1 else 0; weight = fun b -> 5 };
+instance Size Nat where { size = fun n -> (match n with | Z -> 0 | S m -> 1 + size m); weight = fun n -> 2 };
+instance Eq a => Eq (Box a) where { eq = fun x -> fun y -> (match x with | MkBox p -> (match y with | MkBox q -> eq p q)) };
+class Pick a where { pick : a -> b -> b -> b };
+instance Pick Bool where { pick = fun c -> fun x -> fun y -> if c then x else y };
+let twice = fun x -> size x + size x;
+let same = fun x -> fun y -> x == y;
+let two = S (S Z);
+twice two + weight true + weight two + pick true 100 0 + (if pick false true false then 1000 else 0) + (if same (MkBox 1) (MkBox 1) then 10000 else 0) + (if same 3 4 then 100000 else 0)

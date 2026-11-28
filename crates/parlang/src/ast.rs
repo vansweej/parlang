@@ -156,7 +156,7 @@ pub enum Decl {
     },
 
     /// A top-level single-parameter `class Name param where { method : ty; };`
-    /// declaration. Typechecked since M2.2b2a; neither evaluator runs it until M2.3.
+    /// declaration. Typechecked since M2.2b2a; runs through dictionary passing (M2.3).
     Class {
         name: String,
         param: String,

@@ -1,0 +1,4 @@
+class Size a where { size : a -> Int };
+instance Size Bool where { size = fun b -> if b then 1 else 0 };
+let twice = fun x -> size x + size x;
+twice true

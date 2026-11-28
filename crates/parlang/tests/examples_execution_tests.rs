@@ -21,12 +21,21 @@ fn example_source(relative_path: &str) -> Result<String, String> {
     Ok(source)
 }
 
+/// The program the surface evaluator runs for `program`, as the CLI selects
+/// it: type checked, then passed through `parlang::pipeline::surface_program`.
+fn runnable_program(program: &parlang::Program) -> Result<parlang::Program, String> {
+    let mut env = parlang::TypeEnv::new();
+    let typed = parlang::typecheck_program_typed_with_env(program, &mut env)
+        .map_err(|error| error.to_string())?;
+    parlang::pipeline::surface_program(program, &typed, &env)
+}
+
 fn run_example(relative_path: &str) -> Result<String, String> {
     let source = example_source(relative_path)?;
     run_on_evaluator_stack(move || -> Result<String, String> {
         let program = parse_program(&source)?;
-        typecheck_program(&program).map_err(|error| error.to_string())?;
-        eval_program(&program, &Environment::new())
+        let runnable = runnable_program(&program)?;
+        eval_program(&runnable, &Environment::new())
             .map(|value| format!("{value:?}"))
             .map_err(|error| error.to_string())
     })
@@ -257,6 +266,22 @@ fn executes_map_example() {
     );
 }
 
+#[test]
+fn executes_classes_example() {
+    assert_eq!(
+        run_example("examples/classes.par"),
+        Ok("Int(10111)".to_string())
+    );
+}
+
+#[test]
+fn classes_example_runs_on_core() {
+    assert_eq!(
+        example_core_output("examples/classes.par"),
+        Ok("10111\n".to_string())
+    );
+}
+
 /// The parsed `relative_path` example and the program
 /// `parlang::pipeline::surface_program` selects for it.
 fn example_surface_programs(
@@ -275,18 +300,22 @@ fn example_surface_programs(
 /// translation `surface_program` selects, comparing the resulting `Value`s
 /// structurally (not their `Debug` text, whose field order is
 /// `HashMap`-dependent and may legitimately differ between the two runs).
+/// A class program has no direct run, because the evaluator rejects `class`
+/// and `instance` declarations. It agrees trivially here and is checked
+/// against Core by `every_example_agrees_on_core`.
 fn example_agrees_via_dictionaries(relative_path: &str) -> Result<bool, String> {
     let rel = relative_path.to_string();
     run_on_evaluator_stack(move || -> Result<bool, String> {
         let source = example_source(&rel)?;
         let program = parse_program(&source)?;
-        typecheck_program(&program).map_err(|error| error.to_string())?;
-        let direct =
-            eval_program(&program, &Environment::new()).map_err(|error| error.to_string())?;
-
         let mut env = parlang::TypeEnv::new();
         let typed = parlang::typecheck_program_typed_with_env(&program, &mut env)
             .map_err(|error| error.to_string())?;
+        if parlang::typed_ast::is_class_program(&typed) {
+            return Ok(true);
+        }
+        let direct =
+            eval_program(&program, &Environment::new()).map_err(|error| error.to_string())?;
         let runnable = parlang::pipeline::surface_program(&program, &typed, &env)?;
         let translated =
             eval_program(&runnable, &Environment::new()).map_err(|error| error.to_string())?;
@@ -375,9 +404,9 @@ fn example_value_matches(relative_path: &str, expected: fn() -> Value) -> Result
     let source = example_source(relative_path)?;
     run_on_evaluator_stack(move || -> Result<(), String> {
         let program = parse_program(&source)?;
-        typecheck_program(&program).map_err(|error| error.to_string())?;
+        let runnable = runnable_program(&program)?;
         let actual =
-            eval_program(&program, &Environment::new()).map_err(|error| error.to_string())?;
+            eval_program(&runnable, &Environment::new()).map_err(|error| error.to_string())?;
         let expected = expected();
         if actual == expected {
             Ok(())
@@ -550,9 +579,9 @@ enum CoreOutcome {
 fn core_outcome(source: String) -> Result<CoreOutcome, String> {
     run_on_evaluator_stack(move || -> Result<CoreOutcome, String> {
         let program = parse_program(&source)?;
-        typecheck_program(&program).map_err(|error| error.to_string())?;
+        let runnable = runnable_program(&program)?;
         let surface =
-            eval_program(&program, &Environment::new()).map_err(|error| error.to_string())?;
+            eval_program(&runnable, &Environment::new()).map_err(|error| error.to_string())?;
         let elaborated = match parlang::pipeline::core_of_program(&program) {
             Ok(elaborated) => elaborated,
             Err(error) => return Ok(CoreOutcome::Rejected(error)),

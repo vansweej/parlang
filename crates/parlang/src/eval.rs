@@ -403,9 +403,11 @@ pub enum EvalError {
     PatternMatchNonExhaustive,
     /// Evaluation exceeded the non-tail recursion policy limit.
     RecursionLimit,
-    /// TEMPORARY (M2.2a): a `class`/`instance` declaration reached the
-    /// evaluator (e.g. in a `load`ed library, which skips typechecking). The
-    /// payload names it, e.g. `class Eq`. Removed by dictionary passing (M2.3).
+    /// A `class`/`instance` declaration reached the evaluator untranslated,
+    /// e.g. in a `load`ed library, which skips type checking and dictionary
+    /// insertion. The payload names it, e.g. `class Eq`. Front ends run the
+    /// erased dictionary translation instead; this stays for the untyped
+    /// `load` path (ADR 0013).
     ClassesNotExecutable(String),
 }
 

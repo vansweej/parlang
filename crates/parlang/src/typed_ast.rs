@@ -172,8 +172,8 @@ pub struct TypedProgram {
     pub body: Option<TypedExpr>,
     pub ty: Type,
     /// Class methods referenced by name (`==` and `!=` do not count),
-    /// deduplicated in first-use order. A non-empty list means the program
-    /// needs dictionary passing (M2.3) to run.
+    /// deduplicated in first-use order. A non-empty list makes the program a
+    /// class program (see [`is_class_program`]).
     pub method_uses: Vec<String>,
     /// Residual class constraints of the trailing body, accepted because
     /// every type variable they mention is free in the body type (implicit
@@ -199,25 +199,85 @@ pub fn typed_program_to_text(program: &TypedProgram) -> String {
     out
 }
 
-/// Why `program` cannot run before dictionary passing (M2.3), or `None` when
-/// it uses no type class: its first `class` or `instance` declaration, else its first
-/// class-method use.
-///
-/// Both evaluators and both REPLs report exactly this text, so a
-/// class-using program is rejected the same way on every front end.
-pub fn requires_dictionary_passing(program: &TypedProgram) -> Option<String> {
-    let class = program.decls.iter().find_map(|decl| match decl {
-        TypedDecl::Class { name, .. } => Some(format!("class {name}")),
-        TypedDecl::Instance { class, .. } => Some(format!("instance {class}")),
-        _ => None,
+/// Whether `program` uses type classes: it declares a `class` or an
+/// `instance`, or references a class method by name (`==` and `!=` do not
+/// count).
+pub fn is_class_program(program: &TypedProgram) -> bool {
+    !program.method_uses.is_empty()
+        || program
+            .decls
+            .iter()
+            .any(|decl| matches!(decl, TypedDecl::Class { .. } | TypedDecl::Instance { .. }))
+}
+
+/// Whether `program` contains a `load` expression anywhere: in a top-level
+/// `let` value, in an instance method body, or in the trailing body.
+pub fn contains_load(program: &TypedProgram) -> bool {
+    let in_decls = program.decls.iter().any(|decl| match decl {
+        TypedDecl::Let { value, .. } => expr_contains_load(value),
+        TypedDecl::Instance { methods, .. } => {
+            methods.iter().any(|(_, body)| expr_contains_load(body))
+        }
+        TypedDecl::Data { .. } | TypedDecl::TypeAlias { .. } | TypedDecl::Class { .. } => false,
     });
-    let what = class.or_else(|| {
-        program
-            .method_uses
-            .first()
-            .map(|method| format!("method {method}"))
-    })?;
-    Some(format!("type classes are not executable yet: {what}"))
+    in_decls || program.body.as_ref().is_some_and(expr_contains_load)
+}
+
+/// Whether `expr` contains a `load` node; a `Load` body is untyped and not
+/// searched.
+fn expr_contains_load(expr: &TypedExpr) -> bool {
+    use TypedExprKind as K;
+    match &expr.kind {
+        K::Load(..) => true,
+        K::Int(_) | K::Bool(_) | K::Char(_) | K::Float(_) | K::Var(..) => false,
+        K::BinOp(_, left, right) | K::App(left, right) | K::Let(_, _, _, left, right) => {
+            expr_contains_load(left) || expr_contains_load(right)
+        }
+        K::If(cond, then_branch, else_branch) => {
+            expr_contains_load(cond)
+                || expr_contains_load(then_branch)
+                || expr_contains_load(else_branch)
+        }
+        K::Fun(_, _, inner)
+        | K::Rec(_, inner)
+        | K::TupleProj(inner, _)
+        | K::TypeAlias(_, _, inner)
+        | K::FieldAccess(inner, _)
+        | K::TypeDef { body: inner, .. } => expr_contains_load(inner),
+        K::Match(scrutinee, arms) => {
+            expr_contains_load(scrutinee) || arms.iter().any(|arm| expr_contains_load(&arm.body))
+        }
+        K::Tuple(items) | K::Constructor(_, items) => items.iter().any(expr_contains_load),
+        K::Record(fields) => fields.iter().any(|(_, value)| expr_contains_load(value)),
+    }
+}
+
+/// The one rejection every front end reports for a class program (see
+/// [`is_class_program`]) that also contains `load`, or `None` when
+/// `program` may run. The untyped loaded body never receives dictionaries.
+/// The text names the first `class` or `instance` declaration, else the
+/// first class-method use.
+pub fn class_load_conflict(program: &TypedProgram) -> Option<String> {
+    if !is_class_program(program) || !contains_load(program) {
+        return None;
+    }
+    let what = program
+        .decls
+        .iter()
+        .find_map(|decl| match decl {
+            TypedDecl::Class { name, .. } => Some(format!("class {name}")),
+            TypedDecl::Instance { class, .. } => Some(format!("instance {class}")),
+            _ => None,
+        })
+        .or_else(|| {
+            program
+                .method_uses
+                .first()
+                .map(|method| format!("method {method}"))
+        })?;
+    Some(format!(
+        "type classes cannot be combined with load yet: {what}"
+    ))
 }
 
 fn indent(out: &mut String, depth: usize) {
@@ -457,6 +517,53 @@ mod tests {
         let program = parse_program(src).expect("parse should succeed");
         let typed = typecheck_program_typed(&program).expect("typecheck should succeed");
         super::typed_program_to_text(&typed)
+    }
+
+    fn typed_of(src: &str) -> super::TypedProgram {
+        let program = parse_program(src).expect("parse should succeed");
+        typecheck_program_typed(&program).expect("typecheck should succeed")
+    }
+
+    const SHOW: &str = "class Show a where { show : a -> Int };\n";
+
+    #[test]
+    fn class_programs_are_recognised() {
+        assert!(super::is_class_program(&typed_of(&format!("{SHOW}0"))));
+        assert!(super::is_class_program(&typed_of("eq 1 2")));
+        let eq_only = "let same = fun x -> fun y -> x == y;\nsame 1 2";
+        assert!(!super::is_class_program(&typed_of(eq_only)));
+    }
+
+    #[test]
+    fn contains_load_sees_lets_instance_methods_and_the_body() {
+        assert!(!super::contains_load(&typed_of("let k = 1;\nk")));
+        let in_let = "let k = (load \"nofile.par\" in 1, 2);\n0";
+        assert!(super::contains_load(&typed_of(in_let)));
+        let in_method = format!(
+            "{SHOW}instance Show Bool where {{ show = fun b -> load \"nofile.par\" in 1 }};\n0"
+        );
+        assert!(super::contains_load(&typed_of(&in_method)));
+        assert!(super::contains_load(&typed_of("load \"nofile.par\" in 0")));
+    }
+
+    #[test]
+    fn class_load_conflict_needs_both_classes_and_load() {
+        let declared = format!("{SHOW}load \"nofile.par\" in 0");
+        assert_eq!(
+            super::class_load_conflict(&typed_of(&declared)),
+            Some("type classes cannot be combined with load yet: class Show".to_string())
+        );
+        let used = "(eq 1 2, load \"nofile.par\" in 0)";
+        assert_eq!(
+            super::class_load_conflict(&typed_of(used)),
+            Some("type classes cannot be combined with load yet: method eq".to_string())
+        );
+        assert_eq!(
+            super::class_load_conflict(&typed_of(&format!("{SHOW}0"))),
+            None
+        );
+        let eq_load = "let same = fun x -> fun y -> x == y;\nload \"nofile.par\" in same 1 1";
+        assert_eq!(super::class_load_conflict(&typed_of(eq_load)), None);
     }
 
     #[test]

@@ -157,7 +157,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    if let Some(reason) = parlang::typed_ast::requires_dictionary_passing(&typed) {
+    if let Some(reason) = parlang::typed_ast::class_load_conflict(&typed) {
         eprintln!("{reason}");
         return ExitCode::FAILURE;
     }
