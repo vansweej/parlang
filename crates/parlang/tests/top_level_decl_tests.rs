@@ -557,6 +557,55 @@ fn constructor_class_instance_is_kind_checked() {
     );
 }
 
+const FUNCTOR_WRAP: &str = "class Functor f where { fmap : (a -> b) -> f a -> f b };\n\
+     data Opt a = N | S a;\ndata Wrap f a = MkWrap (f a);\n\
+     instance Functor Opt where { fmap = fun g -> fun o -> (match o with | N -> N | S v -> S (g v)) };\n";
+
+#[test]
+fn context_class_kind_is_checked() {
+    let star_var = check_source(&[
+        FUNCTOR_WRAP,
+        "data Box a = MkBox a;\ninstance Functor a => Eq (Box a) where { eq = fun x -> fun y -> true };\n0",
+    ]);
+    assert_eq!(
+        star_var,
+        Err(TypeError::KindMismatch(
+            "a".to_string(),
+            "* -> *".to_string(),
+            "*".to_string()
+        ))
+    );
+    let arrow_var = check_source(&[
+        FUNCTOR_WRAP,
+        "instance Eq f => Functor (Wrap f) where { fmap = fun g -> fun w -> w };\n0",
+    ]);
+    assert_eq!(
+        arrow_var,
+        Err(TypeError::KindMismatch(
+            "f".to_string(),
+            "*".to_string(),
+            "* -> *".to_string()
+        ))
+    );
+}
+
+#[test]
+fn context_instance_over_constructor_variable_typechecks() {
+    let wrap = check_source(&[
+        FUNCTOR_WRAP,
+        "instance Functor f => Functor (Wrap f) where { fmap = fun g -> fun w -> (match w with | MkWrap x -> MkWrap (fmap g x)) };\n\
+         let unwrap = fun w -> (match w with | MkWrap x -> x);\n\
+         unwrap (fmap (fun x -> x + 1) (MkWrap (S 1)))",
+    ]);
+    assert_eq!(
+        wrap,
+        Ok(parlang::Type::SumType(
+            "Opt".to_string(),
+            vec![parlang::Type::Int]
+        ))
+    );
+}
+
 #[test]
 fn instance_declaration_errors() {
     let method_error = |instance: &str, method: &str| (instance.to_string(), method.to_string());

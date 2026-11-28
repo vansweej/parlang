@@ -2612,6 +2612,44 @@ fn resolve_instance_context(
     Ok(resolved)
 }
 
+/// Check that each class of the instance `context` takes a parameter of the
+/// kind its variable has in the instance `head`.
+///
+/// A mismatch is `KindMismatch(var, expected, found)`: `expected` is the
+/// class parameter kind and `found` is the kind of the head variable.
+/// Unknown classes were already rejected by `resolve_instance_context`.
+fn check_context_kinds(
+    context: &[(String, String)],
+    head: &crate::ast::TypeAnnotation,
+    env: &TypeEnv,
+) -> Result<(), TypeError> {
+    let crate::ast::TypeAnnotation::App(head_name, params) = head else {
+        return Ok(());
+    };
+    let Some(kinds) = env.data_kinds(head_name) else {
+        return Ok(());
+    };
+    for (class, var) in context {
+        let Some(info) = env.class_info(class) else {
+            continue;
+        };
+        let position = params
+            .iter()
+            .position(|ann| matches!(ann, crate::ast::TypeAnnotation::Var(name) if name == var));
+        let Some(found) = position.and_then(|index| kinds.get(index)) else {
+            continue;
+        };
+        if *found != info.param_kind {
+            return Err(TypeError::KindMismatch(
+                var.clone(),
+                info.param_kind.to_string(),
+                found.to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Check that `defined` names every method of `class_methods` exactly once
 /// and nothing else (no default methods yet).
 fn check_instance_method_set(
@@ -2745,7 +2783,8 @@ fn check_instance_method(
 /// `program_env`, and return its typed declaration.
 ///
 /// Haskell 98 rules: the class exists; the head passes
-/// `check_instance_head`; the context constrains head variables only; the
+/// `check_instance_head`; the context constrains head variables only, at
+/// their kinds (see `check_context_kinds`); the
 /// instance defines exactly the class methods; no earlier instance of
 /// `class` (built-ins included) overlaps the head. The instance is
 /// registered before its method bodies are checked, so a body may use the
@@ -2765,6 +2804,7 @@ fn check_instance_decl(
     let (head_ty, vars, names) =
         check_instance_head(&label, head, &class_info.param_kind, program_env)?;
     let constraints = resolve_instance_context(context, &names, program_env)?;
+    check_context_kinds(context, head, program_env)?;
     check_instance_method_set(&label, &class_info.methods, methods)?;
     let overlaps = program_env.instances.get(class).is_some_and(|known| {
         known.iter().any(|other| {
