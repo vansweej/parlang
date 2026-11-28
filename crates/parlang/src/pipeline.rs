@@ -580,6 +580,73 @@ mod tests {
     }
 
     #[test]
+    fn core_runs_do_option() {
+        let src = format!(
+            "{MONAD_DECLS}getOr 0 (do {{ x <- Some 3; y <- Some 4; return (x + y) }}) + getOr 100 (do {{ x <- None; return (x + 1) }})"
+        );
+        assert_eq!(class_value(&src), "107");
+    }
+
+    #[test]
+    fn core_runs_do_list() {
+        let src = format!(
+            "{MONAD_DECLS}sumList (do {{ x <- Cons 1 (Cons 2 Nil); y <- Cons 10 (Cons 20 Nil); return (x + y) }})"
+        );
+        assert_eq!(class_value(&src), "66");
+    }
+
+    #[test]
+    fn core_runs_do_let_and_bare_statements() {
+        let src = format!(
+            "{MONAD_DECLS}sumList (do {{ Cons 1 (Cons 2 Nil); let k = 5; return k }}) + getOr 0 (do {{ x <- Some 2; let y : Int = x * 10; return (y + x); }})"
+        );
+        assert_eq!(class_value(&src), "32");
+    }
+
+    #[test]
+    fn core_runs_nested_do() {
+        let src = format!(
+            "{MONAD_DECLS}getOr 0 (do {{ x <- do {{ a <- Some 1; return (a + 1) }}; return (x * 3) }})"
+        );
+        assert_eq!(class_value(&src), "6");
+    }
+
+    #[test]
+    fn do_uses_a_user_bind_in_scope() {
+        let src = format!(
+            "{MONAD_DECLS}getOr 0 (do {{ x <- Some 1; return x }}) + (let bind = fun m -> fun k -> k 100 in do {{ x <- 1; x + 1 }})"
+        );
+        assert_eq!(class_value(&src), "102");
+    }
+
+    #[test]
+    fn core_runs_do_in_an_instance_method() {
+        let src = format!(
+            "{MONAD_DECLS}class Twice m where {{ twice : m Int -> m Int }};\ninstance Twice Option where {{ twice = fun o -> do {{ x <- o; return (x * 2) }} }};\ngetOr 0 (twice (Some 21))"
+        );
+        assert_eq!(class_value(&src), "42");
+    }
+
+    #[test]
+    fn do_bind_shadows_an_outer_name() {
+        let src = format!(
+            "{MONAD_DECLS}let x = 100 in getOr 0 (do {{ x <- Some 1; return (x + 1) }}) + x"
+        );
+        assert_eq!(class_value(&src), "102");
+    }
+
+    #[test]
+    fn do_without_bind_in_scope_is_unbound() {
+        let result = crate::typechecker::typecheck_program(&prog("do { x <- 1; x }"));
+        assert_eq!(
+            result.err(),
+            Some(crate::typechecker::TypeError::UnboundVariable(
+                "bind".to_string()
+            ))
+        );
+    }
+
+    #[test]
     fn core_runs_constrained_let_over_a_constructor_class() {
         let src = format!(
             "{MONAD_DECLS}let incr = fun c -> fmap (fun x -> x + 1) c;\ngetOr 0 (incr (Some 1)) + sumList (incr (Cons 1 (Cons 2 Nil)))"
