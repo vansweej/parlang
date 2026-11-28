@@ -107,7 +107,7 @@ pub struct Constraint {
 
 `Constraint` implements `Display` as the class name followed by its arguments separated by spaces: `Eq t0`, `Pair t0 t1`.
 
-`TypeScheme` carries a `constraints: Vec<Constraint>` field. It is always empty in this slice and exists for forward compatibility with a future typeclass feature.
+`TypeScheme` carries a `constraints: Vec<Constraint>` field. It holds the class constraints of a scheme (M2.2, ADR 0013), which dictionary insertion consumes (ADR 0014).
 
 Constructors:
 - `TypeScheme::mono(ty)`: a monomorphic scheme with no quantified variables and no constraints

@@ -769,10 +769,10 @@ instance Same a => Same (Opt a) where { same = fun x -> fun y -> true };
 same 1 2
 ```
 
-Status: classes and instances are type-checked, but no program that uses
-them runs until dictionary passing (M2.3). Such a program is rejected with
-`type classes are not executable yet: ...`. See
-`docs/adr/0013-type-classes.md` and `docs/MODULE_TYPECHECKER.md`.
+Status: classes and instances run on every front end via dictionary
+passing; the example evaluates to `false`. A class program cannot use
+`load` yet. See `docs/adr/0013-type-classes.md`,
+`docs/adr/0014-dictionary-passing.md` and `docs/MODULE_TYPECHECKER.md`.
 
 #### 5.2.8 Function Definition
 

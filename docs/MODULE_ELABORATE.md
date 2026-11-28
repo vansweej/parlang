@@ -110,10 +110,9 @@ it.
   preserve program meaning exactly.
 - **Equality** (`==`, `!=`) elaborates to the reserved `eq` Core constructor
   application directly; `!=` elaborates `eq` and then negates the result with
-  `if`. The type checker only admits `Eq` at `Int`, `Bool`, `Char` and
-  `Float`, so outside a constrained binding or an implicitly generalized
-  program body the left operand's translated type is a Core base type; any
-  other type is still rejected as unsupported.
+  `if`. Elaboration runs on the dictionary-translated program, where
+  equality at a non-base type is already an `Eq` dictionary call, so the
+  left operand's translated type is always a Core base type.
 - **Tuples** of arity two or more elaborate to an application of the
   synthesized tuple constructor to the elaborated tuple elements, with the
   tuple's type arguments taken from its own component types; the empty tuple
@@ -168,19 +167,36 @@ Match expressions are compiled to Core decision trees by `elaborate/match_compil
 - Output is deterministic: fresh names, constructor order and literal order are all fixed.
 - Slice 7c guarantees exhaustiveness and declared constructors before elaboration. A violated invariant yields `ElabError::Unsupported` rather than a panic.
 
+## Dictionaries
+
+Class programs are elaborated after dictionary insertion
+(`docs/adr/0014-dictionary-passing.md`,
+`crates/parlang/src/elaborate/dictionary.rs`):
+
+- Each class becomes `data $Dict_C p` with one constructor. Its fields are
+  the method types in class order, and method type variables other than
+  `p` are `Forall`-bound.
+- `$Dict_Eq` is registered lazily. The built-in `Eq` dictionaries are bound
+  at the outermost level, and only when referenced.
+- An instance dictionary is a `TyLam` over the instance variables around a
+  monomorphic `letrec`, or a unit thunk when the instance has no context.
+- Method selection is a `Case` on the dictionary followed by one `TyApp`
+  per extra method variable.
+- A constrained binding elaborates to `TyLam`s around dictionary lambdas.
+
 ## Unsupported constructs
 
 - **`load`** expressions are rejected as unsupported: `load` bodies are not
   type-checked by the surface typechecker (they carry an untyped body with a
   fresh, unconstrained type variable), so there is nothing well-typed for
   elaboration to translate.
-- **Constrained bindings** (a `let` whose generalized scheme carries class
-  constraints, such as `forall t0. Eq t0 => t0 -> t0 -> Bool`) are rejected
-  as unsupported: they need dictionary passing (milestone M2.3), and
-  elaboration never drops a constraint silently.
-- **Equality on non-base types** is rejected as unsupported, since Core's
-  `eq` primitive is restricted to base types only; this also covers equality
-  on a type variable in an implicitly generalized program body.
+- **Untranslated constrained bindings** (a `let` whose generalized scheme
+  carries class constraints but which did not pass through dictionary
+  insertion) are an invariant error reported as unsupported; elaboration
+  never drops a constraint silently.
+- **Equality on a non-base type** reaching the elaborator (possible only
+  for an untranslated program) is an invariant error reported as
+  unsupported, since Core's `eq` primitive is restricted to base types.
 - **`rec` of a non-function** is rejected as unsupported: the surface
   typechecker does permit a `rec` binding whose body does not elaborate to a
   function value, but Core's `LetRec` requires its bound value to already be
