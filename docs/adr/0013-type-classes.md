@@ -21,7 +21,7 @@ superseded by this ADR.
 - Classes have exactly one parameter. Its kind is inferred from the
   method signatures, so a constructor class has a parameter of kind
   `* -> *`.
-- Syntax: `class C a where { m : ty; ... };` and
+- Syntax: `class [ctx =>] C a where { m : ty; ... };` and
   `instance [ctx =>] C head where { m = expr; ... };`. Contexts are
   `C a =>` or `(C a, D b) =>`. `class`, `instance` and `where` are
   keywords.
@@ -43,8 +43,8 @@ superseded by this ADR.
   per instance.
 - Instance method bodies are checked against the class signature at the
   head. Rigidity is enforced by substitution, without skolem types. The
-  givens are the instance context; a missing context constraint is
-  reported as `NoInstance`.
+  givens are the instance context closed under superclasses (ADR 0016);
+  a missing context constraint is reported as `NoInstance`.
 - Context reduction is a worklist of one-way head matching.
 - Execution: implemented by `docs/adr/0014-dictionary-passing.md`.
   One dictionary insertion mechanism feeds the surface evaluator, both
@@ -61,7 +61,7 @@ superseded by this ADR.
   `InvalidInstanceHead`, `TypeSynonymInstance`, `DuplicateInstance`,
   `InvalidInstanceContext`, `UnknownInstanceMethod`,
   `DuplicateInstanceMethod`, `MissingInstanceMethod` and
-  `InstanceMethodTooSpecific`.
+  `InstanceMethodTooSpecific`. M2.5 added `InvalidSuperclassContext`.
 - `ClassesNotSupportedYet` is removed. `EvalError::ClassesNotExecutable`
   stays for the untyped `load` path.
 - Programs that compared tuples, lists or strings with `==` no longer
@@ -70,8 +70,8 @@ superseded by this ADR.
   - M2.4a (done): context classes are kind-checked against their head
     variable; constructor classes such as `Functor` and `Monad` run over
     `List` and `Option` (see `examples/monad.par`). M2.4b: do-notation (done, see `docs/adr/0015-do-notation.md`).
-  - M2.5: superclasses (the syntax field exists and is always empty)
-    and `Show`.
+  - M2.5 (done): superclasses, see `docs/adr/0016-superclasses.md`
+    and `examples/ord.par`. A built-in `Show` is deferred.
   - REPL rigidity is covered through the free variables of the
     environment.
   - Execution limitations are listed in ADR 0014.

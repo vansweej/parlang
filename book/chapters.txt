@@ -55,4 +55,5 @@ doc|docs/adr/0012-surface-higher-kinded-types.md
 doc|docs/adr/0013-type-classes.md
 doc|docs/adr/0014-dictionary-passing.md
 doc|docs/adr/0015-do-notation.md
+doc|docs/adr/0016-superclasses.md
 #glyphs
