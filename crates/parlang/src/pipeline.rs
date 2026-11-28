@@ -5,19 +5,43 @@ use std::fmt::Write;
 use crate::dictionary::{erase_program, insert_dictionaries, EraseError};
 use crate::typechecker::TypeEnv;
 use crate::typed_ast::TypedProgram;
-use crate::{check_elaborated, elaborate_program, typecheck_program_typed, Elaborated, Program};
+use crate::{
+    check_elaborated, elaborate_program, typecheck_program_typed_with_env, Elaborated, Program,
+};
 use parlang_core::{
     check_function, core_to_dot, eval, reduction_terms, render_value, trace, Environment,
     EvalError, Report, Type,
 };
 
-/// Elaborates `program` to Core without running Core Lint.
+/// Elaborates `program` to Core without running Core Lint: type checks it,
+/// rejects type-class programs (lifted in M2.3c2), then inserts
+/// dictionaries and elaborates the translation.
 fn elaborate_only(program: &Program) -> Result<Elaborated, String> {
-    let typed = typecheck_program_typed(program).map_err(|e| format!("type error: {e}"))?;
+    let mut env = TypeEnv::new();
+    let typed = typecheck_program_typed_with_env(program, &mut env)
+        .map_err(|e| format!("type error: {e}"))?;
     if let Some(reason) = crate::typed_ast::requires_dictionary_passing(&typed) {
         return Err(reason);
     }
-    elaborate_program(&typed).map_err(|e| format!("elaboration error: {e}"))
+    elaborate_translated(&typed, &env)
+}
+
+/// Inserts dictionaries into `typed`, checked in `env`, and elaborates the
+/// dictionary-explicit result to Core, without the type-class guard and
+/// without Core Lint. A program without classes elaborates exactly as
+/// before, because insertion leaves it unchanged.
+///
+/// # Errors
+///
+/// `dictionary insertion error: <e>` when insertion fails and
+/// `elaboration error: <e>` when elaboration fails.
+pub(crate) fn elaborate_translated(
+    typed: &TypedProgram,
+    env: &TypeEnv,
+) -> Result<Elaborated, String> {
+    let translated =
+        insert_dictionaries(typed, env).map_err(|e| format!("dictionary insertion error: {e}"))?;
+    elaborate_program(&translated).map_err(|e| format!("elaboration error: {e}"))
 }
 
 /// Elaborates `program` to Core and runs Core Lint, returning the elaborated
@@ -410,5 +434,92 @@ mod tests {
         let src = "let same = fun x -> fun y -> x == y;\nload \"nofile.par\" in same 1 1";
         let (program, runnable) = surface(src);
         assert_eq!(runnable, program);
+    }
+
+    /// `src` type-checked, dictionary-translated and elaborated without the
+    /// type-class guard, then checked by Core Lint.
+    fn translated_core(src: &str) -> Elaborated {
+        let program = prog(src);
+        let mut env = TypeEnv::new();
+        let typed = typecheck_program_typed_with_env(&program, &mut env).expect("type checks");
+        let elab = elaborate_translated(&typed, &env).expect("elaborates");
+        let checked = check_elaborated(&elab);
+        assert!(checked.is_ok(), "{checked:?}\n{}", elab.term.to_text());
+        elab
+    }
+
+    /// The rendered Core value of `src`, checked against the surface
+    /// evaluator running the erased translation.
+    fn class_value(src: &str) -> String {
+        let elab = translated_core(src);
+        let value = eval(&elab.term, &Environment::new()).expect("Core evaluates");
+        let core = render_value(&value, &elab.ty, &elab.env);
+        let (_, runnable) = surface(src);
+        let expected =
+            crate::eval_program(&runnable, &crate::Environment::new()).expect("surface evaluates");
+        assert_eq!(core, expected.to_string(), "{src}");
+        core
+    }
+
+    #[test]
+    fn core_runs_instance_with_context() {
+        let src = "data Box a = MkBox a;\ninstance Eq a => Eq (Box a) where { eq = fun x -> fun y -> (match x with | MkBox p -> (match y with | MkBox q -> eq p q)) };\nlet same = fun x -> fun y -> x == y;\n(if same (MkBox 1) (MkBox 2) then 10 else 0) + (if same (MkBox 3) (MkBox 3) then 1 else 0)";
+        assert_eq!(class_value(src), "1");
+    }
+
+    #[test]
+    fn core_runs_context_instance_using_neq() {
+        let src = "data Box a = MkBox a;\ninstance Eq a => Eq (Box a) where { eq = fun x -> fun y -> (match x with | MkBox p -> (match y with | MkBox q -> if p != q then false else true)) };\nlet same = fun x -> fun y -> x == y;\n(if same (MkBox 1) (MkBox 2) then 10 else 0) + (if same (MkBox 3) (MkBox 3) then 1 else 0)";
+        assert_eq!(class_value(src), "1");
+    }
+
+    #[test]
+    fn core_runs_self_referencing_instance() {
+        let src = "data Nat = Z | S Nat;\ninstance Eq Nat where { eq = fun x -> fun y -> (match x with | Z -> (match y with | Z -> true | S m -> false) | S n -> (match y with | Z -> false | S m -> eq n m)) };\n(if eq (S Z) (S Z) then 10 else 0) + (if eq (S Z) Z then 1 else 0) + (if (S Z) != Z then 100 else 0)";
+        assert_eq!(class_value(src), "110");
+    }
+
+    #[test]
+    fn core_selects_methods_in_class_order() {
+        let src = "class Pair a where { first : a -> Int; second : a -> Int };\ninstance Pair Bool where { second = fun b -> 2; first = fun b -> 1 };\nfirst true + second true";
+        assert_eq!(class_value(src), "3");
+    }
+
+    #[test]
+    fn core_instantiates_extra_method_variables() {
+        let src = "class Pick a where { pick : a -> b -> b -> b };\ninstance Pick Bool where { pick = fun c -> fun x -> fun y -> if c then x else y };\n(if pick false true false then 10 else 20) + pick true 1 2";
+        assert_eq!(class_value(src), "21");
+    }
+
+    #[test]
+    fn core_selects_extra_variable_method_at_a_type_variable_head() {
+        let src = "class Pick a where { pick : a -> b -> b -> b };\ninstance Pick Bool where { pick = fun c -> fun x -> fun y -> if c then x else y };\nlet choose = fun c -> fun x -> fun y -> pick c x y;\nchoose true 1 2 + (if choose false true false then 10 else 20)";
+        assert_eq!(class_value(src), "21");
+    }
+
+    #[test]
+    fn core_runs_constrained_let_over_a_user_class() {
+        let src = "class Size a where { size : a -> Int };\ninstance Size Bool where { size = fun b -> if b then 1 else 0 };\nlet twice = fun x -> size x + size x;\ntwice true";
+        assert_eq!(class_value(src), "2");
+    }
+
+    #[test]
+    fn core_abstracts_a_residual_body_over_its_dictionary() {
+        let elab = translated_core("let same = fun x -> fun y -> x == y; same");
+        assert!(matches!(elab.ty, Type::Fun(..)), "{}", elab.ty);
+    }
+
+    #[test]
+    fn run_core_polymorphic_equality_passes_the_guard() {
+        let src = "let same = fun x -> fun y -> x == y;\n(same 3 3, same 'a' 'b')";
+        assert_eq!(run_core(&prog(src)), Ok("(true, false)\n".to_string()));
+        assert!(dump_lint(&prog(src), false).is_ok());
+    }
+
+    #[test]
+    fn kernel_check_rejects_a_constrained_function() {
+        let src = "let same = fun x -> fun y -> x == y;\n0";
+        let err = kernel_check(&prog(src), "same").expect_err("rejected");
+        assert!(err.starts_with("rejected: same"), "{err}");
     }
 }
