@@ -2,10 +2,15 @@
 //! `crate::dictionary::insert_dictionaries`.
 //!
 //! - A class `C` becomes the Core data type `$Dict_C p` with one
-//!   constructor `$Dict_C` whose fields are the method types in class
-//!   order. Method type variables other than the class parameter are bound
-//!   by a `Forall` inside the field (rank-2 fields), named `m0`, `m1`, and
-//!   so on, so they never shadow `p` or an elaborator type variable.
+//!   constructor `$Dict_C` whose fields are first one `$Dict_S p` per
+//!   direct superclass `S` (declaration order), then the method types in
+//!   class order. Method type variables other than the class parameter are
+//!   bound by a `Forall` inside the field (rank-2 fields), named `m0`,
+//!   `m1`, and so on, so they never shadow `p` or an elaborator type
+//!   variable.
+//! - A superclass projection `FieldAccess(dict, "$super_S")` is a `Case`
+//!   selecting the superclass field; method positions are offset by the
+//!   number of superclasses.
 //! - The built-in `Eq` class is registered lazily, the first time a
 //!   `$Dict_Eq` type is converted, so a program without dictionaries
 //!   elaborates to exactly the same Core as before. Every referenced
@@ -37,7 +42,7 @@ use parlang_core::Type as CoreType;
 use parlang_core::{builder, BaseType, DataCon, DataType, Kind, Term};
 
 use super::{unsupported, Elab, ElabError};
-use crate::dictionary::{dictionary_type_name, method_renaming};
+use crate::dictionary::{dictionary_type_name, method_renaming, superclass_field_name};
 use crate::typechecker::{apply_subst, Substitution};
 use crate::typed_ast::{TypedExpr, TypedExprKind};
 use crate::types::{Type, TypeScheme, TypeVar};
@@ -57,6 +62,15 @@ pub(super) struct SelfDict {
     vars: Vec<CoreType>,
     /// Whether the `letrec` binds a function of `Unit` (no context).
     context_free: bool,
+}
+
+/// The layout of one registered dictionary type.
+#[derive(Clone)]
+pub(super) struct ClassDict {
+    /// Direct superclass names; their dictionaries are the leading fields.
+    supers: Vec<String>,
+    /// Method schemes in class order, after the superclass fields.
+    methods: Vec<(String, TypeScheme)>,
 }
 
 /// Whether `name` binds an instance dictionary.
@@ -167,21 +181,34 @@ impl Elab {
         })?;
         self.classes.insert(
             EQ_DICT.to_string(),
-            vec![("eq".to_string(), eq_method_scheme())],
+            ClassDict {
+                supers: Vec::new(),
+                methods: vec![("eq".to_string(), eq_method_scheme())],
+            },
         );
         Ok(())
     }
 
     /// Registers the dictionary data type `$Dict_<class>` of a user class:
-    /// parameter `p` of kind `param_kind`, one field per method in order.
+    /// parameter `p` of kind `param_kind`, one `$Dict_S p` field per
+    /// superclass `S`, then one field per method in order.
     pub(super) fn register_class(
         &mut self,
         class: &str,
         param_kind: &Kind,
+        superclasses: &[String],
         methods: &[(String, TypeScheme)],
     ) -> Result<(), ElabError> {
         let dict_type = dictionary_type_name(class);
-        let mut fields = Vec::with_capacity(methods.len());
+        let mut fields = Vec::with_capacity(superclasses.len() + methods.len());
+        for superclass in superclasses {
+            let super_type = dictionary_type_name(superclass);
+            self.ensure_dict_type(&super_type)?;
+            fields.push(CoreType::App(
+                Box::new(CoreType::Con(super_type)),
+                Box::new(CoreType::Var("p".to_string())),
+            ));
+        }
         for (_, scheme) in methods {
             fields.push(self.method_field_type(scheme)?);
         }
@@ -194,7 +221,13 @@ impl Elab {
                 fields,
             }],
         })?;
-        self.classes.insert(dict_type, methods.to_vec());
+        self.classes.insert(
+            dict_type,
+            ClassDict {
+                supers: superclasses.to_vec(),
+                methods: methods.to_vec(),
+            },
+        );
         Ok(())
     }
 
@@ -348,26 +381,34 @@ impl Elab {
                 "dictionary type without exactly one argument",
             ));
         };
-        let Some(methods) = self.classes.get(dict_type).cloned() else {
+        let Some(info) = self.classes.get(dict_type).cloned() else {
             return Err(unsupported(
                 "dictionary",
                 &format!("unknown dictionary type {dict_type}"),
             ));
         };
-        if methods.len() != fields.len() {
+        if info.supers.len() + info.methods.len() != fields.len() {
             return Err(unsupported(
                 "dictionary",
-                "dictionary fields do not match the class methods",
+                "dictionary fields do not match the class superclasses and methods",
             ));
         }
+        let order_error = || unsupported("dictionary", "dictionary fields are not in class order");
         let head_ty = self.conv_type(head)?;
+        let split = info.supers.len();
+        let super_fields = fields.get(..split).unwrap_or_default();
+        let method_fields = fields.get(split..).unwrap_or_default();
         let mut values = Vec::with_capacity(fields.len());
-        for ((method, scheme), (field, value)) in methods.iter().zip(fields) {
+        for (superclass, (field, value)) in info.supers.iter().zip(super_fields) {
+            let expected = superclass_field_name(superclass);
+            if *field != expected {
+                return Err(order_error());
+            }
+            values.push(self.elab_expr(value)?);
+        }
+        for ((method, scheme), (field, value)) in info.methods.iter().zip(method_fields) {
             if method != field {
-                return Err(unsupported(
-                    "dictionary",
-                    "dictionary fields are not in class order",
-                ));
+                return Err(order_error());
             }
             values.push(self.elab_method_body(scheme, head, value)?);
         }
@@ -432,9 +473,50 @@ impl Elab {
         field: &str,
     ) -> Result<Term, ElabError> {
         if let Type::SumType(dict_type, args) = &inner.ty {
+            if let Some(position) = self.superclass_position(dict_type, field) {
+                return self.elab_super_select(dict_type, inner, position);
+            }
             return self.elab_method_select(ty, dict_type, args, inner, field);
         }
         self.elab_field_access(inner, field)
+    }
+
+    /// The field position of the `$super_` field `field` in the
+    /// registered dictionary type `dict_type`, if it is one.
+    fn superclass_position(&self, dict_type: &str, field: &str) -> Option<usize> {
+        self.classes
+            .get(dict_type)?
+            .supers
+            .iter()
+            .position(|superclass| superclass_field_name(superclass) == field)
+    }
+
+    /// Selects the superclass dictionary at field `position` of dictionary
+    /// `inner` of type `dict_type`: a `Case` binding every field. No type
+    /// application follows; the result is `$Dict_S` at the same argument.
+    fn elab_super_select(
+        &mut self,
+        dict_type: &str,
+        inner: &TypedExpr,
+        position: usize,
+    ) -> Result<Term, ElabError> {
+        let count = self
+            .classes
+            .get(dict_type)
+            .map_or(0, |info| info.supers.len() + info.methods.len());
+        let scrut = self.elab_expr(inner)?;
+        let binders: Vec<String> = (0..count).map(|_| self.fresh_name("f")).collect();
+        let refs: Vec<&str> = binders.iter().map(String::as_str).collect();
+        let Some(selected) = binders.get(position).map(String::as_str) else {
+            return Err(unsupported(
+                "superclass selection",
+                "superclass position out of range",
+            ));
+        };
+        Ok(builder::case_(
+            scrut,
+            vec![builder::alt(dict_type, &refs, builder::var(selected)?)?],
+        ))
     }
 
     /// Selects method `field` from dictionary `inner` of type
@@ -455,17 +537,19 @@ impl Elab {
                 "dictionary type without exactly one argument",
             ));
         };
-        let Some(methods) = self.classes.get(dict_type) else {
+        let Some(info) = self.classes.get(dict_type) else {
             return Err(selection_error(&format!(
                 "unknown dictionary type {dict_type}"
             )));
         };
-        let count = methods.len();
-        let Some((position, scheme)) = methods
+        let offset = info.supers.len();
+        let count = offset + info.methods.len();
+        let Some((position, scheme)) = info
+            .methods
             .iter()
             .enumerate()
             .find(|(_, (method, _))| method == field)
-            .map(|(index, (_, scheme))| (index, scheme.clone()))
+            .map(|(index, (_, scheme))| (offset + index, scheme.clone()))
         else {
             return Err(selection_error(&format!(
                 "no method {field} in {dict_type}"

@@ -723,4 +723,34 @@ mod tests {
         let err = kernel_check(&prog(src), "same").expect_err("rejected");
         assert!(err.starts_with("rejected: same"), "{err}");
     }
+
+    #[test]
+    fn core_runs_superclass_projection_in_a_context_instance() {
+        let src = format!(
+            "{ORD_DECLS}(if lte (MkBox 1) (MkBox 2) then 10 else 0) + (if lte (MkBox 3) (MkBox 3) then 1 else 0) + (if lte (MkBox 5) (MkBox 4) then 100 else 0)"
+        );
+        assert_eq!(class_value(&src), "11");
+    }
+
+    #[test]
+    fn core_runs_constrained_let_over_a_subclass() {
+        let src = format!(
+            "{ORD_DECLS}let maxOf = fun x -> fun y -> if lte x y then y else x;\nmaxOf 3 7 + unBox (maxOf (MkBox 9) (MkBox 4))"
+        );
+        assert_eq!(class_value(&src), "16");
+    }
+
+    #[test]
+    fn core_runs_eq_and_ord_constraints_together() {
+        let src = format!(
+            "{ORD_DECLS}let le = fun x -> fun y -> if x == y then true else lte x y;\n(if le 2 2 then 1 else 0) + (if le (MkBox 3) (MkBox 1) then 10 else 0) + (if le (MkBox 1) (MkBox 3) then 100 else 0)"
+        );
+        assert_eq!(class_value(&src), "101");
+    }
+
+    #[test]
+    fn core_runs_superclass_chain() {
+        let src = format!("{ORD_DECLS}{TOP_DECLS}top (MkBox 5) + top 3");
+        assert_eq!(class_value(&src), "17");
+    }
 }

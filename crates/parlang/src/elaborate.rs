@@ -109,8 +109,9 @@ struct Elab {
     fresh: usize,
     /// Core names overriding surface type variables, consulted before `scope`.
     var_names: BTreeMap<usize, String>,
-    /// Method schemes of each registered dictionary type, keyed by its name.
-    classes: BTreeMap<String, Vec<(String, TypeScheme)>>,
+    /// Superclasses and method schemes of each registered dictionary type,
+    /// keyed by its name.
+    classes: BTreeMap<String, dictionary::ClassDict>,
     /// Built-in `Eq` dictionaries referenced so far, bound by `elab_program`.
     builtin_dicts: BTreeSet<String>,
     /// The instance dictionary being elaborated, for self-references.
@@ -688,9 +689,10 @@ impl Elab {
                 TypedDecl::Class {
                     name,
                     param_kind,
+                    superclasses,
                     methods,
                     ..
-                } => self.register_class(name, param_kind, methods)?,
+                } => self.register_class(name, param_kind, superclasses, methods)?,
                 TypedDecl::Instance { .. } => {
                     return Err(unsupported(
                         "instance declaration",
