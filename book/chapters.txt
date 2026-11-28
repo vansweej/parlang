@@ -53,4 +53,5 @@ doc|docs/adr/0010-kernel-eligibility-predicate.md
 doc|docs/adr/0011-core-kinds.md
 doc|docs/adr/0012-surface-higher-kinded-types.md
 doc|docs/adr/0013-type-classes.md
+doc|docs/adr/0014-dictionary-passing.md
 #glyphs
