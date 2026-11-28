@@ -39,6 +39,7 @@ mod program;
 
 pub use erase::{erase_program, EraseError};
 pub use program::insert_dictionaries;
+pub(crate) use program::method_renaming;
 
 pub use evidence::{
     apply_all, dictionary_name, dictionary_type, dictionary_type_name, evidence_expr, solve,

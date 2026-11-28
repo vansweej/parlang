@@ -188,7 +188,7 @@ fn instance_fields(
 /// and type-variable ids that happen to coincide across the two sides are
 /// harmless because only the expected side is ever looked up. `None`
 /// (reported as `MethodShape`) therefore means a broken invariant.
-fn method_renaming(
+pub(crate) fn method_renaming(
     scheme: &TypeScheme,
     head: &Type,
     actual: &Type,

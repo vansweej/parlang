@@ -6,7 +6,7 @@
 //! Unsupported constructs, including every `match` until slice 7e, return
 //! `ElabError::Unsupported` and never panic.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use parlang_core::Type as CoreType;
@@ -16,6 +16,7 @@ use crate::ast::{BinOp, TypeAnnotation};
 use crate::typed_ast::{TypedDecl, TypedExpr, TypedExprKind as K, TypedProgram};
 use crate::types::{Type, TypeScheme, TypeVar};
 
+mod dictionary;
 mod match_compile;
 
 /// The result of elaborating a `TypedProgram` into Core.
@@ -106,6 +107,14 @@ struct Elab {
     scope: Vec<usize>,
     /// Counter for fresh `$`-prefixed binder names.
     fresh: usize,
+    /// Core names overriding surface type variables, consulted before `scope`.
+    var_names: BTreeMap<usize, String>,
+    /// Method schemes of each registered dictionary type, keyed by its name.
+    classes: BTreeMap<String, Vec<(String, TypeScheme)>>,
+    /// Built-in `Eq` dictionaries referenced so far, bound by `elab_program`.
+    builtin_dicts: BTreeSet<String>,
+    /// The instance dictionary being elaborated, for self-references.
+    self_dict: Option<dictionary::SelfDict>,
 }
 
 impl Elab {
@@ -139,15 +148,12 @@ impl Elab {
                 Box::new(self.conv_type(a)?),
                 Box::new(self.conv_type(b)?),
             )),
-            Type::Var(TypeVar(n)) => {
-                if self.scope.contains(n) {
-                    Ok(CoreType::Var(format!("t{n}")))
-                } else {
-                    Ok(CoreType::Base(BaseType::Unit))
-                }
-            }
+            Type::Var(TypeVar(n)) => Ok(self
+                .tyvar_name(*n)
+                .map_or(CoreType::Base(BaseType::Unit), CoreType::Var)),
             // Partial application is allowed: Core Lint checks its kind.
             Type::SumType(name, args) => {
+                self.ensure_dict_type(name)?;
                 if let Some(kinds) = self.data_kinds.get(name) {
                     if args.len() > kinds.len() {
                         return Err(unsupported(
@@ -167,10 +173,10 @@ impl Elab {
                 Ok(acc)
             }
             Type::VarApp(TypeVar(n), args) => {
-                if !self.scope.contains(n) {
+                let Some(head) = self.tyvar_name(*n) else {
                     return Err(unsupported("type", "residual higher-kinded type variable"));
-                }
-                let mut acc = CoreType::Var(format!("t{n}"));
+                };
+                let mut acc = CoreType::Var(head);
                 for arg in args {
                     acc = CoreType::App(Box::new(acc), Box::new(self.conv_type(arg)?));
                 }
@@ -348,6 +354,9 @@ impl Elab {
         ty: &Type,
         fields: &[(String, TypedExpr)],
     ) -> Result<Term, ElabError> {
+        if let Type::SumType(dict_type, args) = ty {
+            return self.elab_dict_record(dict_type, args, fields);
+        }
         let Type::Record(map) = ty else {
             return Err(unsupported("record", "record without record type"));
         };
@@ -478,7 +487,7 @@ impl Elab {
             K::Tuple(items) => self.elab_tuple(&expr.ty, items),
             K::TupleProj(inner, index) => self.elab_tuple_proj(inner, *index),
             K::Record(fields) => self.elab_record(&expr.ty, fields),
-            K::FieldAccess(inner, field) => self.elab_field_access(inner, field),
+            K::FieldAccess(inner, field) => self.elab_projection(&expr.ty, inner, field),
             K::Constructor(name, args) => self.elab_constructor(&expr.ty, name, args),
             K::Match(scrut, arms) => self.compile_match(scrut, arms),
             K::Load(..) => Err(unsupported(
@@ -489,6 +498,9 @@ impl Elab {
     }
 
     fn elab_var(&mut self, name: &str, type_args: &[Type]) -> Result<Term, ElabError> {
+        if let Some(term) = self.elab_dict_var(name, type_args)? {
+            return Ok(term);
+        }
         let mut term = builder::var(name)?;
         for ty in type_args {
             let core_ty = self.conv_type(ty)?;
@@ -515,7 +527,8 @@ impl Elab {
     /// Wraps the elaborated `value` in one `TyLam` per generalized variable of
     /// `scheme`, with the first variable ending up outermost. Each binder's
     /// kind is inferred from how its variable is used in `scheme.ty`. A
-    /// scheme with class constraints is rejected until dictionary passing.
+    /// scheme that still has class constraints is rejected: run
+    /// `crate::dictionary::insert_dictionaries` before elaborating.
     fn elab_generalized(
         &mut self,
         scheme: &TypeScheme,
@@ -524,7 +537,7 @@ impl Elab {
         if !scheme.constraints.is_empty() {
             return Err(unsupported(
                 "constrained binding",
-                &format!("{scheme} needs dictionary passing (M2.3)"),
+                &format!("{scheme} still needs dictionary passing; insert dictionaries first"),
             ));
         }
         let depth = self.scope.len();
@@ -672,16 +685,16 @@ impl Elab {
                 // aliases to their underlying `Type` before inference
                 // records them on any node, so there is nothing to elaborate.
                 TypedDecl::TypeAlias { .. } => {}
-                TypedDecl::Class { .. } => {
-                    return Err(unsupported(
-                        "class declaration",
-                        "type classes need dictionary passing (M2.3)",
-                    ));
-                }
+                TypedDecl::Class {
+                    name,
+                    param_kind,
+                    methods,
+                    ..
+                } => self.register_class(name, param_kind, methods)?,
                 TypedDecl::Instance { .. } => {
                     return Err(unsupported(
                         "instance declaration",
-                        "type classes need dictionary passing (M2.3)",
+                        "insert dictionaries before elaborating",
                     ));
                 }
                 TypedDecl::Let {
@@ -690,7 +703,11 @@ impl Elab {
                     value,
                     ..
                 } => {
-                    let value_term = self.elab_generalized(scheme, value)?;
+                    let value_term = if dictionary::is_instance_dictionary(name) {
+                        self.elab_instance_dict(name, scheme, value)?
+                    } else {
+                        self.elab_generalized(scheme, value)?
+                    };
                     lets.push((name.clone(), value_term));
                 }
             }
@@ -703,7 +720,7 @@ impl Elab {
         for (name, value) in lets.into_iter().rev() {
             acc = builder::let_(&name, value, acc)?;
         }
-        Ok(acc)
+        self.wrap_builtin_dicts(acc)
     }
 }
 
