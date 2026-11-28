@@ -14,13 +14,14 @@ use parlang_core::{
 };
 
 /// Elaborates `program` to Core without running Core Lint: type checks it,
-/// rejects type-class programs (lifted in M2.3c2), then inserts
-/// dictionaries and elaborates the translation.
+/// rejects a type-class program containing `load` with the same text as
+/// every other front end (see [`crate::typed_ast::class_load_conflict`]),
+/// then inserts dictionaries and elaborates the translation.
 fn elaborate_only(program: &Program) -> Result<Elaborated, String> {
     let mut env = TypeEnv::new();
     let typed = typecheck_program_typed_with_env(program, &mut env)
         .map_err(|e| format!("type error: {e}"))?;
-    if let Some(reason) = crate::typed_ast::requires_dictionary_passing(&typed) {
+    if let Some(reason) = crate::typed_ast::class_load_conflict(&typed) {
         return Err(reason);
     }
     elaborate_translated(&typed, &env)
@@ -280,15 +281,18 @@ mod tests {
     }
 
     #[test]
-    fn core_rejects_type_classes_until_dictionary_passing() {
-        let method = "type classes are not executable yet: method eq".to_string();
-        assert_eq!(run_core(&prog("eq 1 2")), Err(method.clone()));
-        assert_eq!(dump_core(&prog("eq 1 2"), false), Err(method));
+    fn core_runs_type_classes_and_rejects_them_with_load() {
+        assert_eq!(run_core(&prog("eq 1 2")), Ok("false\n".to_string()));
+        assert!(dump_core(&prog("eq 1 2"), false).is_ok());
         assert_eq!(
             run_core(&prog("class Show a where { show : a -> Int };\n0")),
-            Err("type classes are not executable yet: class Show".to_string())
+            Ok("0\n".to_string())
         );
         assert_eq!(run_core(&prog("1 == 2")), Ok("false\n".to_string()));
+        let conflict = "class Show a where { show : a -> Int };\nload \"nofile.par\" in 0";
+        let expected = "type classes cannot be combined with load yet: class Show".to_string();
+        assert_eq!(run_core(&prog(conflict)), Err(expected.clone()));
+        assert_eq!(dump_core(&prog(conflict), false), Err(expected));
     }
 
     #[test]

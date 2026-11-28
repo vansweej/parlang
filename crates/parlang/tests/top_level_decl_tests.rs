@@ -647,7 +647,7 @@ fn instance_declaration_errors() {
 }
 
 #[test]
-fn instance_programs_render_and_are_not_executable_yet() {
+fn instance_programs_render_and_run_through_dictionaries() {
     let source = [OPT_SAME, SAME_INSTANCES, "same 1"].concat();
     let program = parse_program(&source).unwrap();
     let typed = parlang::typecheck_program_typed(&program).unwrap();
@@ -657,17 +657,12 @@ fn instance_programs_render_and_are_not_executable_yet() {
     assert!(text.contains("method same: "), "{text}");
     let dot = parlang::typed_program_to_dot(&typed);
     assert!(dot.contains("Instance\\nSame Int"), "{dot}");
-    assert_eq!(
-        parlang::typed_ast::requires_dictionary_passing(&typed),
-        Some("type classes are not executable yet: class Same".to_string())
-    );
+    assert!(parlang::typed_ast::is_class_program(&typed));
+    assert_eq!(parlang::typed_ast::class_load_conflict(&typed), None);
+    // Raw evaluation of an untranslated program still rejects the instance;
+    // the front ends run its dictionary translation instead (ADR 0013).
     let eq_only = "data Opt a = N | S a;\n\
                    instance Eq a => Eq (Opt a) where { eq = fun x -> fun y -> true };\n0";
-    let typed_eq = parlang::typecheck_program_typed(&parse_program(eq_only).unwrap()).unwrap();
-    assert_eq!(
-        parlang::typed_ast::requires_dictionary_passing(&typed_eq),
-        Some("type classes are not executable yet: instance Eq".to_string())
-    );
     assert_eq!(
         run(eq_only),
         Err("type classes are not executable yet: instance Eq".to_string())

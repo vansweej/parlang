@@ -6,7 +6,7 @@
 /// - AST dumping to stdout as text IR (--dump) or DOT (--dump-dot), parsed, typed, core or lint (--stage)
 /// - Core evaluation (--core) and Core machine tracing (trace subcommand)
 use clap::{Parser, Subcommand};
-use parlang::typed_ast::requires_dictionary_passing;
+use parlang::typed_ast::{class_load_conflict, contains_load};
 use parlang::{
     eval_program, eval_program_with_env, parse_program, program_to_dot, run_on_evaluator_stack,
     typecheck_program_typed_with_env, Environment, TypeEnv, EVALUATOR_STACK_SIZE,
@@ -236,12 +236,12 @@ fn run_file(cli: &Cli, filename: &str) -> Result<String, String> {
         return parlang::pipeline::run_core(&program);
     }
 
-    // Type check, then reject class-using programs until M2.3c; programs
-    // with inserted dictionaries run their erased translation.
+    // Type check, reject a class program that contains `load`, then run
+    // the erased dictionary translation when there is one.
     let mut type_env = TypeEnv::new();
     let typed = typecheck_program_typed_with_env(&program, &mut type_env)
         .map_err(|e| format!("type error: {e}"))?;
-    if let Some(reason) = requires_dictionary_passing(&typed) {
+    if let Some(reason) = class_load_conflict(&typed) {
         return Err(reason);
     }
     let program = parlang::pipeline::surface_program(&program, &typed, &type_env)?;
@@ -465,7 +465,7 @@ fn evaluate_repl_input(input: &str, env: &mut Environment, type_env: &mut TypeEn
             };
         }
     };
-    if let Some(reason) = requires_dictionary_passing(&typed) {
+    if let Some(reason) = class_load_conflict(&typed) {
         return ReplResponse {
             type_line: None,
             outcome: Err(reason),
@@ -473,12 +473,7 @@ fn evaluate_repl_input(input: &str, env: &mut Environment, type_env: &mut TypeEn
     }
     // An untyped `load` body never receives dictionaries, so it cannot
     // safely call a dictionary-taking binding of this or an earlier line.
-    if next_type_env.has_constrained_bindings()
-        && matches!(
-            parlang::dictionary::erase_program(&typed),
-            Err(parlang::dictionary::EraseError::Load(_))
-        )
-    {
+    if next_type_env.has_constrained_bindings() && contains_load(&typed) {
         return ReplResponse {
             type_line: None,
             outcome: Err(
@@ -641,45 +636,66 @@ mod tests {
     }
 
     #[test]
-    fn class_programs_are_rejected_identically_by_both_evaluators() {
+    fn class_programs_run_identically_on_both_evaluators() {
         let cases = [
             (
                 "class_decl",
                 "class Show a where { show : a -> Int };\n0",
-                "type classes are not executable yet: class Show",
+                "0\n",
             ),
-            (
-                "method_use",
-                "eq 1 2",
-                "type classes are not executable yet: method eq",
-            ),
+            ("method_use", "eq 1 2", "false\n"),
+            ("eq_op", "1 == 2", "false\n"),
         ];
         for (name, src, expected) in cases {
-            assert_eq!(run_src(name, src, &[]), Err(expected.to_string()), "{src}");
+            assert_eq!(run_src(name, src, &[]), Ok(expected.to_string()), "{src}");
             let core = run_src(name, src, &["--core"]);
-            assert_eq!(core, Err(expected.to_string()), "{src}");
+            assert_eq!(core, Ok(expected.to_string()), "{src}");
         }
-        assert_eq!(run_src("eq_op", "1 == 2", &[]), Ok("false\n".to_string()));
-        let core_eq = run_src("eq_op_core", "1 == 2", &["--core"]);
-        assert_eq!(core_eq, Ok("false\n".to_string()));
     }
 
     #[test]
-    fn repls_reject_class_input_without_committing() {
-        let class_error = "type classes are not executable yet: class Show".to_string();
-        let method_error = "type classes are not executable yet: method eq".to_string();
+    fn repls_run_class_input_across_lines() {
+        let inst = "instance Show Bool where { show = fun b -> if b then 1 else 0 };";
+        let added = Ok("Declarations added.".to_string());
         for mut state in [ReplState::new(), ReplState::new_core()] {
             let declared = state.eval_input("class Show a where { show : a -> Int };");
-            assert_eq!(declared.outcome, Err(class_error.clone()));
-            let used = state.eval_input("eq 1 2");
-            assert_eq!(used.outcome, Err(method_error.clone()));
-            let later = state.eval_input("let g = fun x -> show x;");
+            assert_eq!(declared.outcome, added);
+            let instance = state.eval_input(inst);
+            assert_eq!(instance.outcome, added);
+            let used = state.eval_input("show true");
+            assert_eq!(used.outcome, Ok("1".to_string()));
+        }
+    }
+
+    #[test]
+    fn class_programs_with_load_are_rejected_identically_everywhere() {
+        let src = "class Show a where { show : a -> Int };\nload \"nofile.par\" in 0";
+        let message = "type classes cannot be combined with load yet: class Show";
+        let expected = Err(message.to_string());
+        assert_eq!(run_src("class_load", src, &[]), expected);
+        assert_eq!(run_src("class_load_core", src, &["--core"]), expected);
+        for mut state in [ReplState::new(), ReplState::new_core()] {
+            let rejected = state.eval_input(src);
+            assert_eq!(rejected.outcome, expected);
+            let later = state.eval_input("show");
             let unbound = &later.outcome;
             assert!(
                 matches!(unbound, Err(e) if e.to_lowercase().starts_with("type error")),
                 "{unbound:?}"
             );
         }
+    }
+
+    #[test]
+    fn surface_repl_load_after_class_line_runs_untyped() {
+        let lib = temp_program("repl_class_lib", "let k = 1;\n0");
+        let lib_text = lib.to_string_lossy().into_owned();
+        let mut state = ReplState::new();
+        let declared = state.eval_input("class Show a where { show : a -> Int };");
+        assert_eq!(declared.outcome, Ok("Declarations added.".to_string()));
+        let loaded = state.eval_input(&format!("load \"{lib_text}\" in k + 1"));
+        let _ = std::fs::remove_file(&lib);
+        assert_eq!(loaded.outcome, Ok("2".to_string()));
     }
 
     #[test]
