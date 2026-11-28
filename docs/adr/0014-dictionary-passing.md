@@ -95,11 +95,15 @@ rec $dict_X -> fun $d0 -> ...          (with a context)
     self-reference diverges on both evaluators.
   - Polymorphic recursion through an instance dictionary is
     unsupported on Core.
-  - Constructor classes (a parameter of kind `* -> *`) are untested.
+  - A body whose constructor-class variable stays residual (for example
+    `return 1`) runs on the surface evaluator (as a function of its
+    dictionary) but Core elaboration rejects it (residual higher-kinded
+    type variable).
   - A body value with residual constraints prints as
     `<function $d0>`.
-- Roadmap: M2.4 adds constructor classes (`Functor` and `Monad` over
-  `List` and `Option`). M2.5 adds superclasses and `Show`. A Core
+- Roadmap: M2.4a added constructor classes (`Functor` and `Monad` over
+  `List` and `Option`); M2.4b adds do-notation. M2.5 adds superclasses
+  and `Show`. A Core
   specialiser will make constrained functions kernel-eligible.
 
 ## References

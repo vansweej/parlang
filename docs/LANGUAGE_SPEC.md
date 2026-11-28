@@ -770,7 +770,10 @@ same 1 2
 ```
 
 Status: classes and instances run on every front end via dictionary
-passing; the example evaluates to `false`. A class program cannot use
+passing; the example evaluates to `false`. Constructor classes such as
+`Functor` and `Monad` over `Option` and `List` are shown in
+`examples/monad.par`; a context class must have the kind of its head
+variable. A class program cannot use
 `load` yet. See `docs/adr/0013-type-classes.md`,
 `docs/adr/0014-dictionary-passing.md` and `docs/MODULE_TYPECHECKER.md`.
 

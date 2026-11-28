@@ -275,6 +275,22 @@ fn executes_classes_example() {
 }
 
 #[test]
+fn executes_monad_example() {
+    assert_eq!(
+        run_example("examples/monad.par"),
+        Ok("Int(337452)".to_string())
+    );
+}
+
+#[test]
+fn monad_example_runs_on_core() {
+    assert_eq!(
+        example_core_output("examples/monad.par"),
+        Ok("337452\n".to_string())
+    );
+}
+
+#[test]
 fn classes_example_runs_on_core() {
     assert_eq!(
         example_core_output("examples/classes.par"),

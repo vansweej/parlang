@@ -263,7 +263,8 @@ Context reduction matches instance heads one way and reduces the matched instanc
 
 Known limitations:
 - Superclass entailment comes in M2.5.
-- The kind of a context class is not checked against its head variable (M2.4).
+- A program body whose constructor-class variable stays residual runs only
+  on the surface evaluator (see ADR 0014).
 - Execution limitations of instances are listed in ADR 0014.
 
 ### If Expressions

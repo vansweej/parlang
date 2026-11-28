@@ -67,8 +67,9 @@ superseded by this ADR.
 - Programs that compared tuples, lists or strings with `==` no longer
   type-check.
 - Known limitations and roadmap:
-  - M2.4: kind check of context classes; constructor classes such as
-    `Functor` and `Monad` over `List` and `Option`.
+  - M2.4a (done): context classes are kind-checked against their head
+    variable; constructor classes such as `Functor` and `Monad` run over
+    `List` and `Option` (see `examples/monad.par`). M2.4b: do-notation.
   - M2.5: superclasses (the syntax field exists and is always empty)
     and `Show`.
   - REPL rigidity is covered through the free variables of the

@@ -538,6 +538,77 @@ mod tests {
         assert_eq!(class_value(src), "2");
     }
 
+    /// `Option`, `List`, `Functor` and `Monad` with their four instances.
+    const MONAD_DECLS: &str = "data Option a = None | Some a;\n\
+        data List a = Nil | Cons a (List a);\n\
+        class Functor f where { fmap : (a -> b) -> f a -> f b };\n\
+        class Monad m where { return : a -> m a; bind : m a -> (a -> m b) -> m b };\n\
+        let append = rec app -> fun xs -> fun ys -> (match xs with | Nil -> ys | Cons h t -> Cons h (app t ys));\n\
+        let sumList = rec s -> fun xs -> (match xs with | Nil -> 0 | Cons h t -> h + s t);\n\
+        let getOr = fun d -> fun o -> (match o with | None -> d | Some v -> v);\n\
+        instance Functor Option where { fmap = fun g -> fun o -> (match o with | None -> None | Some v -> Some (g v)) };\n\
+        instance Functor List where { fmap = fun g -> fun xs -> (match xs with | Nil -> Nil | Cons h t -> Cons (g h) (fmap g t)) };\n\
+        instance Monad Option where { return = fun x -> Some x; bind = fun o -> fun k -> (match o with | None -> None | Some v -> k v) };\n\
+        instance Monad List where { return = fun x -> Cons x Nil; bind = fun xs -> fun k -> (match xs with | Nil -> Nil | Cons h t -> append (k h) (bind t k)) };\n";
+
+    #[test]
+    fn core_runs_functor_option() {
+        let src = format!("{MONAD_DECLS}getOr 0 (fmap (fun x -> x + 1) (Some 41))");
+        assert_eq!(class_value(&src), "42");
+    }
+
+    #[test]
+    fn core_runs_functor_list() {
+        let src = format!("{MONAD_DECLS}sumList (fmap (fun x -> x * 10) (Cons 1 (Cons 2 Nil)))");
+        assert_eq!(class_value(&src), "30");
+    }
+
+    #[test]
+    fn core_runs_monad_option() {
+        let src = format!(
+            "{MONAD_DECLS}getOr 0 (bind (Some 3) (fun x -> return (x + 4))) + getOr 100 (bind None (fun x -> Some x))"
+        );
+        assert_eq!(class_value(&src), "107");
+    }
+
+    #[test]
+    fn core_runs_monad_list() {
+        let src = format!(
+            "{MONAD_DECLS}sumList (bind (Cons 1 (Cons 2 Nil)) (fun x -> Cons x (Cons (x * 10) Nil))) + sumList (return 5)"
+        );
+        assert_eq!(class_value(&src), "38");
+    }
+
+    #[test]
+    fn core_runs_constrained_let_over_a_constructor_class() {
+        let src = format!(
+            "{MONAD_DECLS}let incr = fun c -> fmap (fun x -> x + 1) c;\ngetOr 0 (incr (Some 1)) + sumList (incr (Cons 1 (Cons 2 Nil)))"
+        );
+        assert_eq!(class_value(&src), "7");
+    }
+
+    #[test]
+    fn core_runs_constructor_class_instance_with_context() {
+        let src = format!(
+            "{MONAD_DECLS}data Wrap f a = MkWrap (f a);\ninstance Functor f => Functor (Wrap f) where {{ fmap = fun g -> fun w -> (match w with | MkWrap x -> MkWrap (fmap g x)) }};\nlet unwrap = fun w -> (match w with | MkWrap x -> x);\nsumList (unwrap (fmap (fun x -> x + 1) (MkWrap (Cons 1 (Cons 2 Nil)))))"
+        );
+        assert_eq!(class_value(&src), "5");
+    }
+
+    #[test]
+    fn residual_monad_body_runs_on_surface_but_not_on_core() {
+        let src = format!("{MONAD_DECLS}return 1");
+        let (_, runnable) = surface(&src);
+        let value = crate::eval_program(&runnable, &crate::Environment::new());
+        assert!(value.is_ok(), "{value:?}");
+        let core = run_core(&prog(&src));
+        assert!(
+            core.as_ref()
+                .is_err_and(|e| e.contains("residual higher-kinded type variable")),
+            "{core:?}"
+        );
+    }
+
     #[test]
     fn core_abstracts_a_residual_body_over_its_dictionary() {
         let elab = translated_core("let same = fun x -> fun y -> x == y; same");

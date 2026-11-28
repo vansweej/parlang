@@ -1,0 +1,15 @@
+data Option a = None | Some a;
+data List a = Nil | Cons a (List a);
+class Functor f where { fmap : (a -> b) -> f a -> f b };
+class Monad m where { return : a -> m a; bind : m a -> (a -> m b) -> m b };
+let append = rec app -> fun xs -> fun ys -> (match xs with | Nil -> ys | Cons h t -> Cons h (app t ys));
+let sumList = rec s -> fun xs -> (match xs with | Nil -> 0 | Cons h t -> h + s t);
+let getOr = fun d -> fun o -> (match o with | None -> d | Some v -> v);
+instance Functor Option where { fmap = fun g -> fun o -> (match o with | None -> None | Some v -> Some (g v)) };
+instance Functor List where { fmap = fun g -> fun xs -> (match xs with | Nil -> Nil | Cons h t -> Cons (g h) (fmap g t)) };
+instance Monad Option where { return = fun x -> Some x; bind = fun o -> fun k -> (match o with | None -> None | Some v -> k v) };
+instance Monad List where { return = fun x -> Cons x Nil; bind = fun xs -> fun k -> (match xs with | Nil -> Nil | Cons h t -> append (k h) (bind t k)) };
+let incr = fun c -> fmap (fun x -> x + 1) c;
+let half = fun n -> if n == (n / 2) * 2 then Some (n / 2) else None;
+let pairs = bind (Cons 1 (Cons 2 Nil)) (fun x -> Cons x (Cons (x * 10) Nil));
+getOr 0 (incr (Some 1)) + sumList (incr (Cons 1 (Cons 2 Nil))) * 10 + getOr 0 (bind (Some 8) half) * 100 + getOr 7 (bind (Some 3) half) * 1000 + sumList pairs * 10000
