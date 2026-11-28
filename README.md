@@ -16,7 +16,7 @@ ParLang is a simple functional programming language with:
 - **Variables**: Let bindings for creating local variables
 - **Functions**: First-class functions with closure support
 - **Polymorphism**: Let-polymorphism for generic functions
-- **Type Classes**: Haskell 98 single-parameter classes and instances (built-in `Eq` behind `==`), executed by dictionary passing on both evaluators
+- **Type Classes**: Haskell 98 single-parameter classes and instances (built-in `Eq` behind `==`), including constructor classes such as `Functor` and `Monad` (`examples/monad.par`), executed by dictionary passing on both evaluators
 - **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
 - **Pattern Matching**: Match expressions for cleaner multi-branch logic (supports records, tuples, literals, and sum types)
@@ -798,6 +798,7 @@ See the `examples/` directory for sample programs:
 - `records.par` - Closed records: construction, field access, record patterns, a string field, and a record inside a constructor
 - `mvp.par` - MVP acceptance program: a polymorphic tree ADT, recursive pattern matching, and a string (runs on surface and Core)
 - `hkt.par` - Higher-kinded data type `Wrap f a` over `Option` and `List` (runs on the surface evaluator and on Core)
+- `monad.par` - Constructor classes `Functor` and `Monad` over `Option` and `List` (runs on the surface evaluator and on Core)
 
 ## Documentation
 
