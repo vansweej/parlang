@@ -178,7 +178,7 @@ Expr::Var("counter".to_string())
 **Notes**:
 - Variable names must start with a letter
 - Can contain letters, numbers, and underscores
-- Cannot be keywords (`let`, `in`, `if`, `then`, `else`, `fun`, `true`, `false`, `load`, `rec`, `match`, `with`, `type`, `data`, `class`, `instance`, `where`)
+- Cannot be keywords (`let`, `in`, `if`, `then`, `else`, `fun`, `true`, `false`, `load`, `rec`, `match`, `with`, `type`, `data`, `class`, `instance`, `where`, `do`)
 
 ##### 4. `BinOp(BinOp, Box<Expr>, Box<Expr>)` - Binary Operation
 

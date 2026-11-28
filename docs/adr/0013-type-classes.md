@@ -69,7 +69,7 @@ superseded by this ADR.
 - Known limitations and roadmap:
   - M2.4a (done): context classes are kind-checked against their head
     variable; constructor classes such as `Functor` and `Monad` run over
-    `List` and `Option` (see `examples/monad.par`). M2.4b: do-notation.
+    `List` and `Option` (see `examples/monad.par`). M2.4b: do-notation (done, see `docs/adr/0015-do-notation.md`).
   - M2.5: superclasses (the syntax field exists and is always empty)
     and `Show`.
   - REPL rigidity is covered through the free variables of the

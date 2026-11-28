@@ -65,13 +65,14 @@ Keywords are reserved identifiers with special syntactic meaning:
 
 ```
 let     in      if      then    else    fun     true    false   load
-rec     match   with    type    data    class   instance        where
+rec     match   with    type    data    class   instance        where   do
 ```
 
 **Formal Definition:**
 ```
 keyword ::= "let" | "in" | "if" | "then" | "else" | "fun" | "true" | "false" | "load"
           | "rec" | "match" | "with" | "type" | "data" | "class" | "instance" | "where"
+          | "do"
 ```
 
 #### 2.2.2 Identifiers
@@ -243,6 +244,9 @@ String literals support full Unicode (UTF-8 encoding).
 >=   Greater than or equal
 ```
 
+`<-` is not an operator: it only separates the name from the expression
+in a do-block bind statement (see 5.2.7.4).
+
 **Function Operators:**
 ```
 ->   Function arrow (separates parameter from body)
@@ -310,6 +314,13 @@ primary_expr ::= atom
               | fun_expr
               | type_alias_expr
               | data_decl_expr
+              | do_expr
+
+do_expr ::= "do" '{' stmt (';' stmt)* [';'] '}'
+
+stmt ::= identifier "<-" expression
+       | "let" identifier [':' type_expr] '=' expression
+       | expression
 
 (* Atomic expressions *)
 atom ::= integer
@@ -776,6 +787,25 @@ passing; the example evaluates to `false`. Constructor classes such as
 variable. A class program cannot use
 `load` yet. See `docs/adr/0013-type-classes.md`,
 `docs/adr/0014-dictionary-passing.md` and `docs/MODULE_TYPECHECKER.md`.
+
+#### 5.2.7.4 Do-Notation
+
+A `do` block is a braced list of statements separated by `;` (a
+trailing `;` is allowed); the last statement must be an expression.
+
+```
+do { x <- Some 3; let y = x + 1; return (x + y) }
+```
+
+The parser rewrites `x <- e; rest` to `bind e (fun x -> rest)`,
+`e; rest` to `bind e (fun _ -> rest)`, and `let y = e; rest` to
+`let y = e in rest`. `bind` and `return` are ordinary names: without a
+`bind` in scope a do block is the type error "unbound variable bind",
+and a user binding of `bind` (including a top-level `let bind = ...`)
+captures every later do block, by design (rebindable). In statement
+position `x <-1` is a bind; elsewhere it still means `x < -1`. A do
+block may be a bare function argument (`f do { m }`). See
+`examples/do_notation.par` and `docs/adr/0015-do-notation.md`.
 
 #### 5.2.8 Function Definition
 
@@ -2111,7 +2141,7 @@ digit           ::= [0-9]
 ```
 Delimiters:  ( ) =
 Keywords:    let in if then else fun true false load rec match with type data
-             class instance where
+             class instance where do
 Arrows:      ->
 Arithmetic:  + - * /
 Comparison:  == != < <= > >=
