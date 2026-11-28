@@ -71,6 +71,20 @@ pub enum Evidence {
         /// Evidence for each context constraint of the instance.
         context: Vec<Evidence>,
     },
+    /// The superclass dictionary for `constraint`, projected out of the
+    /// dictionary `from` denotes through its `$super_<class>` field.
+    Super {
+        /// Evidence for the subclass dictionary.
+        from: Box<Evidence>,
+        /// The superclass constraint this projection satisfies.
+        constraint: Constraint,
+    },
+}
+
+/// The dictionary field holding the `class` superclass dictionary:
+/// `$super_<class>`. The `$` prefix cannot clash with a method name.
+pub fn superclass_field_name(class: &str) -> String {
+    format!("$super_{class}")
 }
 
 /// The nominal dictionary type constructor of `class`: `$Dict_<class>`.
@@ -117,8 +131,10 @@ pub fn dictionary_type(env: &TypeEnv, constraint: &Constraint) -> Result<Type, D
     ))
 }
 
-/// Evidence for `constraint`: an equal given first (innermost wins), else
-/// the matching instance with evidence for its context, solved in turn.
+/// Evidence for `constraint`: an equal given first (innermost wins), then
+/// a projection out of a given whose class has the wanted class as a
+/// transitive superclass at the same arguments, else the matching
+/// instance with evidence for its context, solved in turn.
 /// Recursion terminates because a Haskell 98 instance context only
 /// constrains variables of the instance head.
 ///
@@ -137,6 +153,9 @@ pub fn solve(
             constraint: constraint.clone(),
         });
     }
+    if let Some(evidence) = superclass_evidence(env, givens, constraint) {
+        return Ok(evidence);
+    }
     let Some((head, context)) = env.matching_instance(constraint) else {
         return Err(DictError::NoEvidence(constraint.to_string()));
     };
@@ -154,6 +173,40 @@ pub fn solve(
         constraint: constraint.clone(),
         args,
         context,
+    })
+}
+
+/// Evidence projecting `constraint` out of the innermost given whose class
+/// has the class of `constraint` as a transitive superclass at the same
+/// arguments: the given parameter, then one `Super` step per class on the
+/// `TypeEnv::superclass_path`. Projection requires identical arguments,
+/// which always holds for givens today (instance contexts and generalised
+/// schemes constrain type variables); otherwise `solve` falls back to
+/// instances.
+fn superclass_evidence(
+    env: &TypeEnv,
+    givens: &[(Constraint, String)],
+    constraint: &Constraint,
+) -> Option<Evidence> {
+    givens.iter().rev().find_map(|(given, name)| {
+        if given.args != constraint.args {
+            return None;
+        }
+        let path = env.superclass_path(&given.class, &constraint.class)?;
+        let start = Evidence::Param {
+            name: name.clone(),
+            constraint: given.clone(),
+        };
+        Some(
+            path.into_iter()
+                .fold(start, |inner, class| Evidence::Super {
+                    from: Box::new(inner),
+                    constraint: Constraint {
+                        class,
+                        args: given.args.clone(),
+                    },
+                }),
+        )
     })
 }
 
@@ -189,6 +242,16 @@ pub fn evidence_expr(env: &TypeEnv, evidence: &Evidence) -> Result<TypedExpr, Di
                 ty: fun_ty,
             };
             Ok(apply_all(head, parts))
+        }
+        Evidence::Super { from, constraint } => {
+            let inner = evidence_expr(env, from)?;
+            Ok(TypedExpr {
+                kind: TypedExprKind::FieldAccess(
+                    Box::new(inner),
+                    superclass_field_name(&constraint.class),
+                ),
+                ty: dictionary_type(env, constraint)?,
+            })
         }
     }
 }
@@ -322,5 +385,53 @@ mod tests {
             built.ty,
             Type::SumType("$Dict_Eq".to_string(), vec![boxed_int()])
         );
+    }
+
+    const ORD_TOP: &str = "class Eq a => Ord a where { lte : a -> a -> Bool };\nclass Ord a => Top a where { top : a -> Int };\n0";
+
+    fn on(class: &str, ty: Type) -> Constraint {
+        Constraint {
+            class: class.to_string(),
+            args: vec![ty],
+        }
+    }
+
+    #[test]
+    fn a_subclass_given_projects_its_superclass() {
+        let env = env_for(ORD_TOP);
+        let var = Type::Var(TypeVar(7));
+        let givens = vec![(on("Ord", var.clone()), "$d0".to_string())];
+        assert_eq!(
+            solve(&env, &givens, &eq_on(var.clone())).unwrap(),
+            Evidence::Super {
+                from: Box::new(Evidence::Param {
+                    name: "$d0".to_string(),
+                    constraint: on("Ord", var.clone()),
+                }),
+                constraint: eq_on(var),
+            }
+        );
+    }
+
+    #[test]
+    fn superclass_projection_follows_a_chain() {
+        let env = env_for(ORD_TOP);
+        let var = Type::Var(TypeVar(7));
+        let givens = vec![(on("Top", var.clone()), "$d0".to_string())];
+        let evidence = solve(&env, &givens, &eq_on(var.clone())).unwrap();
+        let Evidence::Super { from, constraint } = &evidence else {
+            panic!("expected a projection");
+        };
+        assert_eq!(constraint, &eq_on(var.clone()));
+        assert!(
+            matches!(from.as_ref(), Evidence::Super { constraint, .. } if constraint.class == "Ord")
+        );
+        let built = evidence_expr(&env, &evidence).unwrap();
+        let TypedExprKind::FieldAccess(inner, field) = &built.kind else {
+            panic!("expected a field access");
+        };
+        assert_eq!(field, "$super_Eq");
+        assert!(matches!(&inner.kind, TypedExprKind::FieldAccess(_, name) if name == "$super_Ord"));
+        assert_eq!(built.ty, Type::SumType("$Dict_Eq".to_string(), vec![var]));
     }
 }

@@ -336,6 +336,36 @@ impl TypeEnv {
         closed
     }
 
+    /// The superclass path from class `from` up to class `to`: the classes
+    /// whose `$super_` fields are projected in order, starting with a
+    /// direct superclass of `from` and ending with `to`. Breadth-first over
+    /// `ClassInfo::superclasses` in declaration order, so a shortest path
+    /// wins. `None` when `to` is not a transitive superclass of `from`.
+    pub(crate) fn superclass_path(&self, from: &str, to: &str) -> Option<Vec<String>> {
+        let mut frontier: Vec<(String, Vec<String>)> = vec![(from.to_string(), Vec::new())];
+        let mut seen: HashSet<String> = HashSet::from([from.to_string()]);
+        while !frontier.is_empty() {
+            let mut next = Vec::new();
+            for (class, path) in frontier {
+                let Some(info) = self.class_info(&class) else {
+                    continue;
+                };
+                for superclass in &info.superclasses {
+                    let mut extended = path.clone();
+                    extended.push(superclass.clone());
+                    if superclass == to {
+                        return Some(extended);
+                    }
+                    if seen.insert(superclass.clone()) {
+                        next.push((superclass.clone(), extended));
+                    }
+                }
+            }
+            frontier = next;
+        }
+        None
+    }
+
     /// Record `constraint` as wanted in the shared accumulator.
     fn want(&self, constraint: Constraint) {
         self.wanted.borrow_mut().push(constraint);
