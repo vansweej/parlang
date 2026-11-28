@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use crate::dictionary::{erase_program, insert_dictionaries, EraseError};
 use crate::typechecker::TypeEnv;
-use crate::typed_ast::TypedProgram;
+use crate::typed_ast::{TypedDecl, TypedProgram};
 use crate::{
     check_elaborated, elaborate_program, typecheck_program_typed_with_env, Elaborated, Program,
 };
@@ -62,8 +62,10 @@ fn with_newline(mut text: String) -> String {
 
 /// The untyped program the surface evaluator runs for the type-checked
 /// `program`: the dictionary translation of `typed`, erased back to an
-/// untyped `Program`, when dictionary insertion changed anything; else
-/// `program` itself. A translation containing `load` also keeps `program`,
+/// untyped `Program`, when dictionary insertion changed anything or `typed`
+/// declares a class (erasure drops `class` declarations, which the surface
+/// evaluator rejects); else `program` itself. A translation containing
+/// `load` also keeps `program`,
 /// because the untyped loaded body never receives dictionaries.
 ///
 /// `env` is the type environment `typed` was checked in, after checking.
@@ -79,7 +81,11 @@ pub fn surface_program(
 ) -> Result<Program, String> {
     let translated =
         insert_dictionaries(typed, env).map_err(|e| format!("dictionary insertion error: {e}"))?;
-    if translated == *typed {
+    let declares_class = typed
+        .decls
+        .iter()
+        .any(|decl| matches!(decl, TypedDecl::Class { .. }));
+    if translated == *typed && !declares_class {
         return Ok(program.clone());
     }
     match erase_program(&translated) {
@@ -434,6 +440,31 @@ mod tests {
         let src = "let same = fun x -> fun y -> x == y;\nload \"nofile.par\" in same 1 1";
         let (program, runnable) = surface(src);
         assert_eq!(runnable, program);
+    }
+
+    #[test]
+    fn surface_program_erases_class_declarations() {
+        let (_, runnable) = surface("class Show a where { show : a -> Int };\n0");
+        let has_class = runnable
+            .decls
+            .iter()
+            .any(|decl| matches!(decl, crate::Decl::Class { .. }));
+        assert!(!has_class, "{runnable:?}");
+        let value = crate::eval_program(&runnable, &crate::Environment::new());
+        assert_eq!(value, Ok(crate::Value::Int(0)));
+    }
+
+    #[test]
+    fn surface_program_erases_instance_only_programs() {
+        let src = "data Box a = MkBox a;\ninstance Eq a => Eq (Box a) where { eq = fun x -> fun y -> true };\n0";
+        let (_, runnable) = surface(src);
+        let has_instance = runnable
+            .decls
+            .iter()
+            .any(|decl| matches!(decl, crate::Decl::Instance { .. }));
+        assert!(!has_instance, "{runnable:?}");
+        let value = crate::eval_program(&runnable, &crate::Environment::new());
+        assert_eq!(value, Ok(crate::Value::Int(0)));
     }
 
     /// `src` type-checked, dictionary-translated and elaborated without the
