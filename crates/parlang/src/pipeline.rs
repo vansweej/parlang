@@ -471,6 +471,34 @@ mod tests {
         assert_eq!(value, Ok(crate::Value::Int(0)));
     }
 
+    /// `Box`, `Ord` over `Eq`, and `Ord`/`Eq` instances for `Int` and `Box`;
+    /// the `Ord (Box a)` instance uses `eq` under only an `Ord a` given.
+    const ORD_DECLS: &str = "data Box a = MkBox a;\n\
+        class Eq a => Ord a where { lte : a -> a -> Bool };\n\
+        instance Ord Int where { lte = fun x -> fun y -> x <= y };\n\
+        instance Eq a => Eq (Box a) where { eq = fun x -> fun y -> (match x with | MkBox p -> (match y with | MkBox q -> eq p q)) };\n\
+        instance Ord a => Ord (Box a) where { lte = fun x -> fun y -> (match x with | MkBox p -> (match y with | MkBox q -> if eq p q then true else lte p q)) };\n\
+        let unBox = fun b -> (match b with | MkBox v -> v);\n";
+
+    /// A two-step chain: `eq` under only a `Top a` given.
+    const TOP_DECLS: &str = "class Ord a => Top a where { top : a -> Int };\n\
+        instance Top Int where { top = fun x -> x * 2 };\n\
+        instance Top a => Top (Box a) where { top = fun b -> (match b with | MkBox v -> if eq v v then top v + 1 else 0) };\n";
+
+    #[test]
+    fn surface_runs_superclass_projection() {
+        let src = format!(
+            "{ORD_DECLS}(if lte (MkBox 1) (MkBox 2) then 10 else 0) + (if lte (MkBox 3) (MkBox 3) then 1 else 0) + (if lte (MkBox 5) (MkBox 4) then 100 else 0)"
+        );
+        let (_, runnable) = surface(&src);
+        let value = crate::eval_program(&runnable, &crate::Environment::new());
+        assert_eq!(value, Ok(crate::Value::Int(11)));
+        let chain = format!("{ORD_DECLS}{TOP_DECLS}top (MkBox 5) + top 3");
+        let (_, runnable) = surface(&chain);
+        let value = crate::eval_program(&runnable, &crate::Environment::new());
+        assert_eq!(value, Ok(crate::Value::Int(17)));
+    }
+
     /// `src` type-checked, dictionary-translated and elaborated without the
     /// type-class guard, then checked by Core Lint.
     fn translated_core(src: &str) -> Elaborated {

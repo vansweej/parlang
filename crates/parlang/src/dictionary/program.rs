@@ -3,7 +3,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::evidence::{dictionary_name, dictionary_type, DictError};
+use super::evidence::{
+    dictionary_name, dictionary_type, evidence_expr, solve, superclass_field_name, DictError,
+};
 use super::insert::{dictionary_scheme, lambda_all, Inserter};
 use crate::typechecker::{apply_subst, apply_subst_constraint, TypeEnv};
 use crate::typed_ast::{TypedDecl, TypedExpr, TypedExprKind, TypedProgram};
@@ -93,8 +95,8 @@ fn top_decl(inserter: &mut Inserter<'_>, decl: &TypedDecl) -> Result<TypedDecl, 
 }
 
 /// The `let` defining the dictionary of one instance: a record of its
-/// method bodies in class declaration order, under one dictionary
-/// parameter per context constraint.
+/// superclass dictionaries then its method bodies in class declaration
+/// order, under one dictionary parameter per context constraint.
 fn instance_dictionary(
     inserter: &mut Inserter<'_>,
     class: &str,
@@ -121,7 +123,10 @@ fn instance_dictionary(
     for constraint in context {
         params.push((inserter.fresh_param(), dictionary_type(env, constraint)?));
     }
-    let fields = instance_fields(inserter, class_info, head, context, &params, methods, &name)?;
+    let mut fields = superclass_fields(env, class_info, head, context, &params)?;
+    fields.extend(instance_fields(
+        inserter, class_info, head, context, &params, methods, &name,
+    )?);
     let instance = Constraint {
         class: class.to_string(),
         args: vec![head.clone()],
@@ -142,6 +147,37 @@ fn instance_dictionary(
         value: Box::new(value),
         doc: None,
     })
+}
+
+/// The superclass fields of one instance dictionary, in
+/// `ClassInfo::superclasses` order: each `$super_<S>` field holds the
+/// dictionary for `S head`, solved with the instance context parameters
+/// as the only givens, over the head's own (unrenamed) variables.
+fn superclass_fields(
+    env: &TypeEnv,
+    class_info: &crate::typechecker::ClassInfo,
+    head: &Type,
+    context: &[Constraint],
+    params: &[(String, Type)],
+) -> Result<Vec<(String, TypedExpr)>, DictError> {
+    let givens: Vec<(Constraint, String)> = context
+        .iter()
+        .cloned()
+        .zip(params.iter().map(|(param, _)| param.clone()))
+        .collect();
+    let mut fields = Vec::with_capacity(class_info.superclasses.len());
+    for superclass in &class_info.superclasses {
+        let wanted = Constraint {
+            class: superclass.clone(),
+            args: vec![head.clone()],
+        };
+        let evidence = solve(env, &givens, &wanted)?;
+        fields.push((
+            superclass_field_name(superclass),
+            evidence_expr(env, &evidence)?,
+        ));
+    }
+    Ok(fields)
 }
 
 /// Rewritten method bodies of one instance, in class declaration order.
