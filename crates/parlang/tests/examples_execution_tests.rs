@@ -307,6 +307,22 @@ fn do_notation_example_runs_on_core() {
 }
 
 #[test]
+fn executes_ord_example() {
+    assert_eq!(
+        run_example("examples/ord.par"),
+        Ok("Int(11197)".to_string())
+    );
+}
+
+#[test]
+fn ord_example_runs_on_core() {
+    assert_eq!(
+        example_core_output("examples/ord.par"),
+        Ok("11197\n".to_string())
+    );
+}
+
+#[test]
 fn classes_example_runs_on_core() {
     assert_eq!(
         example_core_output("examples/classes.par"),

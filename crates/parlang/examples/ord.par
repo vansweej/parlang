@@ -1,0 +1,12 @@
+data Box a = MkBox a;
+class Eq a => Ord a where { lte : a -> a -> Bool };
+class Ord a => Top a where { top : a -> Int };
+instance Ord Int where { lte = fun x -> fun y -> x <= y };
+instance Eq a => Eq (Box a) where { eq = fun x -> fun y -> (match x with | MkBox p -> (match y with | MkBox q -> eq p q)) };
+instance Ord a => Ord (Box a) where { lte = fun x -> fun y -> (match x with | MkBox p -> (match y with | MkBox q -> if eq p q then true else lte p q)) };
+instance Top Int where { top = fun x -> x * 2 };
+instance Top a => Top (Box a) where { top = fun b -> (match b with | MkBox v -> if eq v v then top v + 1 else 0) };
+let unBox = fun b -> (match b with | MkBox v -> v);
+let maxOf = fun x -> fun y -> if lte x y then y else x;
+let le = fun x -> fun y -> if x == y then true else lte x y;
+maxOf 3 7 + unBox (maxOf (MkBox 9) (MkBox 4)) * 10 + top (MkBox 5) * 100 + (if le (MkBox 1) (MkBox 3) then 10000 else 0) + (if le (MkBox 3) (MkBox 1) then 100000 else 0)
