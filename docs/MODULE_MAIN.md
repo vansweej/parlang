@@ -381,17 +381,26 @@ match fs::read_to_string(filename) {
     Ok(contents) => {
         match parse_program(&contents) {
             Ok(program) => {
-                let typed = match typecheck_program_typed(&program) {
+                let mut type_env = TypeEnv::new();
+                let typed = match typecheck_program_typed_with_env(&program, &mut type_env) {
                     Ok(typed) => typed,
                     Err(error) => {
                         eprintln!("type error: {error}");
                         process::exit(1);
                     }
                 };
-                if let Some(reason) = requires_dictionary_passing(&typed) {
+                if let Some(reason) = class_load_conflict(&typed) {
                     eprintln!("{reason}");
                     process::exit(1);
                 }
+                // Erased dictionary translation for class programs.
+                let program = match surface_program(&program, &typed, &type_env) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("{e}");
+                        process::exit(1);
+                    }
+                };
                 match eval_program(&program, &Environment::new()) {
                     Ok(value) => println!("{value}"),
                     Err(error) => {
@@ -463,7 +472,7 @@ flowchart LR
 **Error Handling**:
 - Parse errors from `parse_program()` are reported directly (already strings)
 - Type errors from `typecheck_program_typed()` stop execution before evaluation
-- A program that declares a class or instance, or uses a class method, is then rejected by `requires_dictionary_passing` with `type classes are not executable yet: ...` until dictionary passing (M2.3)
+- A class program that also contains `load` is rejected by `class_load_conflict` with `type classes cannot be combined with load yet: ...`; otherwise `pipeline::surface_program` runs the erased dictionary translation (ADR 0014)
 - Evaluation errors from `eval_program()` are converted to strings via `.map_err(|e| e.to_string())`
 
 ### `repl()`
@@ -679,10 +688,16 @@ fn repl() {
     let program = parse_program(input)?;
     let mut next_type_env = type_env.clone();
     let typed = typecheck_program_typed_with_env(&program, &mut next_type_env)?;
-    if let Some(reason) = requires_dictionary_passing(&typed) {
+    if let Some(reason) = class_load_conflict(&typed) {
         return Err(reason);
     }
-    match eval_program_with_env(&program, &env) {
+    if next_type_env.has_constrained_bindings() && contains_load(&typed) {
+        return Err(
+            "load cannot be combined with dictionary-passing bindings in the REPL yet",
+        );
+    }
+    let runnable = surface_program(&program, &typed, &next_type_env)?;
+    match eval_program_with_env(&runnable, &env) {
         Ok((value, new_env)) => {
             println!("{}", value);
             // Persist declarations and types only after success.
@@ -694,9 +709,11 @@ fn repl() {
 }
 ```
 
-The REPL uses `parse_program`, `typecheck_program_typed_with_env`, and
-`eval_program_with_env` for each submission. The latter returns both the value
-and the environment containing declarations evaluated by that submission.
+The REPL uses `parse_program`, `typecheck_program_typed_with_env`,
+`pipeline::surface_program`, and `eval_program_with_env` for each submission.
+The last returns both the value and the environment containing declarations
+evaluated by that submission. `surface_program` substitutes the erased
+dictionary translation (ADR 0014) for class programs.
 
 **Example with top-level declarations (persists, auto-submits)**:
 ```
@@ -1350,10 +1367,12 @@ and evaluates it. `main()` performs these operations directly:
 
 ```rust
 let program = parse_program(&contents)?;
-let typed = typecheck_program_typed(&program)?;
-if let Some(reason) = requires_dictionary_passing(&typed) {
+let mut type_env = TypeEnv::new();
+let typed = typecheck_program_typed_with_env(&program, &mut type_env)?;
+if let Some(reason) = class_load_conflict(&typed) {
     return Err(reason);
 }
+let program = surface_program(&program, &typed, &type_env)?;
 let env = Environment::new();
 let value = eval_program(&program, &env)?;
 println!("{value}");

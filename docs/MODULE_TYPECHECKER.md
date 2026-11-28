@@ -245,7 +245,7 @@ A constraint on a type variable is generalized into the binding's scheme (for ex
 
 A user `class C p where { m : ty; ... };` is checked in declaration order, like a `let`: a method is invisible to earlier declarations. The kind of `p` is inferred from all signatures (`class Container f where { empty : f Int }` gives `f : * -> *`). Each method gets the scheme `forall p ... . C p => ty`. Errors: `DuplicateClass` (including redeclaring `Eq`), `DuplicateMethod` (across all classes, including `eq`), `MethodSignatureMissingClassParam`, and `KindMismatch` inside signatures. A constraint `C T` on a concrete `T` needs an instance (see Instances below); without one it is `NoInstance`.
 
-`TypedProgram.method_uses` lists the methods a program uses by name. Until dictionary passing (M2.3), `typed_ast::requires_dictionary_passing` rejects any program with a class or instance declaration or a method use, with the same text on both evaluators, both REPLs and the driver, for example `type classes are not executable yet: method eq`.
+`TypedProgram.method_uses` lists the methods a program uses by name. `typed_ast::is_class_program` is true for a program with a class or instance declaration or a method use. Such programs run through dictionary passing (`docs/adr/0014-dictionary-passing.md`). Combined with `load`, `typed_ast::class_load_conflict` rejects them with the same text on both evaluators, both REPLs and the driver, for example `type classes cannot be combined with load yet: method eq`.
 
 ### Instances
 
@@ -264,7 +264,7 @@ Context reduction matches instance heads one way and reduces the matched instanc
 Known limitations:
 - Superclass entailment comes in M2.5.
 - The kind of a context class is not checked against its head variable (M2.4).
-- Instances do not run until dictionary passing (M2.3).
+- Execution limitations of instances are listed in ADR 0014.
 
 ### If Expressions
 
