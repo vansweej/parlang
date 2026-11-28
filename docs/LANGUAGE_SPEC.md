@@ -761,7 +761,7 @@ A top-level `class` declares a single-parameter type class and its method
 signatures. A top-level `instance` gives the methods for one type:
 
 ```
-class C a where { m : ty; ... };
+class [ctx =>] C a where { m : ty; ... };
 instance [ctx =>] C head where { m = expr; ... };
 ```
 
@@ -784,7 +784,11 @@ Status: classes and instances run on every front end via dictionary
 passing; the example evaluates to `false`. Constructor classes such as
 `Functor` and `Monad` over `Option` and `List` are shown in
 `examples/monad.par`; a context class must have the kind of its head
-variable. A class program cannot use
+variable. A class context declares superclasses (`class Eq a => Ord a`):
+an instance needs earlier instances of all superclasses at its head, and
+superclass methods are usable wherever the subclass constraint is given
+(see `examples/ord.par` and `docs/adr/0016-superclasses.md`). A class
+program cannot use
 `load` yet. See `docs/adr/0013-type-classes.md`,
 `docs/adr/0014-dictionary-passing.md` and `docs/MODULE_TYPECHECKER.md`.
 

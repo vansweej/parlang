@@ -23,8 +23,9 @@ translation so that the front ends cannot drift apart.
   `App`, `Record` and `FieldAccess` nodes and adds no new AST node.
 - A dictionary parameter is named `$d<n>`. Its type is the nominal
   type `$Dict_<Class>` applied to the class argument.
-- A dictionary value is a record of method closures in class
-  declaration order.
+- A dictionary value is a record. Its `$super_<S>` superclass
+  dictionary fields come first (ADR 0016), followed by the method
+  closures in class declaration order.
 - Each instance becomes a top-level `let $dict_<Class>_<Tycon>`. When
   the instance has a context, it is a function of its context
   dictionaries.
@@ -51,7 +52,8 @@ rec $dict_X -> fun $d0 -> ...          (with a context)
   `load` keep the direct path.
 - On Core (`crates/parlang/src/elaborate/dictionary.rs`):
   - `$Dict_C p` is a data type with one constructor. Its fields are
-    the method types in class order.
+    the superclass dictionaries `$Dict_S p` first, then the method
+    types in class order.
   - Method type variables other than the class parameter are
     `Forall`-bound, so these are rank-2 fields.
   - `$Dict_Eq` is registered lazily. Built-in dictionaries are bound
@@ -102,8 +104,8 @@ rec $dict_X -> fun $d0 -> ...          (with a context)
   - A body value with residual constraints prints as
     `<function $d0>`.
 - Roadmap: M2.4a added constructor classes (`Functor` and `Monad` over
-  `List` and `Option`); M2.4b added do-notation (ADR 0015). M2.5 adds superclasses
-  and `Show`. A Core
+  `List` and `Option`); M2.4b added do-notation (ADR 0015); M2.5 added
+  superclasses (ADR 0016). A built-in `Show` is deferred. A Core
   specialiser will make constrained functions kernel-eligible.
 
 ## References

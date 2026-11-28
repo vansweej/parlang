@@ -174,14 +174,19 @@ Class programs are elaborated after dictionary insertion
 `crates/parlang/src/elaborate/dictionary.rs`):
 
 - Each class becomes `data $Dict_C p` with one constructor. Its fields are
-  the method types in class order, and method type variables other than
-  `p` are `Forall`-bound.
+  the superclass dictionaries `$Dict_S p` first (ADR 0016), then the
+  method types in class order. Method type variables other than `p` are
+  `Forall`-bound.
 - `$Dict_Eq` is registered lazily. The built-in `Eq` dictionaries are bound
   at the outermost level, and only when referenced.
 - An instance dictionary is a `TyLam` over the instance variables around a
   monomorphic `letrec`, or a unit thunk when the instance has no context.
 - Method selection is a `Case` on the dictionary followed by one `TyApp`
-  per extra method variable.
+  per extra method variable. Method positions are offset by the number
+  of superclasses.
+- Superclass selection (`elab_super_select`) is a `Case` with no
+  `TyApp`. A chain of `$super_S` projections selects a transitive
+  superclass.
 - A constrained binding elaborates to `TyLam`s around dictionary lambdas.
 
 ## Unsupported constructs
