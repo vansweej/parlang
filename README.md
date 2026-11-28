@@ -16,7 +16,7 @@ ParLang is a simple functional programming language with:
 - **Variables**: Let bindings for creating local variables
 - **Functions**: First-class functions with closure support
 - **Polymorphism**: Let-polymorphism for generic functions
-- **Type Classes**: Haskell 98 single-parameter classes and instances (built-in `Eq` behind `==`), including constructor classes such as `Functor` and `Monad` (`examples/monad.par`) with do-notation (`examples/do_notation.par`), executed by dictionary passing on both evaluators
+- **Type Classes**: Haskell 98 single-parameter classes and instances (built-in `Eq` behind `==`), including constructor classes such as `Functor` and `Monad` (`examples/monad.par`) with do-notation (`examples/do_notation.par`) and superclasses (`examples/ord.par`), executed by dictionary passing on both evaluators
 - **Recursion**: Named recursive functions with tail call optimization
 - **Conditionals**: If-then-else expressions
 - **Pattern Matching**: Match expressions for cleaner multi-branch logic (supports records, tuples, literals, and sum types)
@@ -723,7 +723,7 @@ cargo run -- examples/simple.par --dump-dot --stage typed
 
 Running on Core:
 
-- `cargo run -- examples/simple.par --core` evaluates the program on the Core CEK machine and prints the value with a temporary type-directed renderer (strings as `"ab"`, lists as `[1, 2]`, functions as `<function>`); the default surface evaluator output is unchanged (it still prints strings as `Cons(...)` chains). The renderer will be replaced by a Show class later.
+- `cargo run -- examples/simple.par --core` evaluates the program on the Core CEK machine and prints the value with a temporary type-directed renderer (strings as `"ab"`, lists as `[1, 2]`, functions as `<function>`); the default surface evaluator output is unchanged (it still prints strings as `Cons(...)` chains). The renderer will be replaced by a built-in Show class later, once a built-in List/String prelude exists (see ADR 0016).
 - `cargo run -- trace examples/simple.par [--fuel N] [--raw]` prints the Core reduction sequence as numbered entries (an entry may span several lines; `--raw` shows every machine step), then `result: <value>`; the default fuel is 10000 steps and exceeding it fails with `step limit of N exceeded`.
 - `cargo run -- --core` starts the REPL on the Core CEK machine: each input is elaborated, linted and run together with the declarations committed so far, and printed with the same renderer as file-mode `--core` (no `Type:` line). An input that fails any stage is reported and not committed. Declaration-only inputs are evaluated too before they are committed, so a failing declaration such as `let x = 1 / 0;` is rejected with an `eval error:` and not committed. As in a program file, re-declaring an already committed data type is rejected (duplicate type name), while a `let` re-declaration shadows the earlier one. Errors use the Core pipeline's lowercase prefixes (`type error:`, `elaboration error:`, `eval error:`), unlike the surface REPL's `Type error:`.
 - `parlang-driver` accepts the same `--core`, `--stage core|lint` and `trace` options.
@@ -800,6 +800,7 @@ See the `examples/` directory for sample programs:
 - `hkt.par` - Higher-kinded data type `Wrap f a` over `Option` and `List` (runs on the surface evaluator and on Core)
 - `monad.par` - Constructor classes `Functor` and `Monad` over `Option` and `List` (runs on the surface evaluator and on Core)
 - `do_notation.par` - Do-notation over the `Option` and `List` monads
+- `ord.par` - Superclasses: a user `Ord` over `Eq` and a `Top` over `Ord` (runs on the surface evaluator and on Core)
 
 ## Documentation
 

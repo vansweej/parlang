@@ -243,7 +243,7 @@ A constraint on a type variable is generalized into the binding's scheme (for ex
 
 `Eq` is a real built-in class, `class Eq a where { eq : a -> a -> Bool }`, seeded into every `TypeEnv` (`class_info`, `method_info`). The method `eq` has the scheme `forall a. Eq a => a -> a -> Bool`, so `eq 1 2 : Bool` and `let f = fun x -> eq x x` gets `forall t. Eq t => t -> Bool`. A variable resolves to a binding first and falls back to a class method, so any user binding named `eq` (top-level or local `let`, a lambda or a `rec` binder) shadows the method; `==` and `!=` always mean `Eq`.
 
-A user `class C p where { m : ty; ... };` is checked in declaration order, like a `let`: a method is invisible to earlier declarations. The kind of `p` is inferred from all signatures (`class Container f where { empty : f Int }` gives `f : * -> *`). Each method gets the scheme `forall p ... . C p => ty`. Errors: `DuplicateClass` (including redeclaring `Eq`), `DuplicateMethod` (across all classes, including `eq`), `MethodSignatureMissingClassParam`, and `KindMismatch` inside signatures. A constraint `C T` on a concrete `T` needs an instance (see Instances below); without one it is `NoInstance`.
+A user `class C p where { m : ty; ... };` is checked in declaration order, like a `let`: a method is invisible to earlier declarations. The kind of `p` is inferred from all signatures (`class Container f where { empty : f Int }` gives `f : * -> *`). Each method gets the scheme `forall p ... . C p => ty`. Errors: `DuplicateClass` (including redeclaring `Eq`), `DuplicateMethod` (across all classes, including `eq`), `MethodSignatureMissingClassParam`, and `KindMismatch` inside signatures. A constraint `C T` on a concrete `T` needs an instance (see Instances below); without one it is `NoInstance`. A class may declare superclasses, `class [ctx =>] C p where { ... };` (ADR 0016). Each superclass constraint must be on `p` and listed once (`InvalidSuperclassContext`), it must name an already declared class (`UnknownClass`), and its kind must match the kind of `p` (`KindMismatch`). The typed dump prints a `superclasses: Eq` line for such a class.
 
 `TypedProgram.method_uses` lists the methods a program uses by name. `typed_ast::is_class_program` is true for a program with a class or instance declaration or a method use. Such programs run through dictionary passing (`docs/adr/0014-dictionary-passing.md`). Combined with `load`, `typed_ast::class_load_conflict` rejects them with the same text on both evaluators, both REPLs and the driver, for example `type classes cannot be combined with load yet: method eq`.
 
@@ -254,6 +254,7 @@ A user `class C p where { m : ty; ... };` is checked in declaration order, like 
 - Class: `C` must exist (`UnknownClass`).
 - Head: a base type or a data type, bare or applied to distinct type variables (`InvalidInstanceHead`); never an alias (`TypeSynonymInstance`). Its kind must equal the class parameter's kind (`KindMismatch`; for example `instance Functor Option` for a `* -> *` class).
 - Context: names known classes on head variables only (`InvalidInstanceContext`).
+- Superclasses: instances of all superclasses of `C` at the head must be declared earlier in the source, and their contexts must follow from this instance's context closed under superclasses (`NoInstance` otherwise).
 - Overlap: an instance whose head overlaps an earlier one of the same class, built-ins included, is `DuplicateInstance` (`instance Eq Int`).
 - Methods: every class method is defined exactly once (`MissingInstanceMethod`, `UnknownInstanceMethod`, `DuplicateInstanceMethod`). There are no default methods.
 
@@ -261,8 +262,10 @@ Each body is checked against the method scheme with the class parameter replaced
 
 Context reduction matches instance heads one way and reduces the matched instance's context through a worklist.
 
+The givens of an instance method body are the context closed under superclasses (`TypeEnv::superclass_closure`). There is no constraint simplification: using `==` and `lte` gives `(Eq a, Ord a)`.
+
 Known limitations:
-- Superclass entailment comes in M2.5.
+- Instances are order-dependent, and superclass instances persisting across REPL lines is untested.
 - A program body whose constructor-class variable stays residual runs only
   on the surface evaluator (see ADR 0014).
 - Execution limitations of instances are listed in ADR 0014.
