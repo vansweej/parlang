@@ -68,6 +68,8 @@ pub struct ClassInfo {
     pub param_kind: parlang_core::Kind,
     /// Each method name with its constrained scheme `forall p. C p => ty`.
     pub methods: Vec<(String, TypeScheme)>,
+    /// Direct superclass names in declaration order (empty for `Eq`).
+    pub superclasses: Vec<String>,
 }
 
 /// A class method: its owning class and its constrained scheme.
@@ -310,6 +312,30 @@ impl TypeEnv {
             .map(|(_, context)| context)
     }
 
+    /// `constraints` closed under superclasses: each `C t` also yields
+    /// `S t` for every transitive superclass `S` of `C` (from
+    /// `ClassInfo::superclasses`), deduplicated. The result order is
+    /// unspecified; callers only test membership.
+    fn superclass_closure(&self, constraints: &[Constraint]) -> Vec<Constraint> {
+        let mut closed: Vec<Constraint> = Vec::new();
+        let mut pending: Vec<Constraint> = constraints.to_vec();
+        while let Some(constraint) = pending.pop() {
+            if closed.contains(&constraint) {
+                continue;
+            }
+            if let Some(info) = self.class_info(&constraint.class) {
+                for superclass in &info.superclasses {
+                    pending.push(Constraint {
+                        class: superclass.clone(),
+                        args: constraint.args.clone(),
+                    });
+                }
+            }
+            closed.push(constraint);
+        }
+        closed
+    }
+
     /// Record `constraint` as wanted in the shared accumulator.
     fn want(&self, constraint: Constraint) {
         self.wanted.borrow_mut().push(constraint);
@@ -450,6 +476,7 @@ fn builtin_classes() -> (HashMap<String, ClassInfo>, HashMap<String, MethodInfo>
         param: "a".to_string(),
         param_kind: parlang_core::Kind::Star,
         methods: vec![("eq".to_string(), scheme.clone())],
+        superclasses: vec![],
     };
     let method = MethodInfo {
         class: "Eq".to_string(),
@@ -808,6 +835,9 @@ pub enum TypeError {
     DuplicateInstance(String),
     /// An instance context constraint on a variable absent from the head.
     InvalidInstanceContext(String),
+    /// A superclass constraint on a variable other than the class
+    /// parameter, or a superclass listed twice; the payload renders it.
+    InvalidSuperclassContext(String),
     /// An instance method its class does not declare.
     UnknownInstanceMethod {
         instance: String,
@@ -912,6 +942,7 @@ impl fmt::Display for TypeError {
             | TypeError::TypeSynonymInstance(_)
             | TypeError::DuplicateInstance(_)
             | TypeError::InvalidInstanceContext(_)
+            | TypeError::InvalidSuperclassContext(_)
             | TypeError::UnknownInstanceMethod { .. }
             | TypeError::DuplicateInstanceMethod { .. }
             | TypeError::MissingInstanceMethod { .. }
@@ -947,6 +978,10 @@ impl TypeError {
             TypeError::InvalidInstanceContext(constraint) => write!(
                 f,
                 "Instance context {constraint} must constrain a type variable of the instance head"
+            ),
+            TypeError::InvalidSuperclassContext(constraint) => write!(
+                f,
+                "Superclass context {constraint} must constrain the class parameter once"
             ),
             TypeError::UnknownInstanceMethod { instance, method } => write!(
                 f,
@@ -2471,6 +2506,7 @@ fn annotation_mentions_var(ann: &crate::ast::TypeAnnotation, name: &str) -> bool
 fn check_class_decl(
     name: &str,
     param: &str,
+    superclasses: &[(String, String)],
     methods: &[(String, crate::ast::TypeAnnotation)],
     doc: Option<&str>,
     program_env: &mut TypeEnv,
@@ -2479,6 +2515,7 @@ fn check_class_decl(
         return Err(TypeError::DuplicateClass(name.to_string()));
     }
     let param_kind = crate::kind_check::infer_class_param_kind(program_env, param, methods)?;
+    let supers = resolve_superclasses(param, &param_kind, superclasses, program_env)?;
     let param_var = TypeVar(program_env.next_var);
     program_env.advance_past(&param_var);
     let mut schemes: Vec<(String, TypeScheme)> = Vec::with_capacity(methods.len());
@@ -2508,6 +2545,7 @@ fn check_class_decl(
         param: param.to_string(),
         param_kind: param_kind.clone(),
         methods: schemes.clone(),
+        superclasses: supers.clone(),
     };
     program_env.classes.insert(name.to_string(), class);
     Ok(TypedDecl::Class {
@@ -2515,8 +2553,43 @@ fn check_class_decl(
         param: param.to_string(),
         param_kind,
         methods: schemes,
+        superclasses: supers,
         doc: doc.map(str::to_string),
     })
+}
+
+/// Resolve the superclass context of a class with parameter `param` of
+/// kind `param_kind`: each superclass must already be declared
+/// (`UnknownClass`), constrain `param` exactly once
+/// (`InvalidSuperclassContext`) and take a parameter of the same kind
+/// (`KindMismatch(var, superclass kind, class kind)`). Because a superclass
+/// must already exist, self-reference and cycles are impossible.
+fn resolve_superclasses(
+    param: &str,
+    param_kind: &parlang_core::Kind,
+    superclasses: &[(String, String)],
+    env: &TypeEnv,
+) -> Result<Vec<String>, TypeError> {
+    let mut resolved: Vec<String> = Vec::with_capacity(superclasses.len());
+    for (class, var) in superclasses {
+        let Some(info) = env.class_info(class) else {
+            return Err(TypeError::UnknownClass(class.clone()));
+        };
+        if var != param || resolved.contains(class) {
+            return Err(TypeError::InvalidSuperclassContext(format!(
+                "{class} {var}"
+            )));
+        }
+        if info.param_kind != *param_kind {
+            return Err(TypeError::KindMismatch(
+                var.clone(),
+                info.param_kind.to_string(),
+                param_kind.to_string(),
+            ));
+        }
+        resolved.push(class.clone());
+    }
+    Ok(resolved)
 }
 
 /// A validated instance head, shared by the checks of its method bodies.
@@ -2740,7 +2813,8 @@ fn check_residual_entailed(
 ///
 /// The head variables and the scheme's other quantified variables must stay
 /// rigid (see `check_rigid_images`). Every constraint the body wants must
-/// follow from the instance context (see `check_residual_entailed`).
+/// follow from the instance context closed under superclasses (see
+/// `check_residual_entailed` and `superclass_closure`).
 fn check_instance_method(
     instance: &InstanceHead,
     method: &str,
@@ -2775,8 +2849,38 @@ fn check_instance_method(
         .collect();
     let wanted = env.take_wanted_since(mark);
     let residual = env.reduce_constraints(wanted, &solution)?;
+    let givens = env.superclass_closure(&givens);
     check_residual_entailed(&residual, &givens, &images)?;
     Ok(resolve_typed(&solution, &typed))
+}
+
+/// Check that every superclass `S` of `class_info` has an instance at
+/// `head`, declared earlier in source order. A missing instance surfaces as
+/// the `NoInstance` returned by `reduce_constraints`; an instance whose
+/// context does not follow from `context` closed under superclasses (see
+/// `superclass_closure`) is `NoInstance` of `S head`.
+fn check_superclass_instances(
+    class_info: &ClassInfo,
+    head: &Type,
+    context: &[Constraint],
+    env: &TypeEnv,
+) -> Result<(), TypeError> {
+    let givens = env.superclass_closure(context);
+    for superclass in &class_info.superclasses {
+        let wanted = Constraint {
+            class: superclass.clone(),
+            args: vec![head.clone()],
+        };
+        let text = wanted.to_string();
+        let residual = env.reduce_constraints(vec![wanted], &Substitution::new())?;
+        if residual
+            .iter()
+            .any(|constraint| !givens.contains(constraint))
+        {
+            return Err(TypeError::NoInstance(text));
+        }
+    }
+    Ok(())
 }
 
 /// Check one `instance` declaration of `class`, register it in
@@ -2805,6 +2909,7 @@ fn check_instance_decl(
         check_instance_head(&label, head, &class_info.param_kind, program_env)?;
     let constraints = resolve_instance_context(context, &names, program_env)?;
     check_context_kinds(context, head, program_env)?;
+    check_superclass_instances(&class_info, &head_ty, &constraints, program_env)?;
     check_instance_method_set(&label, &class_info.methods, methods)?;
     let overlaps = program_env.instances.get(class).is_some_and(|known| {
         known.iter().any(|other| {
@@ -2903,12 +3008,13 @@ fn collect_typed_decls(
             Decl::Class {
                 name,
                 param,
+                superclasses,
                 methods,
                 doc,
-                ..
             } => decls.push(check_class_decl(
                 name,
                 param,
+                superclasses,
                 methods,
                 doc.as_deref(),
                 program_env,
@@ -3206,6 +3312,81 @@ mod tests {
         };
         assert_eq!(scheme.constraints, vec![expected]);
         assert_eq!(methods[1].0, "size");
+    }
+
+    const ORD_CLASS: &str = "class Eq a => Ord a where { lte : a -> a -> Bool };\n";
+
+    fn check_error(source: &str) -> Option<TypeError> {
+        let program = crate::parser::parse_program(source).unwrap();
+        typecheck_program_typed(&program).err()
+    }
+
+    #[test]
+    fn superclass_context_is_recorded() {
+        let program = check_program(&format!("{ORD_CLASS}0"));
+        let TypedDecl::Class { superclasses, .. } = &program.decls[0] else {
+            panic!("expected Class decl")
+        };
+        assert_eq!(superclasses, &vec!["Eq".to_string()]);
+    }
+
+    #[test]
+    fn superclass_context_errors() {
+        let unknown = check_error("class Nope a => Ord a where { lte : a -> a -> Bool };\n0");
+        assert_eq!(unknown, Some(TypeError::UnknownClass("Nope".to_string())));
+        let selfref = check_error("class Ord a => Ord a where { lte : a -> a -> Bool };\n0");
+        assert_eq!(selfref, Some(TypeError::UnknownClass("Ord".to_string())));
+        let other_var = check_error("class Eq b => Ord a where { lte : a -> a -> Bool };\n0");
+        let expected = TypeError::InvalidSuperclassContext("Eq b".to_string());
+        assert_eq!(other_var, Some(expected));
+        let twice = check_error("class (Eq a, Eq a) => Ord a where { lte : a -> a -> Bool };\n0");
+        let expected = TypeError::InvalidSuperclassContext("Eq a".to_string());
+        assert_eq!(twice, Some(expected));
+        let kind = check_error("class Eq f => Wrap f where { unwrap : f Int -> Int };\n0");
+        let expected =
+            TypeError::KindMismatch("f".to_string(), "*".to_string(), "* -> *".to_string());
+        assert_eq!(kind, Some(expected));
+    }
+
+    #[test]
+    fn instance_requires_superclass_instance() {
+        let source = format!(
+            "{ORD_CLASS}data Box a = Box a;\n\
+             instance Ord (Box a) where {{ lte = fun x -> fun y -> true }};\n0"
+        );
+        let err = check_error(&source);
+        assert!(
+            matches!(&err, Some(TypeError::NoInstance(text)) if text.starts_with("Eq (Box")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn superclass_instance_must_come_first_in_source_order() {
+        let source = format!(
+            "{ORD_CLASS}data Box a = Box a;\n\
+             instance Ord a => Ord (Box a) where {{ lte = fun x -> fun y -> true }};\n\
+             instance Eq a => Eq (Box a) where {{ eq = fun x -> fun y -> true }};\n0"
+        );
+        let err = check_error(&source);
+        assert!(
+            matches!(&err, Some(TypeError::NoInstance(text)) if text.starts_with("Eq (Box")),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn superclass_is_entailed_inside_instance_methods() {
+        let source = format!(
+            "{ORD_CLASS}data Box a = Box a;\n\
+             instance Ord Int where {{ lte = fun x -> fun y -> x <= y }};\n\
+             instance Eq a => Eq (Box a) where {{ eq = fun x -> fun y -> \
+             (match x with | Box p -> (match y with | Box q -> eq p q)) }};\n\
+             instance Ord a => Ord (Box a) where {{ lte = fun x -> fun y -> \
+             (match x with | Box p -> (match y with | Box q -> \
+             if eq p q then true else lte p q)) }};\n0"
+        );
+        assert_eq!(check_error(&source), None);
     }
 
     #[test]

@@ -135,6 +135,28 @@ fn class_declaration_parses_name_param_and_methods() {
 }
 
 #[test]
+fn class_declaration_parses_superclass_contexts() {
+    let Decl::Class { superclasses, .. } =
+        single_parsed_decl("class Eq a => Ord a where { lte : a -> a -> Bool };")
+    else {
+        panic!("expected a class declaration");
+    };
+    assert_eq!(superclasses, vec![("Eq".to_string(), "a".to_string())]);
+    let Decl::Class { superclasses, .. } =
+        single_parsed_decl("class (Eq a, Show a) => C a where { c : a -> Int };")
+    else {
+        panic!("expected a class declaration");
+    };
+    let expected = vec![
+        ("Eq".to_string(), "a".to_string()),
+        ("Show".to_string(), "a".to_string()),
+    ];
+    assert_eq!(superclasses, expected);
+    assert!(parse_program("class Eq a => where {};").is_err());
+    assert!(parse_program("class (Eq a,) => Ord a where {};").is_err());
+}
+
+#[test]
 fn class_declaration_accepts_trailing_semicolon_and_higher_kinded_param() {
     let Decl::Class { param, methods, .. } =
         single_parsed_decl("class Container f where { empty : f Int; size : f Int -> Int; };")
@@ -260,7 +282,6 @@ fn class_keywords_are_not_identifiers() {
 #[test]
 fn malformed_class_and_instance_headers_are_rejected() {
     for source in [
-        "class Eq a => Ord a where {};",
         "class Eq a b where {};",
         "class Eq a where {}",
         "class C in where {};",

@@ -1312,9 +1312,9 @@ parser! {
     }
 }
 
-// Parse a single-parameter type class declaration. Superclass contexts are
-// not parsed until M2.5, so `superclasses` is always empty:
-// class Name param where { method : type; ... };
+// Parse a single-parameter type class declaration with an optional
+// superclass context (same syntax as an instance context):
+// class [ctx =>] Name param where { method : type; ... };
 parser! {
     fn class_decl[Input]()(Input) -> Decl
     where [Input: Stream<Token = char>]
@@ -1323,6 +1323,7 @@ parser! {
             string("class")
                 .skip(combine::not_followed_by(alpha_num().or(token('_'))))
                 .skip(spaces()),
+            optional(instance_context()),
             constructor_name().skip(spaces()),
             type_var_name().skip(spaces()),
             string("where").skip(spaces()),
@@ -1341,10 +1342,10 @@ parser! {
             ),
             token(';').skip(spaces()),
         )
-            .map(|(_, name, param, _, methods, _)| Decl::Class {
+            .map(|(_, context, name, param, _, methods, _)| Decl::Class {
                 name,
                 param,
-                superclasses: vec![],
+                superclasses: context.unwrap_or_default(),
                 methods,
                 doc: None,
             })

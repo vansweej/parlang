@@ -149,6 +149,8 @@ pub enum TypedDecl {
         param: String,
         param_kind: parlang_core::Kind,
         methods: Vec<(String, TypeScheme)>,
+        /// Direct superclass names in declaration order.
+        superclasses: Vec<String>,
         doc: Option<String>,
     },
     /// A checked `instance` declaration: the resolved `head`, its distinct
@@ -352,9 +354,14 @@ fn write_decl(out: &mut String, index: usize, decl: &TypedDecl, depth: usize) {
             param,
             param_kind,
             methods,
+            superclasses,
             ..
         } => {
             let _ = writeln!(out, "decl {index}: Class {name} {param} :: {param_kind}");
+            if !superclasses.is_empty() {
+                indent(out, depth + 1);
+                let _ = writeln!(out, "superclasses: {}", superclasses.join(", "));
+            }
             for (method, scheme) in methods {
                 indent(out, depth + 1);
                 let _ = writeln!(out, "method: {method} : {scheme}");
