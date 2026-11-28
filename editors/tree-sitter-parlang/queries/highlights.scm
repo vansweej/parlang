@@ -1,4 +1,4 @@
-["let" "in" "data" "type" "class" "instance" "where"] @keyword
+["let" "in" "data" "type" "class" "instance" "where" "do"] @keyword
 ["if" "then" "else" "match" "with"] @keyword.conditional
 ["fun" "rec"] @keyword.function
 "load" @keyword.import

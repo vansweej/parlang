@@ -33,6 +33,7 @@ Welcome to the comprehensive documentation for ParLang, a small ML-alike functio
 - [ADR 0012: Surface Higher-Kinded Types on Core](adr/0012-surface-higher-kinded-types.md)
 - [ADR 0013: Type Classes](adr/0013-type-classes.md) - Haskell 98 single-parameter classes, built-in Eq, executable via dictionary passing (ADR 0014)
 - [ADR 0014: Dictionary Passing](adr/0014-dictionary-passing.md) - Dictionary insertion shared by the surface evaluator, both REPLs and Core
+- [ADR 0015: Do-Notation](adr/0015-do-notation.md) - Parser desugar of do blocks to bind and let
 
 ## 📖 Documentation Overview
 

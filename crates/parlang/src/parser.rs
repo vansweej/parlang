@@ -280,7 +280,7 @@ where
 /// Reserved keywords that cannot be used as identifiers; also consumed by the editor-grammar tests.
 pub const KEYWORDS: &[&str] = &[
     "let", "in", "if", "then", "else", "fun", "true", "false", "load", "rec", "match", "with",
-    "type", "data", "class", "instance", "where",
+    "type", "data", "class", "instance", "where", "do",
 ];
 
 /// Parse an identifier (variable name) - ensures it's not a keyword
@@ -970,6 +970,101 @@ parser! {
     }
 }
 
+/// One statement of a `do` block, before desugaring.
+enum DoStmt {
+    /// `x <- e`
+    Bind(String, Expr),
+    /// `let x [: ty] = e`
+    Let(String, Option<TypeAnnotation>, Expr),
+    /// A bare expression `e`.
+    Expr(Expr),
+}
+
+/// Build `bind monadic (fun binder -> rest)`.
+fn bind_call(monadic: Expr, binder: String, rest: Expr) -> Expr {
+    Expr::App(
+        Box::new(Expr::App(
+            Box::new(Expr::Var("bind".to_string())),
+            Box::new(monadic),
+        )),
+        Box::new(Expr::Fun(binder, None, Box::new(rest))),
+    )
+}
+
+/// Desugar `do` statements right-to-left into `bind` applications and
+/// `Expr::Let`. A bare statement binds the name `_`, which surface code
+/// cannot write, so it cannot be captured.
+///
+/// # Errors
+///
+/// Returns a static message when the block is empty or does not end with
+/// an expression statement.
+fn desugar_do(stmts: Vec<DoStmt>) -> Result<Expr, &'static str> {
+    let mut rev = stmts.into_iter().rev();
+    let mut acc = match rev.next() {
+        None => return Err("empty do block"),
+        Some(DoStmt::Expr(last)) => last,
+        Some(_) => return Err("do block must end with an expression"),
+    };
+    for stmt in rev {
+        acc = match stmt {
+            DoStmt::Bind(name, value) => bind_call(value, name, acc),
+            DoStmt::Let(name, ty_ann, value) => {
+                Expr::Let(name, ty_ann, Box::new(value), Box::new(acc))
+            }
+            DoStmt::Expr(value) => bind_call(value, "_".to_string(), acc),
+        };
+    }
+    Ok(acc)
+}
+
+// A `do` statement: `x <- e`, `let x [: ty] = e`, or `e`. The bind form is
+// tried first, so `x <-1` inside a do block is a bind. A let statement
+// must be followed by `;` or `}`, so `let x = e in body` falls through to
+// an expression statement.
+parser! {
+    fn do_stmt[Input]()(Input) -> DoStmt
+    where [Input: Stream<Token = char>]
+    {
+        choice((
+            attempt((identifier().skip(spaces()), string("<-").skip(spaces())))
+                .and(expr().skip(spaces()))
+                .map(|((name, _), value)| DoStmt::Bind(name, value)),
+            attempt(
+                (
+                    string("let").skip(spaces()),
+                    identifier().skip(spaces()),
+                    optional(token(':').skip(spaces()).with(type_annotation().skip(spaces()))),
+                    token('=').skip(spaces()),
+                    expr().skip(spaces()),
+                )
+                    .skip(combine::parser::combinator::look_ahead(token(';').or(token('}')))),
+            )
+            .map(|(_, name, ty_ann, _, value)| DoStmt::Let(name, ty_ann, value)),
+            expr().skip(spaces()).map(DoStmt::Expr),
+        ))
+    }
+}
+
+// do { stmt; stmt; ... expr } with an optional trailing `;`.
+parser! {
+    fn do_expr[Input]()(Input) -> Expr
+    where [Input: Stream<Token = char>]
+    {
+        string("do")
+            .skip(combine::not_followed_by(alpha_num().or(token('_'))))
+            .skip(spaces())
+            .with(between(
+                token('{').skip(spaces()),
+                token('}'),
+                combine::sep_end_by::<Vec<DoStmt>, _, _, _>(do_stmt(), token(';').skip(spaces())),
+            ))
+            .and_then(|stmts: Vec<DoStmt>| {
+                desugar_do(stmts).map_err(StreamErrorFor::<Input>::unexpected_static_message)
+            })
+    }
+}
+
 parser! {
     fn primary[Input]()(Input) -> Expr
     where [Input: Stream<Token = char>]
@@ -983,6 +1078,7 @@ parser! {
             attempt(match_expr()),
             attempt(rec_expr()),
             attempt(fun_expr()),
+            attempt(do_expr()),
             attempt(atom()),
         ))
     }
@@ -1428,6 +1524,102 @@ mod tests {
         assert!(parse("   ").is_err());
         assert!(parse("-- just a comment").is_err());
         assert_eq!(parse("0"), Ok(Expr::Int(0)));
+    }
+
+    /// `bind m (fun binder -> rest)` as the `do` desugar builds it.
+    fn do_bind(monadic: Expr, binder: &str, rest: Expr) -> Expr {
+        Expr::App(
+            Box::new(Expr::App(
+                Box::new(Expr::Var("bind".to_string())),
+                Box::new(monadic),
+            )),
+            Box::new(Expr::Fun(binder.to_string(), None, Box::new(rest))),
+        )
+    }
+
+    fn var(name: &str) -> Expr {
+        Expr::Var(name.to_string())
+    }
+
+    #[test]
+    fn test_do_bind_statement_desugars_to_bind() {
+        let ret = Expr::App(Box::new(var("return")), Box::new(var("x")));
+        assert_eq!(
+            parse("do { x <- m; return x }"),
+            Ok(do_bind(var("m"), "x", ret))
+        );
+    }
+
+    #[test]
+    fn test_do_expression_statement_binds_underscore() {
+        assert_eq!(parse("do { m; n; }"), Ok(do_bind(var("m"), "_", var("n"))));
+    }
+
+    #[test]
+    fn test_do_let_statement_desugars_to_let() {
+        let body = Expr::App(Box::new(var("return")), Box::new(var("y")));
+        let expected = Expr::Let(
+            "y".to_string(),
+            None,
+            Box::new(Expr::Int(1)),
+            Box::new(body),
+        );
+        assert_eq!(parse("do { let y = 1; return y; }"), Ok(expected));
+        assert!(matches!(
+            parse("do { let y : Int = 1; y }"),
+            Ok(Expr::Let(_, Some(_), _, _))
+        ));
+    }
+
+    #[test]
+    fn test_do_let_in_is_an_expression_statement() {
+        let body = Expr::App(Box::new(var("m")), Box::new(var("a")));
+        let expected = Expr::Let(
+            "a".to_string(),
+            None,
+            Box::new(Expr::Int(1)),
+            Box::new(body),
+        );
+        assert_eq!(parse("do { let a = 1 in m a }"), Ok(expected));
+    }
+
+    #[test]
+    fn test_do_nested_and_single_expression() {
+        assert_eq!(parse("do { m }"), Ok(var("m")));
+        assert_eq!(
+            parse("do { x <- do { m }; x }"),
+            Ok(do_bind(var("m"), "x", var("x")))
+        );
+    }
+
+    #[test]
+    fn test_do_block_is_a_bare_argument() {
+        let expected = Expr::App(Box::new(var("f")), Box::new(var("m")));
+        assert_eq!(parse("f do { m }"), Ok(expected));
+    }
+
+    #[test]
+    fn test_do_arrow_without_space_is_a_bind() {
+        assert_eq!(
+            parse("do { x <-1; x }"),
+            Ok(do_bind(Expr::Int(1), "x", var("x")))
+        );
+        assert!(parse("do { x <-1 }").is_err());
+    }
+
+    #[test]
+    fn test_do_rejects_malformed_blocks() {
+        assert!(parse("do {}").is_err());
+        assert!(parse("do { x <- m }").is_err());
+        assert!(parse("do { x <- m; }").is_err());
+        assert!(parse("do { let y = 1 }").is_err());
+        assert!(parse("let do = 1 in do").is_err());
+    }
+
+    #[test]
+    fn test_arrow_outside_do_is_less_than_negative() {
+        let expected = Expr::BinOp(BinOp::Lt, Box::new(var("x")), Box::new(Expr::Int(-1)));
+        assert_eq!(parse("x <-1"), Ok(expected));
     }
 
     #[test]

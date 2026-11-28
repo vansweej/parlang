@@ -48,6 +48,7 @@ module.exports = grammar({
       'class',
       'instance',
       'where',
+      'do',
     ),
 
     let_binding: $ => seq('let', field('name', $.identifier)),
@@ -85,7 +86,7 @@ module.exports = grammar({
 
     boolean: $ => choice('true', 'false'),
 
-    operator: $ => choice('+', '-', '*', '/', '==', '!=', '<=', '>=', '<', '>'),
+    operator: $ => choice('+', '-', '*', '/', '==', '!=', '<=', '>=', '<-', '<', '>'),
 
     escape_sequence: $ => token.immediate(/\\[ntr\\"'0]/),
 

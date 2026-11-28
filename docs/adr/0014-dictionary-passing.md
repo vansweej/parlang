@@ -102,7 +102,7 @@ rec $dict_X -> fun $d0 -> ...          (with a context)
   - A body value with residual constraints prints as
     `<function $d0>`.
 - Roadmap: M2.4a added constructor classes (`Functor` and `Monad` over
-  `List` and `Option`); M2.4b adds do-notation. M2.5 adds superclasses
+  `List` and `Option`); M2.4b added do-notation (ADR 0015). M2.5 adds superclasses
   and `Show`. A Core
   specialiser will make constrained functions kernel-eligible.
 
